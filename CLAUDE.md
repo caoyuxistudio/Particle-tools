@@ -92,7 +92,7 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 - **显示端只读**。它的 `persist()` 不写 localStorage——同源，否则会覆盖你正在编辑的场景。
 - **点开显示窗口时会把它的链接复制到剪贴板**并弹 snackbar 提示（剪贴板不可用时只显示链接）。
 - **编辑器每次推送也会把最新的发射器 config 存进 localStorage**（`particle-system-editor/player-snapshot`，含 `elapsed` 和 `savedAt`；场景本来就由 scene-objects 持久化）。显示端 hello 后 1.2s 没人应答就读它，之后每 5s 再 hello 一次直到有活的编辑器；从后台回到前台时也会读一次，比屏幕上的新就换。这是**手机**上唯一能工作的方式：iOS 上 `window.open` 开的是 tab，后台 tab 整个冻结，编辑器和显示端永远不可能同时活着，靠 BroadcastChannel 握手必然失败；靠存储就是「在这个 tab 改、切到那个 tab 看」。同样也让粘贴链接在编辑器关掉后仍能显示最后一版。
-- **手机上的全屏**：player 只在有元素全屏 API 的地方（桌面）才给 Full screen 按钮；iPhone 的 Safari 和主屏幕 app 都没有这个 API，按钮干脆不出现，真全屏靠 App 壳。`touch-action: manipulation` 关掉了双击缩放。
+- **双击 / 双指点两下屏幕 = 开关陀螺仪视差**（player 里；屏幕中央出 1.8 秒 "Gyro on / off" 字幕，开的时候把此刻姿态设为中心并申请权限）。触摸的双击自己判（320 ms 内、40 px 内两次 pointerup），不靠 iOS 的 dblclick。**手机上的全屏**：player 只在有元素全屏 API 的地方（桌面）才给 Full screen 按钮；iPhone 的 Safari 和主屏幕 app 都没有这个 API，按钮干脆不出现，真全屏靠 App 壳。`touch-action: manipulation` 关掉了双击缩放。
 - **演示模式**（播放窗口按钮正下方那个 `fullscreen` 按钮，`presentation.ts`）：不开第二个页面，**这个窗口自己变成显示端**——全部面板 display:none，视口和角落预览都不画，输出相机按自己的画幅 letterbox 直出画布（走的就是 `renderPlayer`），能 requestFullscreen 就一起要。手机上这是唯一可行的形态（第二个 tab 会把编辑器冻住）；桌面上是「看一眼作品」的快捷键。Esc、全屏被浏览器退出、或点一下屏幕浮出的 Exit 都能回来；浮出的条上还有 FPS 开关。进去时取消选中（手柄的射线用的是编辑器相机）、关掉 orbit，出来时全部复原。`postProcessing.outputColorTransform` 在演示时为 true（直出画布），退出后恢复 false（预览 RT 那条路），别把这两处弄反。
 - 共用的那份逻辑抽在 `particle-factory.ts`（config → 粒子系统）和 `simulation.ts`（发射器的内置运动），两边调同一个函数，不会漂移。
 - **显示端有帧数表**，窗口左上角，`S` 隐藏。它存在的理由就是两个窗口画同一份东西一定比一个贵，而唯一诚实的读数在真正要看的那个窗口里。
@@ -152,7 +152,7 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 - 测试场景是内置 example **WIP-Test**（`packages/editor/public/examples/wip-test/`），存在磁盘上，清空 localStorage 也在。它引用的是那张山水画；73MB 的那个测试视频进不了仓库
 - **WIP-Test-2** 是作品本身：画框 + 点光 + 俯视输出相机（iPhone 17 Pro Max 画幅、SSR 开）+ 视频 color source。参数是 2026-09-11 在手机上调好后用 COPY 拷出的 JSON 直接写进去的（以后也这么更新：贴 JSON，不用截图），测试用的红球已经删掉。**编辑器一启动就直接加载它**（`DEFAULT_EXAMPLE`，在 `src/examples-config.js`；boot 一开始就 fetch，场景就绪后走和点 Examples 一样的 `window.editor.load`；fetch 失败就留在默认发射器，HUD 的 `boot:` 一行会写 `default … failed`）。代价是**刷新即回到示例**：面板里没导出的改动不会保留——粒子参数本来就不跨刷新，场景以前会留，现在也不留了；要保留就 Save 或者抄回 example。视频是 `public/assets/videos/wechat-20240829.mp4`（1000²、53s、1.6Mbps、10.6MB，随站点部署），config 用 **URL** 引用它（`_editorData.embeddedVideos`），所以任何能打开站点的设备都能播，手机上也是从 Examples 一点就开。这是「资产走 URL、config 走仓库」这条路的第一个样品
 - **做一个带视频的 example 的步骤**：把视频放进 `public/assets/videos/`；Textures 面板 **Add Video by URL** 填 `./assets/videos/<文件>`（相对地址，本地和 Pages 都能解析），Use；调好后 Copy，把 JSON 存成 `public/examples/<slug>/config.json`（slug 是名字小写、非字母数字换成连字符），配一张 `preview.webp`，在 `src/examples-config.js` 里加名字。本地上传（Add Video）的视频只在本机浏览器里，带不进 config
-- 控制台 harness `public/__ai-test.js`，当前基线 **237/237**（含 `report` 19、`standaloneReport` 19、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 33、`frameReport` 24）
+- 控制台 harness `public/__ai-test.js`，当前基线 **238/238**（含 `report` 19、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 33、`frameReport` 24）
 
 ---
 
@@ -272,7 +272,7 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 - `/player/` 直接打开是黑屏 + Paste config；editor 里 COPY，player 里贴，加载完直接全屏播。零存储、不监听频道，作品只活在内存里；`?link` 才是老的显示窗口模式。
 - 加载走 editor 同一个 `loadParticleSystem`，存储边界上用 `isStandalone()` 改成内存；harness `standaloneReport` 在 iframe 里真起一个 player 逐字段比对。
 - 只按需加载作品点名的贴图，默认没有帧数表；`player.webmanifest` 让手机把 player 单独加到主屏幕。
-- harness 基线 237/237。
+- harness 基线 238/238。
 
 ---
 

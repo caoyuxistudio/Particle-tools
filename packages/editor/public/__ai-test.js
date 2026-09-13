@@ -719,6 +719,13 @@
       const ok2 = await p.paste(JSON.stringify(again));
       check('a second paste replaces the piece', ok2 && p.getSceneObjects().length === again._editorData.sceneObjects.length, `${p.getSceneObjects().length} objects`);
       check('junk is refused, and the piece stays', (await p.paste('not a config')) === false && p.hasContent());
+      // A double tap toggles the gyro parallax and says so.
+      const gyroBefore = p.getParallax().enabled;
+      p.toggleGyro();
+      const gyroAfter = p.getParallax().enabled;
+      const caption = frame.contentDocument.querySelector('.player-status')?.textContent ?? '';
+      p.toggleGyro();
+      check('a double tap toggles the gyro and captions it', gyroAfter === !gyroBefore && p.getParallax().enabled === gyroBefore && /^Gyro (on|off)$/.test(caption), `${gyroBefore} -> ${gyroAfter} -> ${p.getParallax().enabled}, "${caption}"`);
     }
     frame.remove();
 

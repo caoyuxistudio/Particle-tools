@@ -520,7 +520,35 @@ const installPresentationControls = (): void => {
     // measured against the editor's. Standalone: off, this is the wall.
     if (event.key === 's' || event.key === 'S') toggleStats();
   });
-  document.addEventListener('dblclick', toggleFullscreen);
+  // A double tap (or double click) toggles the gyro parallax and says so —
+  // the one control worth having without opening a panel. Detected by hand
+  // for touch: iOS is not reliable about dblclick, and a double tap that also
+  // zoomed would be worse than none (the viewport forbids zoom regardless).
+  const toggleGyro = (): void => {
+    const next = !getParallaxSettings().enabled;
+    setParallaxSettings({ ...getParallaxSettings(), enabled: next });
+    if (next) {
+      void requestParallaxPermission();
+      recenterParallax();
+    }
+    showStatus(next ? 'Gyro on' : 'Gyro off');
+    setTimeout(() => showStatus(hasContent ? noCameraStatus() : ''), 1800);
+  };
+  debugSurface.toggleGyro = toggleGyro;
+  document.addEventListener('dblclick', (event) => {
+    if ((event.target as HTMLElement | null)?.closest('button, .gyro-hud, .perf-hud, textarea'))
+      return;
+    toggleGyro();
+  });
+  let lastTap = { at: 0, x: 0, y: 0 };
+  const doubleTapped = (event: PointerEvent): boolean => {
+    const now = performance.now();
+    const isDouble =
+      now - lastTap.at < 320 &&
+      Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < 40;
+    lastTap = isDouble ? { at: 0, x: 0, y: 0 } : { at: now, x: event.clientX, y: event.clientY };
+    return isDouble;
+  };
 
   const makeButton = (className: string, text: string): HTMLButtonElement => {
     const button = document.createElement('button');
@@ -557,6 +585,10 @@ const installPresentationControls = (): void => {
     if (event.pointerType === 'touch') void requestParallaxPermission();
     const target = event.target as HTMLElement | null;
     if (target?.closest('button, .gyro-hud, .perf-hud, .player-paste-sheet, textarea')) return;
+    if (event.pointerType === 'touch' && doubleTapped(event)) {
+      toggleGyro();
+      return;
+    }
     showControls();
   });
   fullscreenButton?.addEventListener('click', (event) => {
@@ -685,7 +717,7 @@ const animate = (): void => {
   requestAnimationFrame(animate);
 };
 
-const debugSurface = {
+const debugSurface: Record<string, any> = {
   ready: false,
   mode: () => (linked ? 'linked' : 'standalone'),
   paste: importPiece,
