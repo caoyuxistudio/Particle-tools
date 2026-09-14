@@ -287,6 +287,27 @@ let _localForceFields: Array<NormalizedForceFieldConfig> = [];
 const _localCollisionPlanePos = new THREE.Vector3();
 const _localCollisionPlaneNormal = new THREE.Vector3();
 let _localCollisionPlanes: Array<NormalizedCollisionPlaneConfig> = [];
+/**
+ * Samples a 0..1 curve into a table and returns a function that reads it
+ * with linear interpolation. The trail evaluates its width and opacity
+ * curves once per ribbon vertex per frame, which at a few thousand ribbons
+ * of eighty samples is hundreds of thousands of bezier evaluations; a lookup
+ * is a multiply, an index and a lerp.
+ */
+const CURVE_TABLE_SIZE = 256;
+const tabulateCurve = (fn: CurveFunction): CurveFunction => {
+  const table = new Float32Array(CURVE_TABLE_SIZE + 1);
+  for (let i = 0; i <= CURVE_TABLE_SIZE; i++)
+    table[i] = fn(i / CURVE_TABLE_SIZE);
+  return (t: number): number => {
+    if (t <= 0) return table[0];
+    if (t >= 1) return table[CURVE_TABLE_SIZE];
+    const x = t * CURVE_TABLE_SIZE;
+    const i = x | 0;
+    return table[i] + (table[i + 1] - table[i]) * (x - i);
+  };
+};
+
 // Trail ribbon helpers (reused across frames to avoid allocations)
 const _trailDir = new THREE.Vector3();
 const _trailPerp = new THREE.Vector3();
@@ -2221,29 +2242,41 @@ export const createParticleSystem = (
     };
     generalData.trailCameraPosition = trailCameraPos;
 
-    // Pre-compute curve functions for trail width/opacity
-    trailWidthCurveFn = getCurveFunctionFromConfig(
-      generalData.particleSystemId,
-      trailConfig.widthOverTrail
+    // Pre-compute curve functions for trail width/opacity. Each is called
+    // once per ribbon vertex per frame — hundreds of thousands of times — so
+    // the bezier is sampled into a table once and the calls become a lookup.
+    trailWidthCurveFn = tabulateCurve(
+      getCurveFunctionFromConfig(
+        generalData.particleSystemId,
+        trailConfig.widthOverTrail
+      )
     );
-    trailOpacityCurveFn = getCurveFunctionFromConfig(
-      generalData.particleSystemId,
-      trailConfig.opacityOverTrail
+    trailOpacityCurveFn = tabulateCurve(
+      getCurveFunctionFromConfig(
+        generalData.particleSystemId,
+        trailConfig.opacityOverTrail
+      )
     );
 
     if (trailConfig.colorOverTrail?.isActive) {
       trailColorOverTrailFns = {
-        r: getCurveFunctionFromConfig(
-          generalData.particleSystemId,
-          normalizeTrailCurve(trailConfig.colorOverTrail.r, defaultTrailCurve)
+        r: tabulateCurve(
+          getCurveFunctionFromConfig(
+            generalData.particleSystemId,
+            normalizeTrailCurve(trailConfig.colorOverTrail.r, defaultTrailCurve)
+          )
         ),
-        g: getCurveFunctionFromConfig(
-          generalData.particleSystemId,
-          normalizeTrailCurve(trailConfig.colorOverTrail.g, defaultTrailCurve)
+        g: tabulateCurve(
+          getCurveFunctionFromConfig(
+            generalData.particleSystemId,
+            normalizeTrailCurve(trailConfig.colorOverTrail.g, defaultTrailCurve)
+          )
         ),
-        b: getCurveFunctionFromConfig(
-          generalData.particleSystemId,
-          normalizeTrailCurve(trailConfig.colorOverTrail.b, defaultTrailCurve)
+        b: tabulateCurve(
+          getCurveFunctionFromConfig(
+            generalData.particleSystemId,
+            normalizeTrailCurve(trailConfig.colorOverTrail.b, defaultTrailCurve)
+          )
         ),
       };
     }
@@ -3765,6 +3798,11 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
   const verticesPerParticle = trailLength * 2;
   const creationTimesLength = generalData.creationTimes.length;
   let hasUpdates = false;
+  // The highest particle whose slots were written or cleared this frame.
+  // Slots are handed out from index 0 and recycled last-in-first-out, so
+  // the live ribbons sit at the bottom of the buffers and everything above
+  // the high-water mark is cleared and unchanged — the upload stops there.
+  let highestTouched = -1;
 
   // --- Connected Ribbons: collect particles sharing the same ribbonId ---
   const useRibbon = ribbonId !== undefined;
@@ -3818,6 +3856,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
         continue;
       }
       hasUpdates = true;
+      highestTouched = index;
       const posIdx = index * 3;
       const px = positionArr[posIdx];
       const py = positionArr[posIdx + 1];
@@ -3920,9 +3959,13 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
       let finalCount: number;
 
       if (useSmoothing && count >= 3) {
-        // Interpolate between each pair of raw points with subdivisions
+        // Resample the Catmull-Rom spline through all `count` raw samples at
+        // (count − 1) × subdivisions + 1 points, capped at the slot count, so
+        // the smoothed trail always spans the whole raw trail. (Laying the
+        // subdivisions down segment by segment from the head and cutting the
+        // surplus, as before, showed only the first 1/subdivisions of it.)
         const segmentCount = count - 1;
-        finalCount = segmentCount * subdivisions + 1;
+        finalCount = Math.min(segmentCount * subdivisions + 1, trailLength);
         const neededSize = finalCount * 3;
 
         // Resize global scratch buffer if needed
@@ -3932,53 +3975,38 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
         }
         finalPts = _smoothedPoints;
 
-        for (let seg = 0; seg < segmentCount; seg++) {
-          // Control points: p0, p1, p2, p3
+        const last = finalCount - 1;
+        for (let k = 0; k < last; k++) {
+          // Where along the raw chain this output point falls.
+          const u = (k / last) * segmentCount;
+          const seg = Math.min(Math.floor(u), segmentCount - 1);
+          const t = u - seg;
           const i0 = Math.max(0, seg - 1);
           const i1 = seg;
           const i2 = Math.min(count - 1, seg + 1);
           const i3 = Math.min(count - 1, seg + 2);
-
-          const p0x = rawPts[i0 * 3],
-            p0y = rawPts[i0 * 3 + 1],
-            p0z = rawPts[i0 * 3 + 2];
-          const p1x = rawPts[i1 * 3],
-            p1y = rawPts[i1 * 3 + 1],
-            p1z = rawPts[i1 * 3 + 2];
-          const p2x = rawPts[i2 * 3],
-            p2y = rawPts[i2 * 3 + 1],
-            p2z = rawPts[i2 * 3 + 2];
-          const p3x = rawPts[i3 * 3],
-            p3y = rawPts[i3 * 3 + 1],
-            p3z = rawPts[i3 * 3 + 2];
-
-          for (let sub = 0; sub < subdivisions; sub++) {
-            const t = sub / subdivisions;
-            const outIdx = (seg * subdivisions + sub) * 3;
-            catmullRom(
-              finalPts,
-              outIdx,
-              p0x,
-              p0y,
-              p0z,
-              p1x,
-              p1y,
-              p1z,
-              p2x,
-              p2y,
-              p2z,
-              p3x,
-              p3y,
-              p3z,
-              t
-            );
-          }
+          catmullRom(
+            finalPts,
+            k * 3,
+            rawPts[i0 * 3],
+            rawPts[i0 * 3 + 1],
+            rawPts[i0 * 3 + 2],
+            rawPts[i1 * 3],
+            rawPts[i1 * 3 + 1],
+            rawPts[i1 * 3 + 2],
+            rawPts[i2 * 3],
+            rawPts[i2 * 3 + 1],
+            rawPts[i2 * 3 + 2],
+            rawPts[i3 * 3],
+            rawPts[i3 * 3 + 1],
+            rawPts[i3 * 3 + 2],
+            t
+          );
         }
         // Last point = last raw point
-        const lastOutIdx = (finalCount - 1) * 3;
-        finalPts[lastOutIdx] = rawPts[(count - 1) * 3];
-        finalPts[lastOutIdx + 1] = rawPts[(count - 1) * 3 + 1];
-        finalPts[lastOutIdx + 2] = rawPts[(count - 1) * 3 + 2];
+        finalPts[last * 3] = rawPts[(count - 1) * 3];
+        finalPts[last * 3 + 1] = rawPts[(count - 1) * 3 + 1];
+        finalPts[last * 3 + 2] = rawPts[(count - 1) * 3 + 2];
       } else {
         finalPts = rawPts;
         finalCount = count;
@@ -4247,6 +4275,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
     ) {
       // Particle just became inactive — collapse ribbon and clear history once
       hasUpdates = true;
+      highestTouched = index;
       historyCount[index] = 0;
       historyIndex[index] = 0;
       const clearSlots = prevFilled ? prevFilled[index] : trailLength;
@@ -4279,6 +4308,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
   if (useRibbon && _ribbonCount >= 2 && _ribbonIndices) {
     hasUpdates = true;
     const leader = _ribbonIndices[0];
+    if (leader > highestTouched) highestTouched = leader;
     const leaderVertBase = leader * verticesPerParticle;
 
     // The ribbon uses each particle's current position as a control point,
@@ -4582,12 +4612,18 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
   }
 
   if (hasUpdates) {
-    trailPositionAttr.needsUpdate = true;
-    trailAlphaAttr.needsUpdate = true;
-    trailColorAttr.needsUpdate = true;
-    trailNextAttrCached.needsUpdate = true;
-    trailHalfWidthAttrCached.needsUpdate = true;
-    trailUVAttrCached.needsUpdate = true;
+    const vertexCount = (highestTouched + 1) * verticesPerParticle;
+    const uploadUpTo = (attr: THREE.BufferAttribute) => {
+      attr.clearUpdateRanges();
+      attr.addUpdateRange(0, vertexCount * attr.itemSize);
+      attr.needsUpdate = true;
+    };
+    uploadUpTo(trailPositionAttr);
+    uploadUpTo(trailAlphaAttr);
+    uploadUpTo(trailColorAttr);
+    uploadUpTo(trailNextAttrCached);
+    uploadUpTo(trailHalfWidthAttrCached);
+    uploadUpTo(trailUVAttrCached);
   }
 };
 
