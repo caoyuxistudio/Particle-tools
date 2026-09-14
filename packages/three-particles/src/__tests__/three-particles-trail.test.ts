@@ -73,6 +73,80 @@ const countActiveParticles = (ps: ParticleSystem): number => {
 };
 
 describe('Trail / Ribbon Renderer (RendererType.TRAIL)', () => {
+  describe('the slot that closes a ribbon', () => {
+    /**
+     * The index buffer draws a segment from the last live sample to the next
+     * slot no matter what that slot holds, so a ribbon is closed by the slot
+     * right after its last sample sitting on the head. Left holding whatever
+     * it was last cleared to — the origin, on a fresh buffer or after a death —
+     * every newborn drew a sliver from itself to the emitter's centre until
+     * its second sample landed.
+     */
+    const closingSlotsOffTheirHeads = (ps: ParticleSystem, length: number) => {
+      const mesh = getTrailMesh(ps)!;
+      const pos = mesh.geometry.getAttribute('position').array as Float32Array;
+      const hw = mesh.geometry.getAttribute('trailHalfWidth').array as Float32Array;
+      const uv = mesh.geometry.getAttribute('trailUV').array as Float32Array;
+      const isActive = getSimulationObject(ps).geometry.attributes.isActive;
+      // A cleared slot has no width and no position along the trail; a live
+      // tail may also have no width (the width curve ends at 0) but sits at
+      // t = 1, which tells the two apart.
+      const cleared = (v: number) => Math.abs(hw[v]) < 1e-6 && uv[v * 2 + 1] === 0;
+      let violations = 0;
+      let singleSample = 0;
+      for (let p = 0; p < isActive.count; p++) {
+        if (!isActive.getX(p)) continue;
+        const v0 = p * length * 2;
+        if (Math.abs(hw[v0]) < 1e-6) continue;
+        let s = 1;
+        while (s < length && !cleared(v0 + s * 2)) s++;
+        if (s === 1) singleSample++;
+        if (s === length) continue;
+        const v = v0 + s * 2;
+        const d = Math.hypot(
+          pos[v * 3] - pos[v0 * 3],
+          pos[v * 3 + 1] - pos[v0 * 3 + 1],
+          pos[v * 3 + 2] - pos[v0 * 3 + 2]
+        );
+        if (d > 1e-6) violations++;
+      }
+      return { violations, singleSample };
+    };
+
+    it('sits on the head on the frame a particle is born', () => {
+      const { ps, step } = createTrailSystem({
+        maxParticles: 10,
+        emission: { rateOverTime: 400 },
+        startLifetime: 0.5,
+      });
+      step(16);
+      const first = closingSlotsOffTheirHeads(ps, 8);
+      expect(first.singleSample).toBeGreaterThan(0);
+      expect(first.violations).toBe(0);
+      ps.dispose();
+    });
+
+    it('sits on the head again when a slot is reborn after a death', () => {
+      const { ps, step } = createTrailSystem({
+        maxParticles: 10,
+        emission: { rateOverTime: 400 },
+        startLifetime: 0.5,
+      });
+      let t = 0;
+      // Fill, let the first generation die, and catch the next one being born.
+      for (; t <= 900; t += 16) step(t);
+      let sawNewborn = false;
+      for (; t <= 1200; t += 16) {
+        step(t);
+        const { violations, singleSample } = closingSlotsOffTheirHeads(ps, 8);
+        expect(violations).toBe(0);
+        if (singleSample > 0) sawNewborn = true;
+      }
+      expect(sawNewborn).toBe(true);
+      ps.dispose();
+    });
+  });
+
   describe('creation', () => {
     it('should create a THREE.Points object for simulation', () => {
       const { ps } = createTrailSystem();

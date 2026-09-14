@@ -3976,8 +3976,15 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
         const uvIdxBase = (vertBase + s * 2) * 2;
 
         if (s >= finalCount) {
-          // Slots at or beyond the previous fill count are already cleared.
-          if (s >= prevFilledSlots) break;
+          // The slot right after the last live sample closes the ribbon: the
+          // index buffer always draws a segment from the last sample to it,
+          // so it has to sit on the head, every frame. Left alone it holds
+          // whatever it was last cleared to — the origin, after a death or on
+          // a fresh buffer — and every newborn draws a sliver from itself to
+          // the centre of the emitter until its second sample lands.
+          // Slots beyond that one are only ever drawn against each other and
+          // can stay as they are once cleared.
+          if (s > finalCount && s >= prevFilledSlots) break;
           clearTrailVertex(
             vIdx,
             cIdx,
