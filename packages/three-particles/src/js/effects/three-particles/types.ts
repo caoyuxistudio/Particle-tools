@@ -2105,6 +2105,8 @@ export type ParticleSystemInstance = {
     twistPrevention: boolean;
     ribbonId?: number;
   };
+  /** GPU-built ribbon: the clock uniform its age fade reads, set each frame in seconds. */
+  trailGpuNow?: { value: number };
   /** GPU compute pipeline for WebGPU simulation. Opaque type to avoid pulling TSL types into DTS. */
   computePipeline?: {
     computeNode: unknown;

@@ -1687,7 +1687,74 @@
     return [`stretch: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
   };
 
+
+  /**
+   * The trail on the GPU: with WebGPU compute available, a TRAIL piece runs
+   * the GPU simulation and its ribbon is built in the vertex stage from the
+   * history ring the kernel records — no CPU-built ribbon mesh at all.
+   * Checked by structure, by an off-screen readback (needs frames), by a
+   * config round trip, and by the absence of shader errors.
+   */
+  const trailReport = async () => {
+    const lines = [];
+    const check = (label, ok, detail = '') =>
+      lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+    const w = window.__world;
+    const T = w.THREE;
+    const r = w.renderer;
+    const scene = w.scene;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const errBefore = errs.length;
+
+    const cfg = await fixture();
+    cfg.maxParticles = 20000;
+    cfg.renderer.rendererType = 'TRAIL';
+    cfg.renderer.trail = {
+      length: 24, width: 0.04, minVertexDistance: 0, maxTime: 0, smoothing: true, smoothingSubdivisions: 3, twistPrevention: false,
+      widthOverTrail: { type: 'BEZIER', scale: 1, bezierPoints: [{ x: 0, y: 1, percentage: 0 }, { x: 1, y: 0, percentage: 1 }] },
+      opacityOverTrail: { type: 'BEZIER', scale: 1, bezierPoints: [{ x: 0, y: 1, percentage: 0 }, { x: 1, y: 0, percentage: 1 }] },
+    };
+    window.editor.load(cfg);
+    await wait(3000);
+
+    let particles = null;
+    scene.traverse((o) => { if (o.geometry?.isInstancedBufferGeometry) particles = o; });
+    let cpuRibbon = null;
+    scene.traverse((o) => { if (o.geometry?.attributes?.trailNext) cpuRibbon = o; });
+    check('a trail runs on the GPU path', !!particles?.geometry.attributes.instanceParticleState, particles ? Object.keys(particles.geometry.attributes).join(',') : 'no instanced mesh');
+    check('its ribbon is the GPU-built one', particles?.material.userData.gpuTrail === true, particles?.material.type);
+    check('no CPU-built ribbon mesh in the scene', !cpuRibbon);
+    check('the ring is bound (sample count rides in instanceVelocity)', !!particles?.geometry.attributes.instanceVelocity);
+    check('the strip has two vertices per sample', particles?.geometry.attributes.position.count === 24 * 2, `${particles?.geometry.attributes.position.count}`);
+
+    // The picture: something is drawn where the particles are (needs frames).
+    const outCam = scene.children.find((o) => o.isPerspectiveCamera);
+    const S = 512;
+    const rt = new T.RenderTarget(S, S, { depthBuffer: true });
+    const cam = outCam.clone();
+    cam.aspect = 1;
+    cam.updateProjectionMatrix();
+    const prev = r.getRenderTarget();
+    r.setRenderTarget(rt);
+    r.render(scene, cam);
+    r.setRenderTarget(prev);
+    const buf = await r.readRenderTargetPixelsAsync(rt, 0, 0, S, S);
+    rt.dispose();
+    let lit = 0;
+    for (let i = 0; i < buf.length; i += 4) if (buf[i] + buf[i + 1] + buf[i + 2] > 30) lit++;
+    check('the ribbons draw (needs frames)', lit / (buf.length / 4) > 0.02, `${((lit / (buf.length / 4)) * 100).toFixed(1)}% lit`);
+
+    // The trail's settings are part of the piece and come back the same.
+    const json = JSON.parse(window.editor.serialize());
+    check('the trail settings travel in the config', json.renderer?.rendererType === 'TRAIL' && json.renderer?.trail?.length === 24 && json.renderer?.trail?.smoothing === true);
+    check('no runtime errors', errs.length === errBefore, errs.slice(errBefore, errBefore + 3).join(' | '));
+
+    const failed = lines.filter((l) => l.startsWith('FAIL')).length;
+    return [`trail: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
+  };
+
   window.__t = {
+    trailReport,
     stretchReport,
     aoReport,
     shadowReport,

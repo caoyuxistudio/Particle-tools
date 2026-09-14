@@ -170,6 +170,8 @@ type TSLMaterialFactory = {
       depthWrite: boolean;
     }
   ) => THREE.Material;
+  /** The trail ribbon built on the GPU from the compute pipeline's history ring. */
+  createTSLGpuTrailMaterial?: (...args: any[]) => any;
   // GPU compute functions — use opaque types to avoid pulling WebGPU/TSL
   // types into the DTS output.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1127,7 +1129,26 @@ export const createParticleSystem = (
   const useMesh = renderer.rendererType === RendererType.MESH;
   const useInstancing =
     !useTrail && !useMesh && renderer.rendererType === RendererType.INSTANCED;
-  const useInstancedAttributes = useInstancing || useMesh;
+  // TSL materials whenever the factory is registered (a WebGPURenderer wants
+  // NodeMaterials even for the CPU simulation); GPU compute when the factory
+  // can also drive it and the config does not ask for the CPU.
+  const useTSL = _tslMaterialFactory !== null;
+  const gpuComputeAvailable =
+    useTSL &&
+    normalizedConfig.simulationBackend !== SimulationBackend.CPU &&
+    !!_tslMaterialFactory?.createComputePipeline &&
+    !!_tslMaterialFactory.writeParticleToModifierBuffers &&
+    !!_tslMaterialFactory.deactivateParticleInModifierBuffers &&
+    !!_tslMaterialFactory.flushEmitQueue;
+  // A trail rides the GPU only when the factory can build its ribbon there:
+  // the kernel records the history ring and the ribbon's vertex stage reads
+  // it. Otherwise the trail keeps the CPU simulation and the CPU-built ribbon.
+  const useGPUTrail =
+    useTrail &&
+    gpuComputeAvailable &&
+    !!_tslMaterialFactory?.createTSLGpuTrailMaterial;
+  const useGPUCompute = gpuComputeAvailable && (!useTrail || useGPUTrail);
+  const useInstancedAttributes = useInstancing || useMesh || useGPUTrail;
 
   // Trail config defaults
   const defaultTrailCurve: LifetimeCurve = {
@@ -1161,7 +1182,7 @@ export const createParticleSystem = (
     : undefined;
 
   // Initialize trail position history buffers
-  if (useTrail && trailConfig) {
+  if (useTrail && trailConfig && !useGPUTrail) {
     const trailLength = trailConfig.length;
     generalData.trailLength = trailLength;
     generalData.positionHistory = new Float32Array(
@@ -1254,22 +1275,6 @@ export const createParticleSystem = (
     return ParticleSystemFragmentShader;
   };
 
-  // Determine whether to use TSL materials (WebGPU path).
-  // TSL is used whenever the factory is registered — regardless of simulationBackend.
-  // This ensures WebGPURenderer always gets NodeMaterial (not GLSL ShaderMaterial).
-  const useTSL = _tslMaterialFactory !== null;
-
-  // Determine whether to use GPU compute for simulation.
-  // GPU compute requires: TSL active + not trail + backend != CPU + compute factory registered.
-  const useGPUCompute =
-    useTSL &&
-    !useTrail &&
-    normalizedConfig.simulationBackend !== SimulationBackend.CPU &&
-    !!_tslMaterialFactory?.createComputePipeline &&
-    !!_tslMaterialFactory.writeParticleToModifierBuffers &&
-    !!_tslMaterialFactory.deactivateParticleInModifierBuffers &&
-    !!_tslMaterialFactory.flushEmitQueue;
-
   // Create GPU compute pipeline when active
   type GPUComputePipeline =
     import('./webgpu/compute-modifiers.js').ModifierComputePipeline;
@@ -1281,15 +1286,26 @@ export const createParticleSystem = (
     : null;
 
   if (useGPUCompute) {
-    gpuPipeline = _tslMaterialFactory!.createComputePipeline!(
+    const pipelineArgs = [
       maxParticles,
       useInstancedAttributes,
       normalizedConfig,
       generalData.particleSystemId,
       normalizedForceFields.length,
       normalizedCollisionPlanes.length,
-      !!touchWake
-    );
+      !!touchWake,
+    ] as const;
+    gpuPipeline =
+      useGPUTrail && trailConfig
+        ? _tslMaterialFactory!.createComputePipeline!(...pipelineArgs, {
+            length: trailConfig.length,
+            minVertexDistance: trailConfig.minVertexDistance,
+          })
+        : _tslMaterialFactory!.createComputePipeline!(...pipelineArgs);
+    // The ring may have been shortened to fit the storage binding limit.
+    if (useGPUTrail && trailConfig && gpuPipeline?.trailHistoryInfo) {
+      trailConfig.length = gpuPipeline.trailHistoryInfo.length;
+    }
     // Register the curveDataLength so the init data helpers know the offset.
     if (gpuPipeline && _tslMaterialFactory!.registerCurveDataLength) {
       _tslMaterialFactory!.registerCurveDataLength(
@@ -1321,26 +1337,64 @@ export const createParticleSystem = (
     }
   }
 
-  const material: THREE.Material = useTSL
-    ? _tslMaterialFactory!.createTSLParticleMaterial(
-        renderer.rendererType ?? RendererType.POINTS,
-        sharedUniforms,
-        rendererConfig,
-        useGPUCompute,
-        !!renderer.mesh?.alignToVelocity,
-        !!renderer.mesh?.lit,
-        renderer.mesh?.emissive ?? 0,
-        renderer.mesh?.roughness,
-        renderer.mesh?.metalness,
-        renderer.mesh?.velocityStretch ?? 0,
-        meshExtentZ
-      )
-    : new THREE.ShaderMaterial({
-        uniforms: sharedUniforms,
-        vertexShader: getVertexShader(),
-        fragmentShader: getFragmentShader(),
-        ...rendererConfig,
-      });
+  // The GPU-built ribbon's uniforms (the CPU-built one makes its own below).
+  const gpuTrailUniformValues = useGPUTrail
+    ? {
+        map: { value: particleMap },
+        useMap: { value: !!particleMap },
+        discardBackgroundColor: { value: renderer.discardBackgroundColor },
+        backgroundColor: { value: rgbSRGBToLinear(renderer.backgroundColor) },
+        backgroundColorTolerance: { value: renderer.backgroundColorTolerance },
+        softParticlesEnabled: { value: softParticlesEnabled },
+        softParticlesIntensity: {
+          value: Math.max(renderer.softParticles?.intensity ?? 1.0, 0.001),
+        },
+        sceneDepthTexture: {
+          value: renderer.softParticles?.depthTexture ?? null,
+        },
+        cameraNearFar: { value: new THREE.Vector2(0.1, 1000.0) },
+      }
+    : null;
+
+  const material: THREE.Material =
+    useGPUTrail &&
+    gpuTrailUniformValues &&
+    trailConfig &&
+    gpuPipeline?.trailHistoryInfo
+      ? _tslMaterialFactory!.createTSLGpuTrailMaterial!(
+          gpuTrailUniformValues,
+          rendererConfig,
+          {
+            curveData: gpuPipeline.buffers.curveData,
+            historyOffset: gpuPipeline.trailHistoryInfo.offset,
+            length: gpuPipeline.trailHistoryInfo.length,
+            curveMap: gpuPipeline.curveMap,
+            width: trailConfig.width,
+            maxTime: trailConfig.maxTime,
+            smoothing: trailConfig.smoothing,
+            smoothingSubdivisions: trailConfig.smoothingSubdivisions,
+          }
+        )
+      : useTSL
+        ? _tslMaterialFactory!.createTSLParticleMaterial(
+            renderer.rendererType ?? RendererType.POINTS,
+            sharedUniforms,
+            rendererConfig,
+            useGPUCompute,
+            !!renderer.mesh?.alignToVelocity,
+            !!renderer.mesh?.lit,
+            renderer.mesh?.emissive ?? 0,
+            renderer.mesh?.roughness,
+            renderer.mesh?.metalness,
+            renderer.mesh?.velocityStretch ?? 0,
+            meshExtentZ
+          )
+        : new THREE.ShaderMaterial({
+            uniforms: sharedUniforms,
+            vertexShader: getVertexShader(),
+            fragmentShader: getFragmentShader(),
+            ...rendererConfig,
+          });
 
   let geometry: THREE.BufferGeometry | THREE.InstancedBufferGeometry;
 
@@ -1363,6 +1417,37 @@ export const createParticleSystem = (
     if (srcUv) instancedGeometry.setAttribute('uv', srcUv);
     const srcIndex = sourceGeom.getIndex();
     if (srcIndex) instancedGeometry.setIndex(srcIndex);
+    instancedGeometry.instanceCount = maxParticles;
+    geometry = instancedGeometry;
+  } else if (useGPUTrail && trailConfig) {
+    // The strip the GPU expands into a ribbon: `length` slots × two sides,
+    // position = (slot, side, 0). Everything else the vertex stage reads from
+    // the particle's history ring in the compute pipeline's storage buffer.
+    const instancedGeometry = new THREE.InstancedBufferGeometry();
+    const slots = trailConfig.length;
+    const stripPositions = new Float32Array(slots * 2 * 3);
+    for (let sIdx = 0; sIdx < slots; sIdx++) {
+      stripPositions[sIdx * 6] = sIdx;
+      stripPositions[sIdx * 6 + 1] = -1;
+      stripPositions[sIdx * 6 + 3] = sIdx;
+      stripPositions[sIdx * 6 + 4] = 1;
+    }
+    const stripIndices = new Uint32Array((slots - 1) * 6);
+    for (let sIdx = 0; sIdx < slots - 1; sIdx++) {
+      const i = sIdx * 6;
+      const v = sIdx * 2;
+      stripIndices[i] = v;
+      stripIndices[i + 1] = v + 1;
+      stripIndices[i + 2] = v + 2;
+      stripIndices[i + 3] = v + 1;
+      stripIndices[i + 4] = v + 3;
+      stripIndices[i + 5] = v + 2;
+    }
+    instancedGeometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(stripPositions, 3)
+    );
+    instancedGeometry.setIndex(new THREE.BufferAttribute(stripIndices, 1));
     instancedGeometry.instanceCount = maxParticles;
     geometry = instancedGeometry;
   } else if (useInstancing) {
@@ -1459,9 +1544,10 @@ export const createParticleSystem = (
     // Velocity is only needed by the vertex stage for velocity-aligned meshes;
     // binding it unconditionally would spend a vertex buffer slot for nothing.
     if (
-      useMesh &&
-      (renderer.mesh?.alignToVelocity ||
-        (renderer.mesh?.velocityStretch ?? 0) > 0)
+      useGPUTrail ||
+      (useMesh &&
+        (renderer.mesh?.alignToVelocity ||
+          (renderer.mesh?.velocityStretch ?? 0) > 0))
     ) {
       geometry.setAttribute(attr('velocity'), gpuBuf.velocity);
     }
@@ -2121,7 +2207,7 @@ export const createParticleSystem = (
     | { r: CurveFunction; g: CurveFunction; b: CurveFunction }
     | undefined;
 
-  if (useTrail && trailConfig) {
+  if (useTrail && trailConfig && !useGPUTrail) {
     const trailLength = trailConfig.length;
     // Each particle contributes (trailLength) vertices (2 per segment joint: left+right)
     // Segments = trailLength - 1, so 2 * trailLength vertices per particle
@@ -2283,7 +2369,7 @@ export const createParticleSystem = (
   }
 
   let particleSystem: THREE.Points | THREE.Mesh =
-    useInstancing || useMesh
+    useInstancing || useMesh || useGPUTrail
       ? new THREE.Mesh(geometry, material)
       : new THREE.Points(geometry, material);
 
@@ -2323,6 +2409,26 @@ export const createParticleSystem = (
   if (useTrail && trailMesh) {
     material.visible = false;
     particleSystem.add(trailMesh);
+  }
+
+  if (useGPUTrail && gpuTrailUniformValues) {
+    // The ribbons are wherever the history ring says; the strip's own bounds
+    // say nothing about that.
+    particleSystem.frustumCulled = false;
+    const innerHook = particleSystem.onBeforeRender;
+    particleSystem.onBeforeRender = function (
+      this: THREE.Object3D,
+      ...args: Parameters<THREE.Object3D['onBeforeRender']>
+    ) {
+      innerHook.apply(this, args);
+      const camera = args[2] as THREE.PerspectiveCamera;
+      if (softParticlesEnabled && camera.isPerspectiveCamera) {
+        (gpuTrailUniformValues.cameraNearFar.value as THREE.Vector2).set(
+          camera.near,
+          camera.far
+        );
+      }
+    };
   }
 
   particleSystem.position.copy(transform!.position!);
@@ -2467,6 +2573,11 @@ export const createParticleSystem = (
     onParticleBirth,
     useGPUCompute: useGPUCompute && gpuPipeline !== null,
     computePipeline: gpuPipeline ?? undefined,
+    trailGpuNow: useGPUTrail
+      ? ((material as THREE.Material).userData?.trailNow as
+          | { value: number }
+          | undefined)
+      : undefined,
     touchWake,
     computeDispatchReady: false,
     ...(useTrail
@@ -3042,6 +3153,11 @@ const updateParticleSystemInstance = (
     setUniformFloat(cp.uniforms.noiseRotationAmount, noiseData.rotationAmount);
     setUniformFloat(cp.uniforms.noiseSizeAmount, noiseData.sizeAmount);
     setUniformFloat(cp.uniforms.noiseTime, elapsed);
+    if (cp.trailHistoryInfo) {
+      // The kernel stamps this on every sample; the ribbon fades by it.
+      setUniformFloat(cp.trailHistoryInfo.nowUniform, elapsed);
+      if (props.trailGpuNow) props.trailGpuNow.value = elapsed;
+    }
     setUniformVec3(
       cp.uniforms.noiseInfluence,
       noiseData.influence.x,

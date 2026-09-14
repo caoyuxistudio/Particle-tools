@@ -10,6 +10,7 @@ import {
 import {
   createTSLParticleMaterial,
   createTSLTrailMaterial,
+  createTSLGpuTrailMaterial,
   createComputePipeline,
 } from './js/effects/three-particles/webgpu/tsl-materials.js';
 
@@ -17,6 +18,7 @@ import {
 export {
   createTSLParticleMaterial,
   createTSLTrailMaterial,
+  createTSLGpuTrailMaterial,
   createComputePipeline,
   writeParticleToModifierBuffers,
   deactivateParticleInModifierBuffers,
@@ -59,6 +61,7 @@ export function enableWebGPU(renderer?: unknown): boolean {
   const factory: Parameters<typeof registerTSLMaterialFactory>[0] = {
     createTSLParticleMaterial: createTSLParticleMaterial as any,
     createTSLTrailMaterial: createTSLTrailMaterial as any,
+    createTSLGpuTrailMaterial: createTSLGpuTrailMaterial as any,
     createComputePipeline,
     writeParticleToModifierBuffers,
     deactivateParticleInModifierBuffers,

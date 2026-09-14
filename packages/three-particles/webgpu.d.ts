@@ -29,6 +29,28 @@ export declare function createTSLTrailMaterial(
   rendererConfig: RendererConfig
 ): Material;
 
+/** The trail ribbon built on the GPU from the compute pipeline's history ring. */
+export declare function createTSLGpuTrailMaterial(
+  trailUniforms: Record<string, { value: unknown }>,
+  rendererConfig: RendererConfig,
+  gpu: {
+    curveData: unknown;
+    historyOffset: number;
+    length: number;
+    curveMap: {
+      trailWidth: number;
+      trailOpacity: number;
+      trailColorR: number;
+      trailColorG: number;
+      trailColorB: number;
+    };
+    width: number;
+    maxTime: number;
+    smoothing: boolean;
+    smoothingSubdivisions: number;
+  }
+): Material;
+
 /** Creates the GPU compute pipeline for particle simulation. */
 export declare function createComputePipeline(
   maxParticles: number,

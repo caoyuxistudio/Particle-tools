@@ -8,11 +8,15 @@
  */
 import { RendererType } from '../three-particles-enums.js';
 import { isLifeTimeCurve } from '../three-particles-utils.js';
+import { TOUCH_WAKE_DATA_SIZE } from '../touch-wake.js';
+import { COLLISION_PLANE_DATA_SIZE } from './compute-collision-planes.js';
+import { FORCE_FIELD_DATA_SIZE } from './compute-force-fields.js';
 import {
   createModifierStorageBuffers,
   createModifierComputeUpdate,
   type ModifierComputePipeline,
   type ModifierFlags,
+  INIT_STRIDE,
 } from './compute-modifiers.js';
 
 // Re-export emit queue helpers so callers can register them via the factory.
@@ -26,6 +30,10 @@ import { bakeParticleSystemCurves } from './curve-bake.js';
 import { createInstancedBillboardTSLMaterial } from './tsl-instanced-billboard-material.js';
 import { createMeshParticleTSLMaterial } from './tsl-mesh-particle-material.js';
 import { createPointSpriteTSLMaterial } from './tsl-point-sprite-material.js';
+import {
+  createGpuTrailRibbonTSLMaterial,
+  type GpuTrailParams,
+} from './tsl-trail-ribbon-material.js';
 import {
   createTrailRibbonTSLMaterial,
   type TrailUniforms,
@@ -123,6 +131,20 @@ export function createTSLTrailMaterial(
  * @param forceFieldCount - Number of active force fields.
  * @returns The complete modifier compute pipeline.
  */
+/**
+ * The trail ribbon built on the GPU — see `createGpuTrailRibbonTSLMaterial`.
+ */
+export function createTSLGpuTrailMaterial(
+  trailUniforms: TrailUniforms,
+  rendererConfig: RendererConfig,
+  gpu: GpuTrailParams
+): THREE.Material {
+  return createGpuTrailRibbonTSLMaterial(trailUniforms, rendererConfig, gpu);
+}
+
+/** WebGPU's default maxStorageBufferBindingSize, in floats (128 MiB). */
+const STORAGE_BINDING_FLOATS = (128 * 1024 * 1024) / 4;
+
 export function createComputePipeline(
   maxParticles: number,
   instanced: boolean,
@@ -130,7 +152,8 @@ export function createComputePipeline(
   particleSystemId: number,
   forceFieldCount: number,
   collisionPlaneCount = 0,
-  touchWake = false
+  touchWake = false,
+  trail?: { length: number; minVertexDistance: number }
 ): ModifierComputePipeline {
   const bakedCurves = bakeParticleSystemCurves(
     normalizedConfig,
@@ -177,7 +200,29 @@ export function createComputePipeline(
     forceFields: forceFieldCount > 0,
     collisionPlanes: collisionPlaneCount > 0,
     touchWake,
+    trailHistory: !!trail && trail.length >= 2,
   };
+
+  // The history rings live in curveData, one storage binding; keep the whole
+  // buffer under the default binding limit by shortening the trail if needed.
+  let trailLength = flags.trailHistory ? Math.floor(trail!.length) : 0;
+  if (trailLength > 0) {
+    const fixed =
+      Math.max(bakedCurves.data.length, 1) +
+      maxParticles * INIT_STRIDE +
+      (flags.forceFields ? FORCE_FIELD_DATA_SIZE : 0) +
+      (flags.collisionPlanes ? COLLISION_PLANE_DATA_SIZE : 0) +
+      (flags.touchWake ? TOUCH_WAKE_DATA_SIZE : 0);
+    const maxLength = Math.floor(
+      (STORAGE_BINDING_FLOATS - fixed) / (maxParticles * 4)
+    );
+    if (trailLength > maxLength) {
+      console.warn(
+        `[three-particles] trail length ${trailLength} × ${maxParticles} particles exceeds the storage binding limit; clamped to ${maxLength}.`
+      );
+      trailLength = Math.max(2, maxLength);
+    }
+  }
 
   const buffers = createModifierStorageBuffers(
     maxParticles,
@@ -185,15 +230,25 @@ export function createComputePipeline(
     bakedCurves.data,
     flags.forceFields,
     flags.collisionPlanes,
-    flags.touchWake
+    flags.touchWake,
+    trailLength
   );
 
-  return createModifierComputeUpdate(
+  const pipeline = createModifierComputeUpdate(
     buffers,
     maxParticles,
     bakedCurves,
     flags,
     forceFieldCount,
-    collisionPlaneCount
+    collisionPlaneCount,
+    trailLength
   );
+  if (pipeline.trailHistoryInfo && trail) {
+    (
+      pipeline.trailHistoryInfo.minVertexDistanceUniform as unknown as {
+        value: number;
+      }
+    ).value = Math.max(0, trail.minVertexDistance);
+  }
+  return pipeline;
 }

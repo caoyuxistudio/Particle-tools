@@ -12,6 +12,7 @@
  * @module
  */
 
+import { LifeTimeCurve, RendererType } from '../three-particles-enums.js';
 import {
   calculateValue,
   getCurveFunctionFromConfig,
@@ -76,6 +77,34 @@ export type BakedCurveMap = {
   orbitalVelY: number;
   /** Curve index for `velocityOverLifetime.orbital.z` (-1 if not a curve). */
   orbitalVelZ: number;
+  /** TRAIL on the GPU: `trail.widthOverTrail` along the ribbon (-1 unless a trail). */
+  trailWidth: number;
+  /** TRAIL on the GPU: `trail.opacityOverTrail` (-1 unless a trail). */
+  trailOpacity: number;
+  /** TRAIL on the GPU: `trail.colorOverTrail.r` (-1 unless active). */
+  trailColorR: number;
+  trailColorG: number;
+  trailColorB: number;
+};
+
+/** The trail's default along-ribbon curve: full at the head, nothing at the tail. */
+const DEFAULT_TRAIL_CURVE: LifetimeCurve = {
+  type: LifeTimeCurve.BEZIER,
+  scale: 1,
+  bezierPoints: [
+    { x: 0, y: 1, percentage: 0 },
+    { x: 1, y: 0, percentage: 1 },
+  ],
+};
+
+/** A trail curve as saved may lack its `type`; the editor writes bezier points only. */
+const trailCurve = (curve: LifetimeCurve | undefined): LifetimeCurve => {
+  if (!curve) return DEFAULT_TRAIL_CURVE;
+  const raw = curve as unknown as Record<string, unknown>;
+  if (!raw.type && Array.isArray(raw.bezierPoints)) {
+    return { type: LifeTimeCurve.BEZIER, ...raw } as unknown as LifetimeCurve;
+  }
+  return curve;
 };
 
 // ─── Core Sampling ────────────────────────────────────────────────────────────
@@ -246,9 +275,19 @@ export function bakeParticleSystemCurves(
     velocityOverLifetime.orbital.z !== undefined &&
     velocityOverLifetime.orbital.z !== 0;
 
+  // A trail on the GPU reads its along-ribbon curves from the same buffer.
+  const trail =
+    normalizedConfig.renderer?.rendererType === RendererType.TRAIL
+      ? normalizedConfig.renderer.trail
+      : undefined;
+  const hasTrail = trail !== undefined;
+  const hasTrailColor = hasTrail && !!trail?.colorOverTrail?.isActive;
+
   if (hasSizeOverLifetime) curveCount++;
   if (hasOpacityOverLifetime) curveCount++;
   if (hasColorOverLifetime) curveCount += 3; // r, g, b always together
+  if (hasTrail) curveCount += 2; // width and opacity along the ribbon
+  if (hasTrailColor) curveCount += 3;
   if (hasLinearVelX) curveCount++;
   if (hasLinearVelY) curveCount++;
   if (hasLinearVelZ) curveCount++;
@@ -275,6 +314,11 @@ export function bakeParticleSystemCurves(
   let orbitalVelXIdx = -1;
   let orbitalVelYIdx = -1;
   let orbitalVelZIdx = -1;
+  let trailWidthIdx = -1;
+  let trailOpacityIdx = -1;
+  let trailColorRIdx = -1;
+  let trailColorGIdx = -1;
+  let trailColorBIdx = -1;
 
   if (hasSizeOverLifetime) {
     sizeOverLifetimeIdx = nextIndex++;
@@ -382,6 +426,46 @@ export function bakeParticleSystemCurves(
     );
   }
 
+  if (hasTrail) {
+    trailWidthIdx = nextIndex++;
+    writeOffset = bakeCurveIntoBuffer(
+      data,
+      writeOffset,
+      particleSystemId,
+      trailCurve(trail?.widthOverTrail)
+    );
+    trailOpacityIdx = nextIndex++;
+    writeOffset = bakeCurveIntoBuffer(
+      data,
+      writeOffset,
+      particleSystemId,
+      trailCurve(trail?.opacityOverTrail)
+    );
+  }
+  if (hasTrailColor) {
+    trailColorRIdx = nextIndex++;
+    writeOffset = bakeCurveIntoBuffer(
+      data,
+      writeOffset,
+      particleSystemId,
+      trailCurve(trail?.colorOverTrail?.r)
+    );
+    trailColorGIdx = nextIndex++;
+    writeOffset = bakeCurveIntoBuffer(
+      data,
+      writeOffset,
+      particleSystemId,
+      trailCurve(trail?.colorOverTrail?.g)
+    );
+    trailColorBIdx = nextIndex++;
+    writeOffset = bakeCurveIntoBuffer(
+      data,
+      writeOffset,
+      particleSystemId,
+      trailCurve(trail?.colorOverTrail?.b)
+    );
+  }
+
   return {
     data,
     curveCount,
@@ -396,6 +480,11 @@ export function bakeParticleSystemCurves(
     orbitalVelX: orbitalVelXIdx,
     orbitalVelY: orbitalVelYIdx,
     orbitalVelZ: orbitalVelZIdx,
+    trailWidth: trailWidthIdx,
+    trailOpacity: trailOpacityIdx,
+    trailColorR: trailColorRIdx,
+    trailColorG: trailColorGIdx,
+    trailColorB: trailColorBIdx,
   };
 }
 

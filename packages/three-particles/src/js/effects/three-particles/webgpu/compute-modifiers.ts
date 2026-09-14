@@ -37,6 +37,7 @@ import {
   normalize,
   min as tslMin,
   max as tslMax,
+  uint,
   compute,
   type ShaderNodeObject,
   type Node,
@@ -146,6 +147,15 @@ export type ModifierFlags = {
   collisionPlanes: boolean;
   /** Fingers brushing through the particles (see ../touch-wake.ts). */
   touchWake: boolean;
+  /**
+   * TRAIL on the GPU: record each particle's position into a per-particle
+   * ring at the tail of curveData every frame (or every minVertexDistance),
+   * with the clock in .w. The ring's head and count ride in the w of the
+   * position and velocity buffers, which a trail has no other use for (the
+   * MESH heading lives there otherwise). The ribbon material reads the ring
+   * back in its vertex stage.
+   */
+  trailHistory: boolean;
 };
 
 /** Per-frame modifier uniform values. */
@@ -238,6 +248,19 @@ export type ModifierComputePipeline = {
     swirlUniform: ShaderNodeObject<Node>;
     normalUniform: ShaderNodeObject<Node>;
   } | null;
+  /** The trail's history ring (null unless the renderer is a trail on the GPU). */
+  trailHistoryInfo: {
+    /** Float offset into curveData where particle 0's ring starts; each ring is length × 4 floats. */
+    offset: number;
+    /** Samples per particle, after any clamp to the buffer binding limit. */
+    length: number;
+    /** Distance a particle must travel before a new sample is recorded (0 = every frame). */
+    minVertexDistanceUniform: ShaderNodeObject<Node>;
+    /** The clock written into each sample, seconds. */
+    nowUniform: ShaderNodeObject<Node>;
+  } | null;
+  /** The baked curve indices, for a render stage that reads the same buffer. */
+  curveMap: BakedCurveMap;
 };
 
 // ─── Storage Buffer Creation ─────────────────────────────────────────────────
@@ -257,7 +280,8 @@ export function createModifierStorageBuffers(
   curveData: Float32Array,
   hasForceFields = false,
   hasCollisionPlanes = false,
-  hasTouchWake = false
+  hasTouchWake = false,
+  trailLength = 0
 ): ModifierStorageBuffers {
   const Cls = instanced
     ? StorageInstancedBufferAttribute
@@ -277,8 +301,10 @@ export function createModifierStorageBuffers(
   const cpSize = hasCollisionPlanes ? COLLISION_PLANE_DATA_SIZE : 0;
   // Finger samples ride at the very end, after the collision planes.
   const twSize = hasTouchWake ? TOUCH_WAKE_DATA_SIZE : 0;
+  // A trail's history rings come last: length samples of (x, y, z, time) per particle.
+  const thSize = trailLength > 0 ? maxParticles * trailLength * 4 : 0;
   const totalLen =
-    curveLen + maxParticles * INIT_STRIDE + ffSize + cpSize + twSize;
+    curveLen + maxParticles * INIT_STRIDE + ffSize + cpSize + twSize + thSize;
   const combined = new Float32Array(totalLen);
   combined.set(curveData.length > 0 ? curveData : new Float32Array([0]));
   // All init flags start at 0 (no init needed)
@@ -623,7 +649,8 @@ export function createModifierComputeUpdate(
   curveMap: BakedCurveMap,
   flags: ModifierFlags,
   forceFieldCount = 0,
-  collisionPlaneCount = 0
+  collisionPlaneCount = 0,
+  trailLength = 0
 ): ModifierComputePipeline {
   // ── Per-frame uniforms ──
 
@@ -638,6 +665,9 @@ export function createModifierComputeUpdate(
   const uNoiseSizeAmount = uniform(float(0));
   const uNoiseTime = uniform(float(0));
   const uNoiseInfluence = uniform(new Vector3(1, 1, 1));
+  // Trail history: sampling threshold and the clock stamped on each sample.
+  const uTrailMinDist = uniform(float(0));
+  const uTrailNow = uniform(float(0));
 
   // ── Storage buffer nodes (8 bindings, within WebGPU per-stage limit) ──
 
@@ -691,6 +721,11 @@ export function createModifierComputeUpdate(
   const touchWakeNodes = flags.touchWake
     ? createTouchWakeTSL(sCurveData, touchWakeOffset)
     : null;
+
+  // ── Trail history rings (the tail of curveData, after the finger samples) ──
+  const twSize = flags.touchWake ? TOUCH_WAKE_DATA_SIZE : 0;
+  const trailHistoryOffset = touchWakeOffset + twSize;
+  const useTrailHistory = flags.trailHistory && trailLength >= 2;
 
   // ── Compute kernel ──
   //
@@ -1186,6 +1221,46 @@ export function createModifierComputeUpdate(
 
           sPosition.element(i).assign(vec4(pos, theta));
           sVelocity.element(i).assign(vec4(vel, phi));
+        } else if (useTrailHistory) {
+          // This frame's position goes into the ring at `head`, stamped with
+          // the clock; head and count ride in position.w and velocity.w (both
+          // 0 at birth, from the init block). With a minimum vertex distance
+          // the sample is skipped until the particle has moved that far from
+          // the one before, which makes the trail's length a distance rather
+          // than a frame count.
+          const L = trailLength;
+          const head = sPosition.element(i).w.toVar();
+          const count = sVelocity.element(i).w.toVar();
+          const ringBase = uint(trailHistoryOffset).add(i.mul(uint(L * 4)));
+          const record = float(1).toVar();
+          If(count.greaterThan(0.5).and(uTrailMinDist.greaterThan(0.0)), () => {
+            const lastSlot = head.add(float(L - 1)).toVar();
+            If(lastSlot.greaterThanEqual(float(L)), () => {
+              lastSlot.assign(lastSlot.sub(float(L)));
+            });
+            const lastBase = ringBase.add(uint(lastSlot.add(0.5)).mul(uint(4)));
+            const dx = pos.x.sub(sCurveData.element(lastBase));
+            const dy = pos.y.sub(sCurveData.element(lastBase.add(uint(1))));
+            const dz = pos.z.sub(sCurveData.element(lastBase.add(uint(2))));
+            const dist2 = dx.mul(dx).add(dy.mul(dy)).add(dz.mul(dz));
+            If(dist2.lessThan(uTrailMinDist.mul(uTrailMinDist)), () => {
+              record.assign(0.0);
+            });
+          });
+          If(record.greaterThan(0.5), () => {
+            const slotBase = ringBase.add(uint(head.add(0.5)).mul(uint(4)));
+            sCurveData.element(slotBase).assign(pos.x);
+            sCurveData.element(slotBase.add(uint(1))).assign(pos.y);
+            sCurveData.element(slotBase.add(uint(2))).assign(pos.z);
+            sCurveData.element(slotBase.add(uint(3))).assign(uTrailNow);
+            head.assign(head.add(1.0));
+            If(head.greaterThanEqual(float(L)), () => {
+              head.assign(0.0);
+            });
+            count.assign(tslMin(count.add(1.0), float(L)));
+          });
+          sPosition.element(i).assign(vec4(pos, head));
+          sVelocity.element(i).assign(vec4(vel, count));
         } else {
           sPosition.element(i).assign(vec4(pos, 0));
           sVelocity.element(i).assign(vec4(vel, 0));
@@ -1249,6 +1324,15 @@ export function createModifierComputeUpdate(
           normalUniform: touchWakeNodes.normalUniform,
         }
       : null,
+    trailHistoryInfo: useTrailHistory
+      ? {
+          offset: trailHistoryOffset,
+          length: trailLength,
+          minVertexDistanceUniform: uTrailMinDist,
+          nowUniform: uTrailNow,
+        }
+      : null,
+    curveMap,
   };
 }
 
