@@ -64,6 +64,7 @@ const ensureMeshConfig = (particleSystemConfig: any): void => {
   if (!mesh.geometryType) mesh.geometryType = MeshGeometryType.BOX;
   if (!mesh.scale) mesh.scale = { x: 1, y: 1, z: 1 };
   if (mesh.alignToVelocity === undefined) mesh.alignToVelocity = false;
+  if (mesh.velocityStretch === undefined) mesh.velocityStretch = 0;
   if (mesh.lit === undefined) mesh.lit = false;
   if (mesh.emissive === undefined) mesh.emissive = 0;
   if (mesh.roughness === undefined) mesh.roughness = 0.65;
@@ -131,6 +132,17 @@ export const createMeshEntries = ({
       folder
         .add(mesh, 'alignToVelocity')
         .name('align to velocity (+Z = heading)')
+        .onChange(recreateParticleSystem)
+        .listen()
+    );
+
+    // A motion-blur streak: the mesh is lengthened along its heading by the
+    // distance the particle covers in this many seconds, trailing behind it.
+    // Brings alignment with it.
+    controllers.push(
+      folder
+        .add(mesh, 'velocityStretch', 0, 1, 0.005)
+        .name('velocity stretch (s of travel)')
         .onChange(recreateParticleSystem)
         .listen()
     );

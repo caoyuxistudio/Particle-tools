@@ -243,7 +243,7 @@ export const createEmissionEntries = ({
   folder.close();
 
   const rateOverTimeController = folder
-    .add(particleSystemConfig.emission, 'rateOverTime', 0.0, 500, 1.0)
+    .add(particleSystemConfig.emission, 'rateOverTime', 1000, 100000, 1)
     .onChange(recreateParticleSystem)
     .listen();
 

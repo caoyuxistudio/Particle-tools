@@ -85,6 +85,13 @@
   const report = async () => {
     // Read before the fixture replaces it: what the page booted into.
     const bootLine = (window.__perfHud?.report?.() ?? '').split('\n').find((l) => l.startsWith('boot:')) ?? '';
+    // A new system starts at installation scale — the library's defaults are a
+    // game effect's (100 particles, 10 a second). Read before the fixture load
+    // below replaces it.
+    window.editor.createNew();
+    const fresh = window.editor.getCurrentParticleSystemConfig();
+    const freshMax = fresh.maxParticles;
+    const freshRate = fresh.emission?.rateOverTime;
     const cfg = await load();
     const want = cfg._editorData.sceneObjects;
     const got = storedScene();
@@ -96,6 +103,8 @@
     const check = (label, ok, detail = '') => lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 
     check('boots into WIP-Test-2', bootLine.includes('default WIP-Test-2 loaded'), bootLine.replace(/^boot: /, ''));
+    check('new system starts at 10000 particles', freshMax === 10000, `${freshMax}`);
+    check('new system starts at 1000 a second', freshRate === 1000, `${freshRate}`);
     check('scene object count', got.length === want.length, `${got.length}/${want.length}`);
     check('scene data identical', diff(want, got).length === 0, diff(want, got).slice(0, 4).join(' | '));
     check('live boxes', l.box === want.filter((o) => o.type === 'BOX').length, `${l.box}`);
@@ -138,6 +147,42 @@
       check('gradient toggle drives colour', colorToggled && cfgLive.colorOverLifetime?.isActive === colorBefore);
       check('gradient toggle leaves opacity alone', opacityUntouched);
     }
+
+    // The panel's ranges: gravity ±1, max particles 1000–500000, rate over time
+    // 1000–100000 — and the number inputs clamp typed values the same way, so
+    // neither can be driven under 1000. The slider fill is (value − min) /
+    // (max − min), which pins both ends given the fixture's values.
+    const numberRow = (name) => [...document.querySelectorAll('.lil-gui .controller.number')].find((c) => c.querySelector('.name')?.textContent.trim() === name);
+    const fillOf = (name) => parseFloat(numberRow(name)?.querySelector('.slider .fill')?.style.width ?? 'NaN');
+    const typeInto = (name, text) => {
+      const input = numberRow(name)?.querySelector('input');
+      if (!input) return false;
+      input.value = text;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.blur();
+      return true;
+    };
+    const span = (value, min, max) => ((value - min) / (max - min)) * 100;
+    check('max particles slider spans 1000–500000', Math.abs(fillOf('maxParticles') - span(cfgLive.maxParticles, 1000, 500000)) < 0.05, `${fillOf('maxParticles')}%`);
+    check('rate over time slider spans 1000–100000', Math.abs(fillOf('rateOverTime') - span(cfgLive.emission.rateOverTime, 1000, 100000)) < 0.05, `${fillOf('rateOverTime')}%`);
+    const gravityBefore = cfgLive.gravity ?? 0;
+    typeInto('gravity', '5');
+    const gravityUp = cfgLive.gravity;
+    typeInto('gravity', '-7');
+    const gravityDown = cfgLive.gravity;
+    typeInto('gravity', String(gravityBefore));
+    check('gravity clamps to ±1', gravityUp === 1 && gravityDown === -1 && cfgLive.gravity === gravityBefore, `${gravityUp} / ${gravityDown}`);
+    const rateBefore = cfgLive.emission.rateOverTime;
+    typeInto('rateOverTime', '10');
+    const rateLow = cfgLive.emission.rateOverTime;
+    typeInto('rateOverTime', String(rateBefore));
+    check('rate over time never drops below 1000', rateLow === 1000 && cfgLive.emission.rateOverTime === rateBefore, `${rateLow}`);
+    const maxBefore = cfgLive.maxParticles;
+    typeInto('maxParticles', '50');
+    const maxLow = cfgLive.maxParticles;
+    typeInto('maxParticles', String(maxBefore));
+    check('max particles never drops below 1000', maxLow === 1000 && cfgLive.maxParticles === maxBefore, `${maxLow}`);
     check('no runtime errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 
     const failed = lines.filter((s) => s.startsWith('FAIL')).length;
@@ -1553,7 +1598,97 @@
     return [`ao: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
   };
 
+
+  /**
+   * Velocity stretch: a motion-blur streak on MESH particles, GPU path only.
+   * The compute kernel writes each particle's real speed (from its
+   * displacement, so curl noise counts) into particleState.w and the mesh
+   * material lengthens the shape along its heading by speed × seconds. Checked
+   * by structure, by a config round trip, and by an off-screen readback of the
+   * output camera's view — the readback pair needs frames, so it can fail
+   * falsely while the automation panel is hidden.
+   */
+  const stretchReport = async () => {
+    const lines = [];
+    const check = (label, ok, detail = '') =>
+      lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+    const w = window.__world;
+    const T = w.THREE;
+    const r = w.renderer;
+    const scene = w.scene;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const particles = () => {
+      let p = null;
+      scene.traverse((o) => { if (o.geometry?.isInstancedBufferGeometry) p = o; });
+      return p;
+    };
+
+    const cfg = await fixture();
+    delete cfg.renderer.mesh.velocityStretch;
+    window.editor.load(cfg);
+    await wait(2500);
+    const live = window.editor.getCurrentParticleSystemConfig();
+    check('a config without the key loads as 0', live.renderer.mesh.velocityStretch === 0, `${live.renderer.mesh.velocityStretch}`);
+    check('a plain build records no stretch', particles()?.material.userData.velocityStretch === 0);
+
+    // The output camera's view, square and zoomed in so a particle covers pixels.
+    const outCam = scene.children.find((o) => o.isPerspectiveCamera);
+    const S = 512;
+    const rt = new T.RenderTarget(S, S, { depthBuffer: true });
+    const cam = outCam.clone();
+    cam.aspect = 1;
+    cam.fov = 12;
+    cam.updateProjectionMatrix();
+    const grab = async () => {
+      const prev = r.getRenderTarget();
+      r.setRenderTarget(rt);
+      r.render(scene, cam);
+      r.setRenderTarget(prev);
+      return await r.readRenderTargetPixelsAsync(rt, 0, 0, S, S);
+    };
+    const plain = await grab();
+
+    // Stretch on, with align to velocity off: the streak has to bring the heading with it.
+    live.renderer.mesh.alignToVelocity = false;
+    live.renderer.mesh.velocityStretch = 0.15;
+    window.editor.reset();
+    await wait(2500);
+    const stretched = particles();
+    check('the stretched build records it', stretched?.material.userData.velocityStretch === 0.15);
+    check('stretch binds the heading without align to velocity', !!stretched?.geometry.attributes.instanceVelocity);
+    check('the GPU path stays on', !!stretched?.geometry.attributes.instanceParticleState);
+    const streaked = await grab();
+    // Coverage is not compared: in a dense bed the streaks overlap each other
+    // as much as they add, and the two grabs are different moments anyway.
+    let changed = 0;
+    for (let i = 0; i < plain.length; i += 4) {
+      const a = plain[i] + plain[i + 1] + plain[i + 2];
+      const b = streaked[i] + streaked[i + 1] + streaked[i + 2];
+      if (Math.abs(a - b) > 60) changed++;
+    }
+    const px = plain.length / 4;
+    check('the streaks change the picture (needs frames)', changed / px > 0.05, `${((changed / px) * 100).toFixed(1)}% of pixels`);
+    rt.dispose();
+
+    // Round trip: the value is part of the piece.
+    const json = JSON.parse(window.editor.serialize());
+    check('the value travels in the config', json.renderer?.mesh?.velocityStretch === 0.15, `${json.renderer?.mesh?.velocityStretch}`);
+    window.editor.load(json);
+    await wait(2000);
+    const back = window.editor.getCurrentParticleSystemConfig();
+    check(
+      'and comes back on load',
+      back.renderer.mesh.velocityStretch === 0.15 && particles()?.material.userData.velocityStretch === 0.15,
+      `${back.renderer.mesh.velocityStretch} / ${particles()?.material.userData.velocityStretch}`
+    );
+    check('no runtime errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+
+    const failed = lines.filter((s) => s.startsWith('FAIL')).length;
+    return [`stretch: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
+  };
+
   window.__t = {
+    stretchReport,
     aoReport,
     shadowReport,
     presentReport,

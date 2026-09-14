@@ -129,6 +129,12 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 
 **粒子面板的两处小改**：Particle Color Instance 现在紧跟在 Noise 下面（它的亮度→curl 系数本来就是 Noise 的一部分）；Mesh 一节在 lit 模式下多了 `roughness`（默认 0.65）和 `metalness`（默认 0）两个滑块，存在 `renderer.mesh` 里随 config 走。粒子的颜色本身就是它的 albedo（起始色 / 渐变 / Color Instance 采到的像素），这两个滑块决定灯光怎么落在上面；metalness > 0 的粒子会被 SSR 视为反射面。
 
+**面板量程按装置的尺度改了**（2026-09-14）：gravity 滑块 ±1（原来 ±20）；maxParticles 1000–500000、rateOverTime 1000–100000，两者不再受 Helper 里 Enable big numbers 的管（那个开关现在只放宽 rateOverDistance 和 burst 的上限）；输入框里敲的数同样被钳在量程内，低于 1000 的发射率进不去。**新建系统起步是 10000 粒、1000 /秒**，定义在胶水的 `editorDefaultConfig()`，只有新建走它；加载仍按库的默认值合并，旧 config 省略这两个键时的含义不变。库的 `getDefaultParticleSystemConfig` 没动，序列化的 diff 基准也没动，所以新建出来的这两个值会明确写进 JSON。
+
+**Velocity stretch，MESH 粒子的拖影**（2026-09-14，`renderer.mesh.velocityStretch`，秒；面板在 Mesh 一节的 align to velocity 下面，`schema:` 新字段）。每颗粒子沿自己的运动方向拉长"这么多秒里走过的距离"，头留在粒子处、多出来的长度拖在后面，快的长、慢的短。速度取的是**每帧真实位移**（compute kernel 里 `pos − posAtFrameStart` 除以 dt），不是速度缓冲——WIP-Test-2 的运动全来自 curl noise 和手指，速度缓冲一直是 0。速度存进 `particleState.w`（startFrame 那格，compute 侧从不读它；MESH 拉伸开着时纹理序列帧动画随之关闭，两者互斥），材质里按 `1 + streak / (网格 z 向长度 × meshScale.z × size)` 缩放局部 z、再沿朝向退回半个 streak，法线按逆转置补。开了拉伸就隐含 align to velocity（kernel 的 `trackTravelDirection` 和几何的 `instanceVelocity` 绑定都跟着开）。只在 WebGPU 计算路径上生效，和 alignToVelocity 一样。开销：200k 粒子每帧主线程 2.4 ms，和不开一样；阴影 pass 走同一个 `instanceVertex()`，拖影自动进影子。`stretchReport` 9 条：无键加载为 0、材质 `userData.velocityStretch`、不勾 align 也绑朝向、GPU 路径仍在、离屏读回画面有变化（要帧）、序列化往返。
+
+**TRAIL 渲染器是 CPU 的，别在作品里用**（2026-09-14 量的）。`useGPUCompute` 的条件里有 `!useTrail`：切到 TRAIL 整个模拟回到 CPU，再加每帧在 CPU 上重写 maxParticles × 2 × length 个顶点的 ribbon。同一台机器、只计编辑器 animate 那一帧的主线程时间：MESH + GPU 200k 是 2.8 ms（60 fps）；MESH + CPU 200k 是 112 ms；TRAIL length 20 200k 是 268 ms（3.9 fps）；TRAIL length 2 加 minVertexDistance 0.13 是 128 ms；TRAIL length 20 在 10k 粒子上 17 ms。它的参数：`length` 是样本槽数不是长度；`minVertexDistance` 是记一个样本要走的距离（0 = 每帧一个，长度随帧率变）；`maxTime` 是样本年龄上限，超龄不画、未超按年龄淡出（0 = 不看时间，带子永远是最近 length 个样本、不会消散）；`smoothing` 插值后的点数仍被截到 length，开了反而只画前 1/subdivisions 段，是上游 bug；`width` 世界单位。要弯曲的拖尾得做 GPU ribbon（历史环形缓冲进 storage buffer、kernel 写、顶点着色器读），没做。直拖影用上面的 velocity stretch。 **修了一个它的 bug**（2026-09-14）："所有线往中间连、很闪、白印儿偶尔跳出来"。ribbon 的索引缓冲永远画"最后一个样本 → 下一个槽"这一段，所以紧跟在最后一个活样本后面的那个槽必须每帧压在头上；`trailPrevFilledCount` 的省略清理把它跳过了，它留着上次清成的值——新缓冲是 0、死过一次也被清成 (0,0,0)——于是每颗新生粒子在第二个样本落下之前都从自己拉一根细条到发射器中心。出生越密、`minVertexDistance` 越大，条越多越久。现在那个槽总是清到头的位置，后面的槽照旧省略。jest `three-particles-trail.test.ts` 里"the slot that closes a ribbon"两条覆盖出生帧和死后重生。
+
 **Opacity over lifetime 有了自己的一节**，紧跟在 Size over lifetime 下面，同一套 Edit Curve。它接管了 `opacityOverLifetime`；渐变编辑器（原来叫 Color & Opacity）改成只管颜色，每个色标的 alpha 滑块隐藏了，旧 config 里的 alpha 数据原样保留但不再被编辑。两个编辑器写同一个字段时，谁最后动谁赢，这是拆开的原因。注意 `renderer.transparent` 关着的时候 alpha 不参与混合，曲线唯一可见的效果是低于丢弃阈值处的硬切——要淡入淡出必须开 transparent（密集的云再考虑关 depthWrite）。
 
 **手机上的性能工作流**。手机没有能模拟的东西——iOS 模拟器跑在 Mac 的 GPU 上，帧率毫无参考价值，DevTools 也只能限 CPU 不能限 GPU。所以仪器搬到手机上去：
@@ -158,7 +164,7 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 - 测试场景是内置 example **WIP-Test**（`packages/editor/public/examples/wip-test/`），存在磁盘上，清空 localStorage 也在。它引用的是那张山水画；73MB 的那个测试视频进不了仓库
 - **WIP-Test-2** 是作品本身：画框 + 一盏投影的平行光（带 `shadow` 块）+ 俯视输出相机（iPhone 17 Pro Max 画幅、SSR 和 SSAO 都开）+ 视频 color source。它的 `preview.webp` 还是换灯前的画面，刷新确认过不是 bug，维持现状。参数是 2026-09-11 在手机上调好后用 COPY 拷出的 JSON 直接写进去的（以后也这么更新：贴 JSON，不用截图），测试用的红球已经删掉。**编辑器一启动就直接加载它**（`DEFAULT_EXAMPLE`，在 `src/examples-config.js`；boot 一开始就 fetch，场景就绪后走和点 Examples 一样的 `window.editor.load`；fetch 失败就留在默认发射器，HUD 的 `boot:` 一行会写 `default … failed`）。代价是**刷新即回到示例**：面板里没导出的改动不会保留——粒子参数本来就不跨刷新，场景以前会留，现在也不留了；要保留就 Save 或者抄回 example。视频是 `public/assets/videos/wechat-20240829.mp4`（1000²、53s、1.6Mbps、10.6MB，随站点部署），config 用 **URL** 引用它（`_editorData.embeddedVideos`），所以任何能打开站点的设备都能播，手机上也是从 Examples 一点就开。这是「资产走 URL、config 走仓库」这条路的第一个样品
 - **做一个带视频的 example 的步骤**：把视频放进 `public/assets/videos/`；Textures 面板 **Add Video by URL** 填 `./assets/videos/<文件>`（相对地址，本地和 Pages 都能解析），Use；调好后 Copy，把 JSON 存成 `public/examples/<slug>/config.json`（slug 是名字小写、非字母数字换成连字符），配一张 `preview.webp`，在 `src/examples-config.js` 里加名字。本地上传（Add Video）的视频只在本机浏览器里，带不进 config
-- 控制台 harness `public/__ai-test.js`，当前基线 **258/258**（含 `aoReport` 7、`shadowReport` 10、`report` 19、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 33、`frameReport` 24）
+- 控制台 harness `public/__ai-test.js`，当前基线 **274/274**（含 `stretchReport` 9、`aoReport` 7、`shadowReport` 10、`report` 26、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 33、`frameReport` 24）
 
 ---
 
@@ -210,6 +216,7 @@ await __t.touchReport()     // 手指尾迹：屏幕→发射面、半径按视�
 await __t.standaloneReport() // 独立 player：iframe 里真起一个，贴 COPY 的字符串，逐字段比对，零存储
 await __t.shadowReport()    // 阴影：渲染器开关、粒子的两个钩子、太阳投 / 点光不投、灯上的 shadow 块、离屏读回的开关对照
 await __t.aoReport()        // SSAO：相机上的块到渲染器、管线形状、读回的强度对照、遮蔽图、关掉即无
+await __t.stretchReport()   // 拖影：无键为 0、材质记账、隐含朝向、GPU 路径仍在、读回有变化、序列化往返
 ```
 
 `videoReport` 要能 fetch 到 `./assets-local/AnimateDiff_00013.mp4`。那是个指向仓库旁边 `assets4test/` 的软链，目录整个 gitignore，新机器上要重建：
@@ -287,6 +294,10 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 - SSAO 挂在相机上（`ao` 块），GTAO + denoise，复用 SSR 的 MRT，先遮蔽后反射；`aoReport` 7 条。
 - 灯的阴影参数进了 config（平行光的 `shadow` 块），面板有对应一组；`shadowReport` 加到 10 条。阴影 / AO 的 GPU 开销由作者自己用 `?gputime` 看；粒子只有 MESH 收发阴影，接受；WIP-Test-2 的缩略图维持现状。
 - harness 基线 258/258。
+- 面板量程：gravity ±1，maxParticles / rateOverTime 下限 1000、上限固定为 big numbers 那档，新建系统 10000 粒、1000 /秒。`report` 加 7 条，基线 265/265。
+- 读了 TRAIL 渲染器：CPU 的 ribbon，切过去就退出 GPU 计算，200k 粒子 268 ms 一帧。参数含义和 smoothing 的截断 bug 记在 §3。
+- TRAIL 的"线往中间连"：ribbon 收尾那个槽被省略清理跳过、留着原点，每颗新生粒子都拉一条到中心；改成每帧压在头上，jest 加两条。
+- `renderer.mesh.velocityStretch`：MESH 粒子沿真实位移方向拉伸的拖影，GPU 路径，零额外开销；面板一个滑块；`stretchReport` 9 条，基线 274/274。库里顺手修了一条过期的 jest 期望（`createComputePipeline` 自 touch wake 起有第七个参数）。
 
 ### 2026-09-13 · Player 独立成放映端
 
@@ -301,6 +312,7 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 
 - 新增的功能代码基本没有单元测试，提交时绕过了覆盖率门禁（浏览器 harness 补了一部分，但不是一回事）
 - `world.ts` 有 `window.__world`、`player.ts` 有 `window.__player`、`three-particles-editor.ts` 有 `window.__playerLink`（挂起规则的焦点输入，harness 没法真的让页面失焦）、`window.__videoTextures`（绕过文件对话框）和 `window.__perfHud`，加上 `window.__gyroHud`、`window.__touch`，七个调试出口，harness 依赖它们，正式发布前要处理
+- TRAIL 渲染器整个在 CPU 上（模拟和 ribbon 都是），作品里不能用；要弯曲拖尾得做 GPU ribbon。velocity stretch 只做了直的
 - 粒子的阴影只接了 MESH 材质；POINTS / INSTANCED（billboard）没接，billboard 的 vertexNode 同样不进 shadow pass，进了会把全部实例画在原点。已知、接受，作品用的是 MESH
 - 超过 4MB 的全景图存不进 localStorage，当前会话可用但刷新即失
 - 只有发射器的内置运动（`simulation.ts`）在两个窗口间对了相位；粒子本身各自独立模拟，永远不会逐帧一致

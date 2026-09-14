@@ -224,8 +224,24 @@ const defaultEditorData: EditorData = {
   },
 };
 
+/**
+ * What a new system starts from. The library's defaults are a game effect's
+ * (100 particles, 10 a second); a piece here runs in the thousands, so a fresh
+ * system starts there. Only creation reads this — loading merges over the
+ * library's own defaults, so a saved config that omits either key keeps meaning
+ * what it meant when it was written.
+ */
+export const NEW_SYSTEM_MAX_PARTICLES = 10000;
+export const NEW_SYSTEM_RATE_OVER_TIME = 1000;
+const editorDefaultConfig = (): any => {
+  const config = getDefaultParticleSystemConfig();
+  config.maxParticles = NEW_SYSTEM_MAX_PARTICLES;
+  config.emission.rateOverTime = NEW_SYSTEM_RATE_OVER_TIME;
+  return config;
+};
+
 const particleSystemConfig = {
-  ...getDefaultParticleSystemConfig(),
+  ...editorDefaultConfig(),
   _editorData: {
     ...defaultEditorData,
     terrain: { ...defaultEditorData.terrain, ...defaultEditorData.simulation },
@@ -303,7 +319,7 @@ export const createNew = (): void => {
     editorVersion: EDITOR_VERSION,
   };
 
-  const defaultConfig = getDefaultParticleSystemConfig();
+  const defaultConfig = editorDefaultConfig();
 
   // Clear all existing properties from particleSystemConfig (except _editorData)
   // This is necessary because patchObject doesn't handle type changes properly
@@ -1018,18 +1034,15 @@ const createPanel = (config: any = particleSystemConfig): void => {
     panel.add(navObj, 'backToParent').name('<< Back to Parent');
   }
 
-  // Mutable controller references for big numbers toggle
-  let maxParticlesCtrl: any = null;
-  let rateOverTimeCtrl: any = null;
+  // Mutable controller references for big numbers toggle. Max particles and
+  // rate over time are no longer gated by it: a piece here runs in the
+  // hundreds of thousands, so those two sliders are always that wide.
   let rateOverDistanceCtrl: any = null;
 
   const handleBigNumbersToggle = (enabled: boolean): void => {
-    const maxParticles = enabled ? 500000 : 1000;
     const rateMax = enabled ? 100000 : 500;
     const burstMax = enabled ? 100000 : 1000;
 
-    if (maxParticlesCtrl) maxParticlesCtrl.max(maxParticles);
-    if (rateOverTimeCtrl) rateOverTimeCtrl.max(rateMax);
     if (rateOverDistanceCtrl) rateOverDistanceCtrl.max(rateMax);
     updateAllBurstCountMax(burstMax);
   };
@@ -1094,7 +1107,6 @@ const createPanel = (config: any = particleSystemConfig): void => {
     forceRecreateParticleSystem: recreateParticleSystem,
   });
   configEntries.push(generalResult);
-  maxParticlesCtrl = generalResult.maxParticlesController;
 
   const emissionResult = createEmissionEntries({
     parentFolder: panel,
@@ -1102,7 +1114,6 @@ const createPanel = (config: any = particleSystemConfig): void => {
     recreateParticleSystem: () => recreateParticleSystem(true, ['emission']),
   });
   configEntries.push(emissionResult);
-  rateOverTimeCtrl = emissionResult.rateOverTimeController;
   rateOverDistanceCtrl = emissionResult.rateOverDistanceController;
 
   // Apply initial big numbers state if loading a config that had it enabled

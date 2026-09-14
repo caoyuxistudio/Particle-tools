@@ -91,7 +91,7 @@ export const createGeneralEntries = ({
   });
 
   folder
-    .add(particleSystemConfig, 'gravity', -20, 20, 0.01)
+    .add(particleSystemConfig, 'gravity', -1, 1, 0.01)
     .onChange(recreateParticleSystem)
     .listen();
 
@@ -101,7 +101,7 @@ export const createGeneralEntries = ({
     .listen();
 
   const maxParticlesController = folder
-    .add(particleSystemConfig, 'maxParticles', 1.0, 1000, 1.0)
+    .add(particleSystemConfig, 'maxParticles', 1000, 500000, 1)
     .onChange(forceRecreate)
     .listen();
 
