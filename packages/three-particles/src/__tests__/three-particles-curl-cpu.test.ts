@@ -7,7 +7,8 @@ import type { ParticleSystem } from '../js/effects/three-particles/types.js';
  * fallback run on): neighbours must flow together, as they do on the GPU.
  */
 const positions = (ps: ParticleSystem): Float32Array =>
-  (ps.instance as THREE.Points).geometry.attributes.position.array as Float32Array;
+  (ps.instance as THREE.Points).geometry.attributes.position
+    .array as Float32Array;
 
 const activeIndices = (ps: ParticleSystem): number[] => {
   const attr = (ps.instance as THREE.Points).geometry.attributes.isActive;
@@ -28,7 +29,13 @@ const createSystem = (noise: Record<string, unknown>) => {
       emission: { rateOverTime: 4000 },
       // A small box, so the particles are close neighbours in the field.
       shape: { shape: 'BOX', box: { scale: { x: 0.2, y: 0.2, z: 0.2 } } },
-      noise: { isActive: true, strength: 1, frequency: 0.5, positionAmount: 1, ...noise },
+      noise: {
+        isActive: true,
+        strength: 1,
+        frequency: 0.5,
+        positionAmount: 1,
+        ...noise,
+      },
     } as any,
     startTime
   );
@@ -38,15 +45,28 @@ const createSystem = (noise: Record<string, unknown>) => {
 };
 
 /** Mean cosine between every particle's displacement and the group's mean. */
-const coherence = (before: Float32Array, after: Float32Array, idx: number[]) => {
-  const d = idx.map((i) => [after[i * 3] - before[i * 3], after[i * 3 + 1] - before[i * 3 + 1], after[i * 3 + 2] - before[i * 3 + 2]]);
-  const mean = d.reduce((m, v) => [m[0] + v[0], m[1] + v[1], m[2] + v[2]], [0, 0, 0]).map((v) => v / d.length);
+const coherence = (
+  before: Float32Array,
+  after: Float32Array,
+  idx: number[]
+) => {
+  const d = idx.map((i) => [
+    after[i * 3] - before[i * 3],
+    after[i * 3 + 1] - before[i * 3 + 1],
+    after[i * 3 + 2] - before[i * 3 + 2],
+  ]);
+  const mean = d
+    .reduce((m, v) => [m[0] + v[0], m[1] + v[1], m[2] + v[2]], [0, 0, 0])
+    .map((v) => v / d.length);
   const ml = Math.hypot(...mean);
   let cos = 0;
   let moved = 0;
   for (const v of d) {
     const l = Math.hypot(...v);
-    if (l > 1e-9) { moved++; cos += (v[0] * mean[0] + v[1] * mean[1] + v[2] * mean[2]) / (l * ml); }
+    if (l > 1e-9) {
+      moved++;
+      cos += (v[0] * mean[0] + v[1] * mean[1] + v[2] * mean[2]) / (l * ml);
+    }
   }
   return { cos: cos / Math.max(moved, 1), moved, meanLength: ml };
 };
