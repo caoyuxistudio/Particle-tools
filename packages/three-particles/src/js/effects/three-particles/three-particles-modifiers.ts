@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { curlNoise } from './curl-noise.js';
 
 import {
   SCALAR_STRIDE,
@@ -17,6 +18,8 @@ import {
 } from './types.js';
 
 const noiseInput = new THREE.Vector3(0, 0, 0);
+/** Scratch for the curl-noise velocity, reused per particle. */
+const _curl = { x: 0, y: 0, z: 0 };
 const orbitalEuler = new THREE.Euler();
 
 /**
@@ -90,6 +93,7 @@ export const applyModifiers = ({
   particleLifetimePercentage,
   particleIndex,
   updateFlags,
+  elapsed = 0,
 }: {
   delta: number;
   generalData: GeneralData;
@@ -105,6 +109,8 @@ export const applyModifiers = ({
    * bumping the attribute version once per particle.
    */
   updateFlags?: { position: boolean; quat: boolean };
+  /** The system clock in seconds — animates the curl-noise field. */
+  elapsed?: number;
 }) => {
   const {
     particleSystemId,
@@ -243,7 +249,41 @@ export const applyModifiers = ({
       lifetimeValues.rotationOverLifetime[particleIndex] * delta * 0.02;
   }
 
-  if (noise.isActive) {
+  if (noise.isActive && noise.curl) {
+    // Curl-noise flow field — the same field, scaling and time as the GPU
+    // kernel (webgpu/compute-modifiers.ts), so a piece flows the same way on
+    // either backend. It is a velocity, so delta-scaled, unlike the legacy
+    // noise below; rotation and size reuse the field's x component as a
+    // scalar, through the FBM-normalised power the kernel uses.
+    const { strength, noisePower, positionAmount, rotationAmount, sizeAmount } =
+      noise;
+    curlNoise(
+      _curl,
+      positionArr[positionIndex],
+      positionArr[positionIndex + 1],
+      positionArr[positionIndex + 2],
+      noise.frequency,
+      elapsed
+    );
+    const lumaMul = noise.lumaMul ? noise.lumaMul[particleIndex] : 1;
+    const amount = strength * positionAmount * lumaMul * delta;
+    positionArr[positionIndex] += _curl.x * amount * (noise.influence?.x ?? 1);
+    positionArr[positionIndex + 1] +=
+      _curl.y * amount * (noise.influence?.y ?? 1);
+    positionArr[positionIndex + 2] +=
+      _curl.z * amount * (noise.influence?.z ?? 1);
+
+    const power = noisePower / (noise.fbmMax || 1);
+    if (rotationAmount !== 0) {
+      scalarArray[base + S_ROTATION] += _curl.x * power * rotationAmount;
+    }
+    if (sizeAmount !== 0) {
+      scalarArray[base + S_SIZE] += _curl.x * power * sizeAmount;
+    }
+
+    if (updateFlags) updateFlags.position = true;
+    else attributes.position.needsUpdate = true;
+  } else if (noise.isActive) {
     const {
       sampler,
       strength,

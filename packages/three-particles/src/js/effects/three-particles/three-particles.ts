@@ -305,6 +305,7 @@ const _modifierParams = {
   particleLifetimePercentage: 0,
   particleIndex: 0,
   updateFlags: _modifierUpdateFlags,
+  elapsed: 0,
 };
 // Reusable parameter objects for the per-particle force-field / collision
 // hot loops (avoids one or two object allocations per particle per frame).
@@ -1875,6 +1876,14 @@ export const createParticleSystem = (
       ci.useLuminanceForNoise
     );
 
+    if (useNoiseLuma && !useGPUCompute) {
+      // The CPU curl path reads this per particle; the GPU packs the same
+      // value into startColorsExt.w below.
+      (generalData.noise.lumaMul ??= new Float32Array(maxParticles).fill(1))[
+        particleIndex
+      ] = colorInstanceNoiseMul;
+    }
+
     if (useGPUCompute && gpuPipeline) {
       // Write all particle data to GPU storage buffers.
       //
@@ -3206,6 +3215,7 @@ const updateParticleSystemInstance = (
     _modifierUpdateFlags.position = false;
     _modifierUpdateFlags.quat = false;
     _modifierParams.delta = delta;
+    _modifierParams.elapsed = elapsed;
     _modifierParams.generalData = generalData;
     _modifierParams.normalizedConfig = normalizedConfig;
     _modifierParams.attributes = ma;

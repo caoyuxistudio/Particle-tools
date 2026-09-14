@@ -833,6 +833,12 @@ export type Noise = {
   influence: { x: number; y: number; z: number };
   sampler?: FBM;
   offsets?: Array<number>;
+  /**
+   * CPU curl path only: the per-particle luminance multiplier from the
+   * colour source (the GPU packs the same value into startColorsExt.w).
+   * Allocated on the first emission that needs it; 1 everywhere else.
+   */
+  lumaMul?: Float32Array;
 };
 
 /**

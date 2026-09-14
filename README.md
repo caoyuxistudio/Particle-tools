@@ -30,8 +30,11 @@ are merged in and never read, so the piece silently renders wrong.
 | Mesh oriented along its direction of travel | `renderer.mesh.alignToVelocity` |
 | Mesh stretched along its direction of travel by the distance covered in N seconds (a motion-blur streak, speed taken from the actual displacement so noise-driven motion counts) | `renderer.mesh.velocityStretch` |
 
-All of the above run on the **WebGPU compute backend**. On the CPU backend they
-are ignored or fall back to the stock behaviour.
+All of the above run on the **WebGPU compute backend**. On the CPU backend
+(the TRAIL renderer, `simulationBackend: CPU`, or the WebGL fallback) the
+curl-noise flow field is the same field — `curl-noise.ts` is a scalar port of
+the kernel's simplex and curl — and the rest is ignored or falls back to the
+stock behaviour.
 
 ## Running the editor
 
