@@ -370,7 +370,7 @@
     "metadata": {
       "name": "WIP-Test-2",
       "createdAt": 1787000000000,
-      "modifiedAt": 1789125862443,
+      "modifiedAt": 1789374790631,
       "editorVersion": "2.10.0"
     },
     "embeddedVideos": {
@@ -410,6 +410,16 @@
           "thickness": 0.16,
           "opacity": 0.7,
           "debug": "off"
+        },
+        "ao": {
+          "enabled": true,
+          "intensity": 0.7,
+          "radius": 0.3,
+          "samples": 8,
+          "thickness": 0.5,
+          "scale": 1.5,
+          "resolutionScale": 0.5,
+          "denoise": 4
         },
         "parallax": {
           "enabled": false,
@@ -461,19 +471,22 @@
         "bottomOffset": 0.17
       },
       {
-        "id": "obj-mtbdwjx4-dfde",
-        "name": "Point Light 1",
-        "type": "POINT_LIGHT",
+        "id": "obj-mu0yq5p4-k6y9",
+        "name": "Directional Light 1",
+        "type": "DIRECTIONAL_LIGHT",
         "visible": true,
         "position": {
-          "x": -0.05,
-          "y": 6.1,
-          "z": -3.7
+          "x": 4,
+          "y": 19.2,
+          "z": 4
+        },
+        "target": {
+          "x": 1.9,
+          "y": -2.8,
+          "z": 12.6
         },
         "color": "#ffffff",
-        "intensity": 156,
-        "distance": 0,
-        "decay": 1.5
+        "intensity": 2
       }
     ]
   },

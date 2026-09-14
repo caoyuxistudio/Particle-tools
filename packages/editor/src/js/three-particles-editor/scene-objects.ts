@@ -18,11 +18,13 @@ import {
   setOutputCamera,
   setSsrSettings,
   defaultSsrSettings,
+  setAoSettings,
+  defaultAoSettings,
   setEnvironment,
   defaultEnvironmentSettings,
   getOutputCamera,
 } from './world';
-import type { SsrSettings, EnvironmentSettings } from './world';
+import type { SsrSettings, AoSettings, EnvironmentSettings } from './world';
 import { defaultParallaxSettings, setParallaxSettings, setParallaxPlane } from './parallax';
 import type { ParallaxSettings } from './parallax';
 import { EDITOR_LAYER, markAsEditorOnly } from './editor-layers';
@@ -108,6 +110,8 @@ export type SceneObject = {
    * inside the saved config like every other decision about the artwork.
    */
   ssr?: SsrSettings;
+  /** CAMERA only: screen space ambient occlusion, composed before the reflections. */
+  ao?: AoSettings;
   /**
    * CAMERA only: the screen as a window. The phone's tilt moves the eye, the
    * frame's plane stays put and what lies deeper shifts (see parallax.ts).
@@ -415,6 +419,7 @@ const DEFAULTS: Record<SceneObjectType, () => Omit<SceneObject, 'id' | 'name'>> 
       far: 200,
       aspect: 16 / 9,
       ssr: defaultSsrSettings(),
+      ao: defaultAoSettings(),
       parallax: defaultParallaxSettings(),
     };
   },
@@ -947,6 +952,7 @@ const syncOutputCamera = (): void => {
   // Reflection settings ride along with the camera they belong to. Cameras saved
   // before this existed have none, and fall back to the defaults switched off.
   setSsrSettings({ ...defaultSsrSettings(), ...(active?.ssr ?? {}) });
+  setAoSettings({ ...defaultAoSettings(), ...(active?.ao ?? {}) });
   setParallaxSettings({ ...defaultParallaxSettings(), ...(active?.parallax ?? {}) });
   // The plane parallax holds still: the first visible frame's face toward the
   // camera — its glass — measured along the camera's view. A frame has depth,

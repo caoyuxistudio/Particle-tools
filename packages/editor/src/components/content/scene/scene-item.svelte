@@ -5,6 +5,7 @@
   import {
     getCamera,
     defaultSsrSettings,
+    defaultAoSettings,
     defaultEnvironmentSettings,
     setOnEnvironmentLoaded,
   } from './../../../js/three-particles-editor/world';
@@ -36,12 +37,14 @@
    * so an old camera's look would drift when those change.
    */
   const setSsr = (patch) => set({ ssr: { ...defaultSsrSettings(), ...(obj.ssr ?? {}), ...patch } });
+  const setAo = (patch) => set({ ao: { ...defaultAoSettings(), ...(obj.ao ?? {}), ...patch } });
   const setParallax = (patch) =>
     set({ parallax: { ...defaultParallaxSettings(), ...(obj.parallax ?? {}), ...patch } });
 
   const SSR_VIEWS = [
     { id: 'off', label: 'Final image' },
     { id: 'reflection', label: 'Reflections only' },
+    { id: 'ao', label: 'Occlusion only' },
     { id: 'color', label: 'Colour buffer' },
     { id: 'normal', label: 'Normals' },
     { id: 'metalness', label: 'Metalness' },
@@ -710,6 +713,56 @@
             </label>
           {/each}
 
+          <p class="hint">
+            Only surfaces with metalness above zero reflect, and only what is already on screen can
+            appear in them. If a wall stays blank, check it in the Metalness view first.
+          </p>
+          <p class="hint">
+            For softer reflections, lower the resolution before raising blur — it smears just as
+            well and costs less rather than more. Blur widens the kernel, and its samples grow as
+            the square.
+          </p>
+        {/if}
+
+        <div class="group-label">occlusion (AO)</div>
+        <label class="row check">
+          <span>enabled</span>
+          <input
+            type="checkbox"
+            checked={obj.ao?.enabled ?? false}
+            onchange={(e) => setAo({ enabled: e.target.checked })}
+          />
+        </label>
+
+        {#if obj.ao?.enabled}
+          {#each [{ key: 'intensity', label: 'strength', min: 0, max: 1, step: 0.01, fallback: 0.7 }, { key: 'radius', label: 'radius', min: 0.05, max: 3, step: 0.05, fallback: 0.3 }, { key: 'samples', label: 'samples', min: 4, max: 32, step: 1, fallback: 8 }, { key: 'thickness', label: 'thickness', min: 0.05, max: 2, step: 0.05, fallback: 0.5 }, { key: 'scale', label: 'contrast', min: 0.5, max: 3, step: 0.1, fallback: 1.5 }, { key: 'resolutionScale', label: 'resolution', min: 0.25, max: 1, step: 0.05, fallback: 0.5 }, { key: 'denoise', label: 'denoise', min: 1, max: 8, step: 1, fallback: 4 }] as p}
+            <label class="row">
+              <span>{p.label}</span>
+              <input
+                type="range"
+                min={p.min}
+                max={p.max}
+                step={p.step}
+                value={obj.ao?.[p.key] ?? p.fallback}
+                oninput={(e) => setAo({ [p.key]: +e.target.value })}
+              />
+              <input
+                type="number"
+                step={p.step}
+                value={obj.ao?.[p.key] ?? p.fallback}
+                oninput={(e) => setAo({ [p.key]: +e.target.value })}
+              />
+            </label>
+          {/each}
+          <p class="hint">
+            Darkens wherever the depth buffer says something is close: the frame's inner corners,
+            grains against each other. Radius is in world units, so a grain-sized radius shades
+            contacts and a frame-sized one shades the cavity. It runs before the reflections, so
+            they show it too. The noise pattern is fixed frame to frame; denoise blurs it out.
+          </p>
+        {/if}
+
+        {#if obj.ssr?.enabled || obj.ao?.enabled}
           <label class="row">
             <span>view</span>
             <select
@@ -721,15 +774,6 @@
               {/each}
             </select>
           </label>
-          <p class="hint">
-            Only surfaces with metalness above zero reflect, and only what is already on screen can
-            appear in them. If a wall stays blank, check it in the Metalness view first.
-          </p>
-          <p class="hint">
-            For softer reflections, lower the resolution before raising blur — it smears just as
-            well and costs less rather than more. Blur widens the kernel, and its samples grow as
-            the square.
-          </p>
         {/if}
 
         <p class="hint">

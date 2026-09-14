@@ -21,6 +21,7 @@ import {
   float,
   cameraProjectionMatrix,
   modelViewMatrix,
+  modelWorldMatrix,
   positionLocal,
   normalLocal,
   texture,
@@ -133,16 +134,127 @@ export function createMeshParticleTSLMaterial(
   const vNormal = varyingProperty('vec3', 'vNormal');
   /** View-space depth (positive distance from camera). */
   const vViewZ = varyingProperty('float', 'vViewZ');
+  /** World-space position, for the shadow lookup of a received shadow. */
+  const vShadowPos = varyingProperty('vec3', 'vShadowPos');
 
   // ── Vertex stage ───────────────────────────────────────────────────────────
 
   /**
-   * Computes the world-space vertex position for each mesh vertex:
-   *   1. Rotate the mesh vertex by the instance quaternion.
+   * Per-instance vertex math, shared by the camera pass and the shadow pass:
+   *   1. Rotate the mesh vertex by the instance quaternion (or travel basis).
    *   2. Scale by instanceSize.
    *   3. Translate by instanceOffset.
-   * Also populates all varyings for the fragment stage.
+   * Populates the fragment varyings and returns the vertex position and normal
+   * in the particle system's own space, which is what `modelViewMatrix`
+   * expects. Call it inside an `If` guarded by `aColor.w > 0`.
    */
+  const instanceVertex = () => {
+    // Populate varyings
+    vColor.assign(aColor.toVar());
+    if (gpuCompute) {
+      vLifetime.assign(aParticleState!.x);
+      vStartLifetime.assign(aStartValues!.x);
+      vStartFrame.assign(aParticleState!.w);
+      vRotation.assign(aParticleState!.z);
+    } else {
+      vLifetime.assign(aLifetime!);
+      vStartLifetime.assign(aStartLifetime!);
+      vStartFrame.assign(aStartFrame!);
+      vRotation.assign(aRotation!);
+    }
+
+    // Build quaternion: GPU compute derives it from particleState.z (rotation
+    // angle around Z); CPU path reads the pre-computed instanceQuat attribute.
+    let quat: ShaderNodeObject<Node>;
+    if (gpuCompute) {
+      const halfZ = aParticleState!.z.mul(0.5);
+      quat = vec4(0.0, 0.0, sin(halfZ), cos(halfZ));
+    } else {
+      quat = aInstanceQuat!;
+    }
+
+    // 0. Per-axis scale in the mesh's local frame, BEFORE the rotation, so a
+    // non-uniform scale stretches the shape itself rather than shearing it
+    // along world axes as the particle spins.
+    const localPos = positionLocal.mul(u.uMeshScale);
+
+    // Velocity alignment builds an orthonormal frame from the direction of
+    // travel: local +Z maps to the heading, +X/+Y span the perpendicular
+    // plane, and the particle's rotation value becomes roll about the
+    // heading. Direction arrives as two spherical angles packed into the
+    // position (.w = polar) and velocity (.w = azimuth) buffers.
+    const buildTravelBasis = () => {
+      const theta = aInstanceOffset.w;
+      const phi = aVelocity!.w;
+      const sinT = sin(theta);
+      const forward = vec3(
+        sinT.mul(cos(phi)),
+        cos(theta),
+        sinT.mul(sin(phi))
+      ).toVar();
+
+      // Pick a reference that is never parallel to the heading, otherwise the
+      // cross product collapses and the frame flips.
+      const upRef = vec3(0, 1, 0).toVar();
+      If(abs(dot(forward, upRef)).greaterThan(0.999), () => {
+        upRef.assign(vec3(0, 0, 1));
+      });
+
+      const right = normalize(cross(upRef, forward)).toVar();
+      const upv = cross(forward, right).toVar();
+
+      // Roll about the heading, driven by the same rotation value the
+      // Z-spin path uses (rotationOverLifetime + noise rotationAmount).
+      const roll = gpuCompute ? aParticleState!.z : aRotation!;
+      const cr = cos(roll);
+      const sr = sin(roll);
+      const rolledRight = right.mul(cr).add(upv.mul(sr));
+      const rolledUp = upv.mul(cr).sub(right.mul(sr));
+
+      return { right: rolledRight, up: rolledUp, forward };
+    };
+
+    // 1. Orient the mesh vertex — either along the travel direction or by
+    // the instance quaternion (flat Z-spin).
+    let rotatedPos: ShaderNodeObject<Node>;
+    let basis: ReturnType<typeof buildTravelBasis> | null = null;
+    if (useVelocityAlign) {
+      basis = buildTravelBasis();
+      rotatedPos = basis.right
+        .mul(localPos.x)
+        .add(basis.up.mul(localPos.y))
+        .add(basis.forward.mul(localPos.z));
+    } else {
+      rotatedPos = applyQuaternion({
+        v: localPos,
+        q: quat,
+      });
+    }
+
+    // 2. Scale by particle size
+    const scaledPos = rotatedPos.mul(gpuCompute ? aParticleState!.y : aSize!);
+
+    // 3. Translate to particle world position
+    // Use .xyz to handle vec3→vec4 padding by WebGPU storage buffer alignment
+    const worldPos = scaledPos.add(aInstanceOffset.xyz);
+
+    // Transform normal: normals scale by the inverse-transpose, which for a
+    // diagonal scale is a component-wise divide, then rotate into view space.
+    const scaledNormal = normalLocal
+      .div(max(u.uMeshScale, vec3(0.0001)))
+      .normalize();
+    const rotatedNormal = basis
+      ? basis.right
+          .mul(scaledNormal.x)
+          .add(basis.up.mul(scaledNormal.y))
+          .add(basis.forward.mul(scaledNormal.z))
+      : applyQuaternion({
+          v: scaledNormal,
+          q: quat,
+        });
+    return { position: worldPos, normal: rotatedNormal };
+  };
+
   const vertexSetup = Fn(() => {
     // Early-out for dead particles: push the vertex behind the camera
     // (negative w) so it is clipped before rasterisation. A degenerate
@@ -152,114 +264,16 @@ export function createMeshParticleTSLMaterial(
     const clipPos = vec4(0.0, 0.0, 0.0, -1.0).toVar();
 
     If(aColor.w.greaterThan(0.0), () => {
-      // Populate varyings
-      vColor.assign(aColor.toVar());
-      if (gpuCompute) {
-        vLifetime.assign(aParticleState!.x);
-        vStartLifetime.assign(aStartValues!.x);
-        vStartFrame.assign(aParticleState!.w);
-        vRotation.assign(aParticleState!.z);
-      } else {
-        vLifetime.assign(aLifetime!);
-        vStartLifetime.assign(aStartLifetime!);
-        vStartFrame.assign(aStartFrame!);
-        vRotation.assign(aRotation!);
-      }
-
-      // Build quaternion: GPU compute derives it from particleState.z (rotation
-      // angle around Z); CPU path reads the pre-computed instanceQuat attribute.
-      let quat: ShaderNodeObject<Node>;
-      if (gpuCompute) {
-        const halfZ = aParticleState!.z.mul(0.5);
-        quat = vec4(0.0, 0.0, sin(halfZ), cos(halfZ));
-      } else {
-        quat = aInstanceQuat!;
-      }
-
-      // 0. Per-axis scale in the mesh's local frame, BEFORE the rotation, so a
-      // non-uniform scale stretches the shape itself rather than shearing it
-      // along world axes as the particle spins.
-      const localPos = positionLocal.mul(u.uMeshScale);
-
-      // Velocity alignment builds an orthonormal frame from the direction of
-      // travel: local +Z maps to the heading, +X/+Y span the perpendicular
-      // plane, and the particle's rotation value becomes roll about the
-      // heading. Direction arrives as two spherical angles packed into the
-      // position (.w = polar) and velocity (.w = azimuth) buffers.
-      const buildTravelBasis = () => {
-        const theta = aInstanceOffset.w;
-        const phi = aVelocity!.w;
-        const sinT = sin(theta);
-        const forward = vec3(
-          sinT.mul(cos(phi)),
-          cos(theta),
-          sinT.mul(sin(phi))
-        ).toVar();
-
-        // Pick a reference that is never parallel to the heading, otherwise the
-        // cross product collapses and the frame flips.
-        const upRef = vec3(0, 1, 0).toVar();
-        If(abs(dot(forward, upRef)).greaterThan(0.999), () => {
-          upRef.assign(vec3(0, 0, 1));
-        });
-
-        const right = normalize(cross(upRef, forward)).toVar();
-        const upv = cross(forward, right).toVar();
-
-        // Roll about the heading, driven by the same rotation value the
-        // Z-spin path uses (rotationOverLifetime + noise rotationAmount).
-        const roll = gpuCompute ? aParticleState!.z : aRotation!;
-        const cr = cos(roll);
-        const sr = sin(roll);
-        const rolledRight = right.mul(cr).add(upv.mul(sr));
-        const rolledUp = upv.mul(cr).sub(right.mul(sr));
-
-        return { right: rolledRight, up: rolledUp, forward };
-      };
-
-      // 1. Orient the mesh vertex — either along the travel direction or by
-      // the instance quaternion (flat Z-spin).
-      let rotatedPos: ShaderNodeObject<Node>;
-      let basis: ReturnType<typeof buildTravelBasis> | null = null;
-      if (useVelocityAlign) {
-        basis = buildTravelBasis();
-        rotatedPos = basis.right
-          .mul(localPos.x)
-          .add(basis.up.mul(localPos.y))
-          .add(basis.forward.mul(localPos.z));
-      } else {
-        rotatedPos = applyQuaternion({
-          v: localPos,
-          q: quat,
-        });
-      }
-
-      // 2. Scale by particle size
-      const scaledPos = rotatedPos.mul(gpuCompute ? aParticleState!.y : aSize!);
-
-      // 3. Translate to particle world position
-      // Use .xyz to handle vec3→vec4 padding by WebGPU storage buffer alignment
-      const worldPos = scaledPos.add(aInstanceOffset.xyz);
+      const { position, normal } = instanceVertex();
 
       // Compute model-view position for depth and normal
-      const mvPos = modelViewMatrix.mul(vec4(worldPos, 1.0));
+      const mvPos = modelViewMatrix.mul(vec4(position, 1.0));
       vViewZ.assign(mvPos.z.negate());
+      // The built-in positionWorld comes from positionLocal and knows nothing
+      // about the per-instance transform; the shadow lookup needs this one.
+      vShadowPos.assign(modelWorldMatrix.mul(vec4(position, 1.0)).xyz);
 
-      // Transform normal: normals scale by the inverse-transpose, which for a
-      // diagonal scale is a component-wise divide, then rotate into view space.
-      const scaledNormal = normalLocal
-        .div(max(u.uMeshScale, vec3(0.0001)))
-        .normalize();
-      const rotatedNormal = basis
-        ? basis.right
-            .mul(scaledNormal.x)
-            .add(basis.up.mul(scaledNormal.y))
-            .add(basis.forward.mul(scaledNormal.z))
-        : applyQuaternion({
-            v: scaledNormal,
-            q: quat,
-          });
-      const mvNormal = modelViewMatrix.mul(vec4(rotatedNormal, 0.0)).xyz;
+      const mvNormal = modelViewMatrix.mul(vec4(normal, 0.0)).xyz;
       vNormal.assign(mvNormal.normalize());
 
       clipPos.assign(cameraProjectionMatrix.mul(mvPos));
@@ -267,6 +281,29 @@ export function createMeshParticleTSLMaterial(
 
     // Return clip-space position (manual MVP to avoid double-transform)
     return clipPos;
+  })();
+
+  /**
+   * Vertex position for the shadow pass. The renderer's depth material cannot
+   * run vertexNode; it takes a local-space position through
+   * castShadowPositionNode and applies the shadow camera's own MVP to it. A
+   * dead particle cannot be culled by a negative w here, so it is parked far
+   * outside any shadow frustum instead. The fragment varyings are assigned as
+   * well: the depth material still evaluates colorNode for its alpha, and an
+   * unassigned vColor would discard every fragment.
+   */
+  const shadowPositionSetup = Fn(() => {
+    const position = vec3(1e6).toVar();
+
+    If(aColor.w.greaterThan(0.0), () => {
+      const inst = instanceVertex();
+      position.assign(inst.position);
+      vViewZ.assign(modelViewMatrix.mul(vec4(inst.position, 1.0)).z.negate());
+      vShadowPos.assign(inst.position);
+      vNormal.assign(inst.normal);
+    });
+
+    return position;
   })();
 
   // ── Fragment stage ─────────────────────────────────────────────────────────
@@ -338,8 +375,7 @@ export function createMeshParticleTSLMaterial(
   // ── Material assembly ──────────────────────────────────────────────────────
 
   // Standard material takes part in the scene's lights, environment and light
-  // probes; Basic ignores them entirely. Particles opt out of shadows either
-  // way — the shadow pass cannot run this material's vertexNode.
+  // probes; Basic ignores them entirely.
   const material = lit
     ? new MeshStandardNodeMaterial()
     : new MeshBasicNodeMaterial();
@@ -353,6 +389,14 @@ export function createMeshParticleTSLMaterial(
   // vertexNode receives a clip-space vec4 (manual MVP to avoid double-transform)
   material.vertexNode = vertexSetup;
   material.colorNode = fragmentColor;
+
+  // Shadow exchange. Casting: the depth pass applies its own MVP to this
+  // local-space position instead of running vertexNode. Receiving: the shadow
+  // lookup reads the world position computed alongside it, since the built-in
+  // positionWorld ignores the per-instance transform. Whether the particles
+  // actually take part is the object's castShadow / receiveShadow flags.
+  material.castShadowPositionNode = shadowPositionSetup;
+  material.receivedShadowPositionNode = vShadowPos;
 
   if (lit) {
     // The built-in normal pipeline derives from normalLocal and the normal

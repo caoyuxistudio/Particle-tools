@@ -11,7 +11,7 @@
  * same counter: resolution (the pixel-ratio cap), reflections, and the
  * particle budget. None of it is saved; the piece is untouched.
  */
-import type { SsrSettings } from './world';
+import type { SsrSettings, AoSettings } from './world';
 
 export type PerfActions = {
   /** Where this page renders: 'webgpu' or 'webgl'. */
@@ -21,6 +21,8 @@ export type PerfActions = {
   getDrawingBufferSize: () => { width: number; height: number };
   getSsr: () => SsrSettings;
   setSsr: (patch: Partial<SsrSettings>) => void;
+  getAo: () => AoSettings;
+  setAo: (patch: Partial<AoSettings>) => void;
   /** Parallax from the gyroscope, on or off — runtime only, like the SSR lever. */
   getParallax: () => boolean;
   setParallax: (enabled: boolean) => void;
@@ -170,6 +172,15 @@ export const installPerfHud = (actions: PerfActions): PerfHud => {
     (enabled) => actions.setSsr({ enabled })
   );
   row<boolean>(
+    'AO',
+    [
+      { text: 'off', value: false },
+      { text: 'on', value: true },
+    ],
+    () => actions.getAo().enabled,
+    (enabled) => actions.setAo({ enabled })
+  );
+  row<boolean>(
     'gyro',
     [
       { text: 'off', value: false },
@@ -226,6 +237,7 @@ export const installPerfHud = (actions: PerfActions): PerfHud => {
     const t = timing();
     const buffer = actions.getDrawingBufferSize();
     const ssr = actions.getSsr();
+    const aoSet = actions.getAo();
     const particles = actions.getParticles();
     const video = actions.getVideoReadback();
     const nav = navigator as Navigator & { deviceMemory?: number };
@@ -249,6 +261,12 @@ export const installPerfHud = (actions: PerfActions): PerfHud => {
         'SSR',
         ssr.enabled
           ? `on, res ${ssr.resolutionScale}, quality ${ssr.quality}, blur ${ssr.blurQuality}`
+          : 'off',
+      ],
+      [
+        'AO',
+        aoSet.enabled
+          ? `on, strength ${aoSet.intensity}, radius ${aoSet.radius}, ${aoSet.samples} samples, res ${aoSet.resolutionScale}, denoise ${aoSet.denoise}`
           : 'off',
       ],
       [

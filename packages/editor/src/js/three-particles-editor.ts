@@ -47,6 +47,8 @@ import {
   getDrawingBufferSize,
   getSsrSettings,
   setSsrSettings,
+  getAoSettings,
+  setAoSettings,
   getRendererDomElement,
   getOutputCamera,
 } from './three-particles-editor/world';
@@ -442,6 +444,8 @@ export const createParticleSystemEditor = async (targetQuery: string): Promise<v
     getDrawingBufferSize,
     getSsr: getSsrSettings,
     setSsr: setSsrSettings,
+    getAo: getAoSettings,
+    setAo: setAoSettings,
     getParallax: () => getParallaxSettings().enabled,
     setParallax: (enabled) => setParallaxSettings({ ...getParallaxSettings(), enabled }),
     getParticles: () => ({

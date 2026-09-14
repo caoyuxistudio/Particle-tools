@@ -14,8 +14,14 @@ import {
   screenUV,
   vec2,
   vec3,
+  vec4,
+  mix,
+  uniform,
+  convertToTexture,
 } from 'three/tsl';
 import { ssr } from 'three/examples/jsm/tsl/display/SSRNode.js';
+import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
+import { denoise } from 'three/examples/jsm/tsl/display/DenoiseNode.js';
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
 
@@ -230,6 +236,7 @@ export type SsrSettings = {
     | 'metalness'
     | 'roughness'
     | 'depth'
+    | 'ao'
     | 'reflection';
 };
 
@@ -267,6 +274,64 @@ export const defaultSsrSettings = (): SsrSettings => ({
 });
 
 let ssrSettings: SsrSettings = defaultSsrSettings();
+
+/**
+ * Screen-space ambient occlusion for the output camera: the darkening in
+ * corners and between grains.
+ *
+ * A property of the camera like SSR, and composed before it: the reflections
+ * trace an already-occluded picture, so a mirror shows a dark corner dark, and
+ * the reflection term is dimmed once more by the receiver's own occlusion. The
+ * occlusion multiplies the whole beauty pass, direct light included. three's
+ * own route, builtinAOContext, only touches indirect light — which a scene lit
+ * by one sun does not have — and needs a second scene pass in front of the
+ * beauty pass. This is the contact-shade look; `intensity` is how much of it.
+ */
+export type AoSettings = {
+  enabled: boolean;
+  /** How much of the occlusion reaches the picture, 0..1. A uniform: free to move. */
+  intensity: number;
+  /** How far, in world units, a surface looks for what covers it. */
+  radius: number;
+  /** Horizon samples per pixel, and the cost: three slice directions below 30. */
+  samples: number;
+  /** How far in front of a pixel a sample may sit and still count as cover. */
+  thickness: number;
+  /** Contrast: the occlusion raised to this power. */
+  scale: number;
+  /** Fraction of full resolution the occlusion is computed at. */
+  resolutionScale: number;
+  /** Radius, in pixels, of the depth- and normal-aware blur over the raw pass. */
+  denoise: number;
+};
+
+export const defaultAoSettings = (): AoSettings => ({
+  enabled: false,
+  intensity: 0.7,
+  // Grain-sized: a radius of one grain or two shades the contacts between
+  // them. A frame-sized radius came out fainter on the test scene, not
+  // stronger — the horizons saturate and the cavity is deeper than the reach.
+  radius: 0.3,
+  samples: 8,
+  thickness: 0.5,
+  scale: 1.5,
+  resolutionScale: 0.5,
+  denoise: 4,
+});
+
+let aoSettings: AoSettings = defaultAoSettings();
+/** A uniform, so the strength slider does not recompile the pipeline. */
+const aoIntensity = uniform(0.7);
+let aoPass: any = null;
+let denoisePass: any = null;
+/** Which stages the current pipeline was compiled with; rebuilt when that changes. */
+let pipelineKey = '';
+const currentPipelineKey = (): string =>
+  `${ssrSettings.enabled ? 'ssr' : ''}|${aoSettings.enabled ? 'ao' : ''}`;
+const pipelineStale = (camera: THREE.PerspectiveCamera): boolean =>
+  pipelineCamera !== camera || pipelineKey !== currentPipelineKey();
+/** Whether the output camera goes through the post pipeline at all. */
+const postEnabled = (): boolean => ssrSettings.enabled || aoSettings.enabled;
 
 /**
  * Compiles the SSR pipeline for a camera.
@@ -307,10 +372,36 @@ const buildSsrPipeline = (camera: THREE.PerspectiveCamera): void => {
   const normalTexture = scenePass.getTextureNode('normal');
   const normalNode = sample((uv) => colorToDirection(normalTexture.sample(uv)));
 
-  ssrPass = ssr(colorNode, depthNode, normalNode, metalnessNode, roughnessNode, camera);
+  // Occlusion first. The raw GTAO pass is noisy by design — a fixed noise
+  // tile and no temporal filtering, so nothing shimmers from frame to frame —
+  // and a depth- and normal-aware blur takes the noise out. Both the blurred
+  // map and the occluded picture are rendered to textures: SSR samples its
+  // colour input while it marches and a computed node has no sample(), and the
+  // composite reads the map a second time, so the blur should run once.
+  let occluded: any = colorNode;
+  let aoNode: any = null;
+  aoPass = null;
+  denoisePass = null;
+  if (aoSettings.enabled) {
+    aoPass = ao(depthNode, normalNode, camera);
+    denoisePass = denoise(aoPass.getTextureNode(), depthNode, normalNode, camera);
+    aoNode = convertToTexture(vec4(vec3(denoisePass.r), 1)).r;
+    occluded = convertToTexture(vec4(colorNode.rgb.mul(mix(1, aoNode, aoIntensity)), colorNode.a));
+  }
+
+  // Reflections trace the occluded picture, and are dimmed once more by the
+  // receiver's own occlusion: a reflection in a crevice is as covered as the
+  // light that would have reached it.
+  ssrPass = null;
+  let composite: any = occluded;
+  if (ssrSettings.enabled) {
+    ssrPass = ssr(occluded, depthNode, normalNode, metalnessNode, roughnessNode, camera);
+    const reflection = aoNode ? ssrPass.mul(vec4(vec3(mix(1, aoNode, aoIntensity)), 1)) : ssrPass;
+    composite = blendColor(occluded, reflection);
+  }
 
   debugNodes = {
-    off: blendColor(colorNode, ssrPass),
+    off: composite,
     color: colorNode,
     normal: scenePass.getTextureNode('normal'),
     metalrough: metalRough,
@@ -320,7 +411,8 @@ const buildSsrPipeline = (camera: THREE.PerspectiveCamera): void => {
     metalness: vec3(metalRough.r),
     roughness: vec3(metalRough.g),
     depth: vec3(depthNode),
-    reflection: ssrPass,
+    reflection: ssrPass ?? vec4(0, 0, 0, 1),
+    ao: aoNode ? vec4(vec3(aoNode), 1) : vec4(1),
   };
 
   postProcessing = new PostProcessing(renderer);
@@ -336,7 +428,14 @@ const buildSsrPipeline = (camera: THREE.PerspectiveCamera): void => {
   // Tone mapping would be skipped with it; the project runs none.
   postProcessing.outputColorTransform = isPlayer() || presenting;
   pipelineCamera = camera;
+  pipelineKey = currentPipelineKey();
   applySsrUniforms();
+  applyAoUniforms();
+};
+
+/** Compiles the pipeline for the output camera if it is missing or stale. */
+export const ensurePostPipeline = (): void => {
+  if (outputCamera && postEnabled() && pipelineStale(outputCamera)) buildSsrPipeline(outputCamera);
 };
 
 /** Output nodes for each debug view, rebuilt with the pipeline. */
@@ -380,6 +479,31 @@ const applySsrUniforms = (): void => {
   ssrPass.thickness.value = ssrSettings.thickness;
   ssrPass.opacity.value = ssrSettings.opacity;
 };
+
+const applyAoUniforms = (): void => {
+  aoIntensity.value = aoSettings.intensity;
+  if (aoPass) {
+    aoPass.radius.value = aoSettings.radius;
+    aoPass.samples.value = aoSettings.samples;
+    aoPass.thickness.value = aoSettings.thickness;
+    aoPass.scale.value = aoSettings.scale;
+    // A plain property, like SSR's: read when the node sizes its buffer.
+    aoPass.resolutionScale = aoSettings.resolutionScale;
+  }
+  if (denoisePass) denoisePass.radius.value = Math.max(1, aoSettings.denoise);
+};
+
+/**
+ * Everything but `enabled` is a uniform and lands on the next frame. Turning
+ * the stage on or off changes the graph; the next render sees a stale
+ * pipeline key and recompiles.
+ */
+export const setAoSettings = (patch: Partial<AoSettings>): void => {
+  aoSettings = { ...aoSettings, ...patch };
+  applyAoUniforms();
+};
+
+export const getAoSettings = (): AoSettings => aoSettings;
 
 export const setSsrSettings = (patch: Partial<SsrSettings>): void => {
   const previousDebug = ssrSettings.debug;
@@ -479,7 +603,20 @@ export const createWorld = async (targetQuery: string): Promise<THREE.Scene> => 
   // material.dithering is not implemented on the WebGPU backend, so output
   // precision is the only lever available. Tone mapping already lands in
   // [0,1], so the extended-range canvas changes precision, not brightness.
-  renderer = new WebGPURenderer({ antialias: true, outputType: THREE.HalfFloatType });
+  renderer = new WebGPURenderer({
+    antialias: true,
+    outputType: THREE.HalfFloatType,
+    // GPU frame timing, opt-in with ?gputime: a timestamp query per pass is
+    // not free. Read renderer.info.render.timestamp (and .compute.timestamp)
+    // after renderer.resolveTimestampsAsync(); it is the one frame-cost number
+    // that does not depend on rAF cadence, so it survives a hidden panel.
+    trackTimestamp: new URLSearchParams(window.location.search).has('gputime'),
+  });
+  // Shadow maps are opt-in on the renderer; without this every castShadow flag
+  // in the scene is inert. Only directional lights cast (scene-objects), so a
+  // scene without one pays nothing for it.
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // Phones report a pixel ratio of 3, and a 3× canvas with reflections is the
   // difference between 20 fps and a usable frame rate on one. Two is where the
   // eye stops telling, so that is the ceiling on a touch device; a desktop
@@ -542,6 +679,9 @@ export const createWorld = async (targetQuery: string): Promise<THREE.Scene> => 
     hasEnvironmentTexture,
     backdropFor,
     setSsrSettings,
+    getAoSettings,
+    setAoSettings,
+    ensurePostPipeline,
     setRenderScale,
     getRenderScale,
     getDrawingBufferSize,
@@ -557,7 +697,7 @@ export const createWorld = async (targetQuery: string): Promise<THREE.Scene> => 
       recenter: recenterParallax,
       setSettings: setParallaxSettings,
     },
-    _ssr: () => ({ postProcessing, ssrPass, previewTarget, previewBlit, pipelineCamera }),
+    _ssr: () => ({ postProcessing, ssrPass, aoPass, denoisePass, previewTarget, previewBlit, pipelineCamera, pipelineKey }),
   };
 
   return scene;
@@ -908,8 +1048,8 @@ export const renderPlayer = (
     setBackdropFor('camera');
   }
 
-  if (ssrSettings.enabled) {
-    if (pipelineCamera !== outputCamera) buildSsrPipeline(outputCamera);
+  if (postEnabled()) {
+    if (pipelineStale(outputCamera)) buildSsrPipeline(outputCamera);
     postProcessing!.render();
   } else {
     renderer.render(scene, outputCamera);
@@ -1118,9 +1258,9 @@ const renderPreview = (): void => {
   const previousClear = renderer.getClearColor(new THREE.Color());
   const previousAlpha = renderer.getClearAlpha();
 
-  // Reflections are resolved offscreen first, with no scissor in force.
-  if (ssrSettings.enabled) {
-    if (pipelineCamera !== outputCamera) buildSsrPipeline(outputCamera);
+  // Reflections and occlusion are resolved offscreen first, with no scissor in force.
+  if (postEnabled()) {
+    if (pipelineStale(outputCamera)) buildSsrPipeline(outputCamera);
     const target = ensurePreviewTarget(w, h);
     renderer.setScissorTest(false);
     renderer.setRenderTarget(target);
@@ -1140,7 +1280,7 @@ const renderPreview = (): void => {
   renderer.setScissor(x, y, w, h);
   renderer.setViewport(x, y, w, h);
   renderer.setClearColor(0x000000, 1);
-  if (ssrSettings.enabled && previewBlit) {
+  if (postEnabled() && previewBlit) {
     previewBlit.render(renderer);
   } else {
     renderer.render(scene, outputCamera);

@@ -125,13 +125,14 @@ export const buildParticleSystem = (activeConfig: any, options: BuildOptions): a
 
   const particleSystem = createParticleSystem(convertedConfig);
 
-  // Particles stay out of the shadow exchange on purpose. Their material drives
-  // the vertex stage through vertexNode, which the shadow pass neither runs
-  // (casting) nor can feed shadow coordinates through (receiving) — and letting
-  // them into the pass silently breaks shadows for every other object in the
-  // scene. Lighting still applies to them; only shadows are opted out.
-  particleSystem.instance.castShadow = false;
-  particleSystem.instance.receiveShadow = false;
+  // Only the MESH material is wired into the shadow pass (castShadowPositionNode
+  // and receivedShadowPositionNode in the library). The other materials drive
+  // the vertex stage through vertexNode, which the depth pass cannot run, and
+  // letting them in would draw every instance at the origin of each shadow
+  // map. Lighting applies to all of them; only shadows are gated.
+  const shadows = convertedConfig.renderer?.rendererType === 'MESH';
+  particleSystem.instance.castShadow = shadows;
+  particleSystem.instance.receiveShadow = shadows;
 
   return particleSystem;
 };

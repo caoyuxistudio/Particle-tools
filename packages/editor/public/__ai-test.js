@@ -249,6 +249,16 @@
       sameSettings ? '' : Object.keys(live).filter((k) => shot?.ssr?.[k] !== live[k]).join(',')
     );
     check('fixture ships with reflections on', live.enabled === true);
+    // Occlusion rides on the camera the same way.
+    const liveAo = window.__world.getAoSettings();
+    check('camera carries its own AO settings', !!shot?.ao, JSON.stringify(shot?.ao ?? null));
+    check('stored AO settings are complete', shot?.ao && Object.keys(shot.ao).length === Object.keys(liveAo).length, `${Object.keys(shot?.ao ?? {}).length} of ${Object.keys(liveAo).length} keys`);
+    const sameAo = shot?.ao && Object.keys(liveAo).every((k) => shot.ao[k] === liveAo[k]);
+    check(
+      'renderer uses the camera\'s AO settings',
+      sameAo,
+      sameAo ? '' : Object.keys(liveAo).filter((k) => shot?.ao?.[k] !== liveAo[k]).join(',')
+    );
 
     const frustums = window.__world.scene.children.filter((o) => o.type === 'CameraHelper');
       check('frustum helper present', frustums.length === cams.length, `${frustums.length}`);
@@ -1356,7 +1366,179 @@
     return [`present: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
   };
 
+  /**
+   * Shadows. The renderer has shadow maps on, the MESH particle material feeds
+   * the shadow pass through castShadowPositionNode / receivedShadowPositionNode,
+   * directional lights cast and point lights do not. The last two checks are
+   * the picture itself: the artwork layer is rendered from above into an
+   * offscreen target and read back with the sun's shadow.intensity at 1 and at
+   * 0. A grazing sun over the frame's walls must darken the bed; with the frame
+   * hidden, what is left is the particles shading each other, which must still
+   * darken it. Readback rows are padded to 256 bytes, so the target is 512 wide.
+   * The pane's own screenshots cannot do this: they show a stale WebGPU canvas.
+   */
+  const shadowReport = async () => {
+    const lines = [];
+    const check = (label, ok, detail = '') =>
+      lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+    const w = window.__world;
+    const T = w.THREE;
+    const r = w.renderer;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+
+    check('shadow maps are on', r.shadowMap.enabled === true, `type ${r.shadowMap.type}`);
+
+    const cfg = await fixture();
+    const objs = cfg._editorData.sceneObjects.filter((o) => o.type !== 'DIRECTIONAL_LIGHT');
+    // Only the sun lights this picture, so its shadow is what the readback measures.
+    for (const o of objs) if (o.type === 'POINT_LIGHT') o.intensity = 0;
+    const frame = objs.find((o) => o.type === 'FRAME');
+    const fx = frame?.position.x ?? 0;
+    const fy = frame?.position.y ?? 0;
+    const fz = frame?.position.z ?? 0;
+    objs.push({
+      id: 'obj-sun-probe', type: 'DIRECTIONAL_LIGHT', name: 'Sun probe', visible: true,
+      position: { x: fx + 12, y: fy + 5, z: fz }, target: { x: fx, y: fy, z: fz },
+      color: '#ffffff', intensity: 3,
+    });
+    cfg._editorData.sceneObjects = objs;
+    window.editor.load(cfg);
+    await wait(2500); // let the bed fill
+
+    const scene = w.scene;
+    const sun = scene.children.find((o) => o.isDirectionalLight);
+    const points = scene.children.filter((o) => o.isPointLight);
+    check('the sun casts, point lights do not', !!sun && sun.castShadow && points.every((p) => !p.castShadow), `${points.length} point`);
+    let particles = null;
+    scene.traverse((o) => { if (o.geometry?.isInstancedBufferGeometry) particles = o; });
+    check('mesh particles are in the shadow exchange', !!particles && particles.castShadow && particles.receiveShadow);
+    check(
+      'their material feeds the shadow pass',
+      !!particles?.material.castShadowPositionNode && !!particles?.material.receivedShadowPositionNode
+    );
+    const frameMesh = scene.children.find((o) => o.isMesh && Array.isArray(o.material));
+    check('the frame casts and receives', !!frameMesh && frameMesh.castShadow && frameMesh.receiveShadow);
+
+    // Top-down readback of the artwork layer only (a fresh camera sees layer 0).
+    const S = 512;
+    const rt = new T.RenderTarget(S, S, { depthBuffer: true });
+    const cam = new T.PerspectiveCamera(30, 1, 0.1, 100);
+    cam.up.set(0, 0, -1);
+    cam.position.set(fx, fy + 18, fz);
+    cam.lookAt(fx, fy, fz);
+    const mean = async () => {
+      const prev = r.getRenderTarget();
+      r.setRenderTarget(rt);
+      r.render(scene, cam);
+      r.setRenderTarget(prev);
+      const buf = await r.readRenderTargetPixelsAsync(rt, 0, 0, S, S);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i += 4) sum += buf[i] + buf[i + 1] + buf[i + 2];
+      return sum / (buf.length / 4) / 3;
+    };
+    let lit = 0;
+    let flat = 0;
+    let litNoFrame = 0;
+    let flatNoFrame = 0;
+    if (sun) {
+      sun.shadow.intensity = 1;
+      lit = await mean();
+      sun.shadow.intensity = 0;
+      flat = await mean();
+      if (frameMesh) {
+        frameMesh.visible = false;
+        flatNoFrame = await mean();
+        sun.shadow.intensity = 1;
+        litNoFrame = await mean();
+        frameMesh.visible = true;
+      }
+      sun.shadow.intensity = 1;
+    }
+    rt.dispose();
+    check(
+      'a grazing sun over the walls darkens the bed',
+      lit > 0 && lit < flat * 0.85,
+      `${lit.toFixed(1)} with shadows, ${flat.toFixed(1)} without`
+    );
+    check(
+      'particles shade each other',
+      litNoFrame > 0 && litNoFrame < flatNoFrame * 0.97,
+      `${litNoFrame.toFixed(1)} with, ${flatNoFrame.toFixed(1)} without, frame hidden`
+    );
+
+    const failed = lines.filter((l) => l.startsWith('FAIL')).length;
+    return [`shadow: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
+  };
+
+  /**
+   * Occlusion. Settings ride on the camera like SSR, and the pipeline composes
+   * occlusion before reflections. Measured on the picture: the post pipeline is
+   * rendered into an offscreen target and read back with the strength at the
+   * camera's value and at zero — a uniform, so nothing recompiles in between —
+   * and the occlusion view itself has to be neither blank nor black. Then off
+   * has to mean off: no pass left in the graph.
+   */
+  const aoReport = async () => {
+    const lines = [];
+    const check = (label, ok, detail = '') =>
+      lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+    const w = window.__world;
+    const T = w.THREE;
+    const r = w.renderer;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+
+    const cfg = await fixture();
+    const cam = cfg._editorData.sceneObjects.find((o) => o.type === 'CAMERA');
+    cam.ao = { ...(cam.ao ?? w.getAoSettings()), enabled: true, intensity: 0.9, radius: 0.6 };
+    window.editor.load(cfg);
+    await wait(2500);
+
+    const live = w.getAoSettings();
+    check('the camera hands its occlusion to the renderer', live.enabled === true && live.intensity === 0.9 && live.radius === 0.6, JSON.stringify(live));
+    w.ensurePostPipeline();
+    let ps = w._ssr();
+    check('the pipeline is compiled with the occlusion pass', !!ps.aoPass && !!ps.denoisePass && /ao/.test(ps.pipelineKey), ps.pipelineKey);
+    check('and still with reflections', !!ps.ssrPass && /ssr/.test(ps.pipelineKey), ps.pipelineKey);
+
+    const S = 512;
+    const rt = new T.RenderTarget(S, S, { depthBuffer: false });
+    const mean = async () => {
+      const prev = r.getRenderTarget();
+      r.setRenderTarget(rt);
+      ps.postProcessing.render();
+      r.setRenderTarget(prev);
+      const buf = await r.readRenderTargetPixelsAsync(rt, 0, 0, S, S);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i += 4) sum += buf[i] + buf[i + 1] + buf[i + 2];
+      return sum / (buf.length / 4) / 3;
+    };
+    const withAo = await mean();
+    w.setAoSettings({ intensity: 0 });
+    const without = await mean();
+    w.setAoSettings({ intensity: 0.9 });
+    check('occlusion darkens the picture', withAo > 0 && withAo < without * 0.97, `${withAo.toFixed(1)} with, ${without.toFixed(1)} without`);
+
+    w.setSsrSettings({ debug: 'ao' });
+    const map = await mean();
+    w.setSsrSettings({ debug: 'off' });
+    check('the occlusion view is a map, not a flat', map > 255 * 0.2 && map < 255 * 0.98, `mean ${map.toFixed(1)}`);
+    rt.dispose();
+
+    w.setAoSettings({ enabled: false });
+    w.ensurePostPipeline();
+    ps = w._ssr();
+    check('off leaves no pass in the graph', !ps.aoPass && !/ao/.test(ps.pipelineKey), ps.pipelineKey);
+    w.setAoSettings({ enabled: true });
+    w.ensurePostPipeline();
+    check('and on brings it back', !!w._ssr().aoPass);
+
+    const failed = lines.filter((l) => l.startsWith('FAIL')).length;
+    return [`ao: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
+  };
+
   window.__t = {
+    aoReport,
+    shadowReport,
     presentReport,
     parallaxReport,
     touchReport,
@@ -1376,5 +1558,5 @@
     cameraReport,
     errs,
   };
-  return 'harness ready: await __t.report() | __t.cameraReport() | await __t.videoReport() | await __t.gizmoReport() | await __t.load() | __t.errs';
+  return 'harness ready: await __t.report() | __t.cameraReport() | await __t.shadowReport() | await __t.aoReport() | await __t.videoReport() | await __t.gizmoReport() | await __t.load() | __t.errs';
 })();

@@ -45,6 +45,8 @@ import {
   getSsrSettings,
   setRenderScale,
   setSsrSettings,
+  getAoSettings,
+  setAoSettings,
   getRendererDomElement,
 } from './js/three-particles-editor/world';
 import {
@@ -607,6 +609,8 @@ const installPresentationControls = (): void => {
     getDrawingBufferSize,
     getSsr: getSsrSettings,
     setSsr: setSsrSettings,
+    getAo: getAoSettings,
+    setAo: setAoSettings,
     getParallax: () => getParallaxSettings().enabled,
     setParallax: (enabled) => setParallaxSettings({ ...getParallaxSettings(), enabled }),
     getParticles: () => ({
