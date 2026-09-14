@@ -60,7 +60,9 @@ export function createTSLParticleMaterial(
   lit = false,
   emissive = 0,
   roughness?: number,
-  metalness?: number
+  metalness?: number,
+  velocityStretch = 0,
+  meshExtentZ = 1
 ): THREE.Material {
   switch (rendererType) {
     case RendererType.INSTANCED:
@@ -78,7 +80,9 @@ export function createTSLParticleMaterial(
         lit,
         emissive,
         roughness,
-        metalness
+        metalness,
+        velocityStretch,
+        meshExtentZ
       );
     case RendererType.POINTS:
     default:
@@ -165,7 +169,11 @@ export function createComputePipeline(
       !!normalizedConfig.particleColorInstance?.useLuminanceForNoise,
     trackTravelDirection:
       normalizedConfig.renderer.rendererType === RendererType.MESH &&
-      !!normalizedConfig.renderer.mesh?.alignToVelocity,
+      (!!normalizedConfig.renderer.mesh?.alignToVelocity ||
+        (normalizedConfig.renderer.mesh?.velocityStretch ?? 0) > 0),
+    trackTravelSpeed:
+      normalizedConfig.renderer.rendererType === RendererType.MESH &&
+      (normalizedConfig.renderer.mesh?.velocityStretch ?? 0) > 0,
     forceFields: forceFieldCount > 0,
     collisionPlanes: collisionPlaneCount > 0,
     touchWake,

@@ -133,7 +133,9 @@ describe('GPU compute integration', () => {
       expect.any(Object),
       expect.any(Number),
       expect.any(Number),
-      expect.any(Number)
+      expect.any(Number),
+      // touch wake
+      expect.any(Boolean)
     );
     ps.dispose();
   });

@@ -621,6 +621,20 @@ export type MeshConfig = {
    */
   alignToVelocity?: boolean;
   /**
+   * Stretches each particle along its direction of travel by the distance it
+   * covers in this many seconds — a motion-blur streak whose length follows
+   * the particle's own speed. The speed is measured from the actual
+   * displacement each frame (curl noise, fingers, forces, all of it), not
+   * from the velocity buffer, which a noise-driven particle never touches.
+   * The front of the mesh stays on the particle; the extra length trails
+   * behind it. 0 disables. Implies `alignToVelocity`.
+   *
+   * GPU (WebGPU compute) backend only. While on, the per-particle
+   * `startFrame` slot carries the speed instead, so texture sheet animation
+   * on a stretched mesh particle is off.
+   */
+  velocityStretch?: number;
+  /**
    * Shade the particles with the scene's real lights, environment and light
    * probes instead of the built-in fake headlight. Off by default so existing
    * configs keep their look — a lit particle in a scene with no lights is

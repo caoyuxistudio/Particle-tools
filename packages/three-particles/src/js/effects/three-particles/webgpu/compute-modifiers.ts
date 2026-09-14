@@ -36,6 +36,7 @@ import {
   length,
   normalize,
   min as tslMin,
+  max as tslMax,
   compute,
   type ShaderNodeObject,
   type Node,
@@ -133,6 +134,14 @@ export type ModifierFlags = {
    * spec-default limit of 8).
    */
   trackTravelDirection: boolean;
+  /**
+   * Also record how fast the particle actually moved this frame (world units
+   * per second, from the same displacement the heading comes from) into
+   * particleState.w — the startFrame slot, which the compute side never reads
+   * and the MESH renderer gives up while it stretches along the heading.
+   * Requires `trackTravelDirection`.
+   */
+  trackTravelSpeed: boolean;
   forceFields: boolean;
   collisionPlanes: boolean;
   /** Fingers brushing through the particles (see ../touch-wake.ts). */
@@ -1170,6 +1179,10 @@ export function createModifierComputeUpdate(
             theta.assign(prevTheta);
             phi.assign(prevPhi);
           });
+
+          if (flags.trackTravelSpeed) {
+            ps.w.assign(dist.div(tslMax(uDelta, float(1e-6))));
+          }
 
           sPosition.element(i).assign(vec4(pos, theta));
           sVelocity.element(i).assign(vec4(vel, phi));

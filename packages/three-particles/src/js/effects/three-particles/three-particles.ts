@@ -157,7 +157,9 @@ type TSLMaterialFactory = {
     lit?: boolean,
     emissive?: number,
     roughness?: number,
-    metalness?: number
+    metalness?: number,
+    velocityStretch?: number,
+    meshExtentZ?: number
   ) => THREE.Material;
   createTSLTrailMaterial: (
     trailUniforms: Record<string, { value: unknown }>,
@@ -1282,6 +1284,21 @@ export const createParticleSystem = (
     depthWrite: renderer.depthWrite,
   };
 
+  // The mesh's own depth along its local +Z: the velocity stretch adds a
+  // streak in world units, so the shader has to know how long the shape
+  // already is before it can lengthen it by exactly that much.
+  let meshExtentZ = 1;
+  if (useMesh && renderer.mesh?.geometry) {
+    const meshGeometry = renderer.mesh.geometry;
+    if (!meshGeometry.boundingBox) meshGeometry.computeBoundingBox();
+    if (meshGeometry.boundingBox) {
+      meshExtentZ = Math.max(
+        meshGeometry.boundingBox.max.z - meshGeometry.boundingBox.min.z,
+        1e-4
+      );
+    }
+  }
+
   const material: THREE.Material = useTSL
     ? _tslMaterialFactory!.createTSLParticleMaterial(
         renderer.rendererType ?? RendererType.POINTS,
@@ -1292,7 +1309,9 @@ export const createParticleSystem = (
         !!renderer.mesh?.lit,
         renderer.mesh?.emissive ?? 0,
         renderer.mesh?.roughness,
-        renderer.mesh?.metalness
+        renderer.mesh?.metalness,
+        renderer.mesh?.velocityStretch ?? 0,
+        meshExtentZ
       )
     : new THREE.ShaderMaterial({
         uniforms: sharedUniforms,
@@ -1417,7 +1436,11 @@ export const createParticleSystem = (
     geometry.setAttribute(attr('startValues'), gpuBuf.startValues);
     // Velocity is only needed by the vertex stage for velocity-aligned meshes;
     // binding it unconditionally would spend a vertex buffer slot for nothing.
-    if (useMesh && renderer.mesh?.alignToVelocity) {
+    if (
+      useMesh &&
+      (renderer.mesh?.alignToVelocity ||
+        (renderer.mesh?.velocityStretch ?? 0) > 0)
+    ) {
       geometry.setAttribute(attr('velocity'), gpuBuf.velocity);
     }
   } else {

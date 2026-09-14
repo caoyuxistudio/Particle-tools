@@ -30,6 +30,7 @@ import {
   Discard,
   If,
   max,
+  uniform,
   abs,
   cross,
   dot,
@@ -97,11 +98,20 @@ export function createMeshParticleTSLMaterial(
   lit = false,
   emissive = 0,
   roughness = 0.65,
-  metalness = 0
+  metalness = 0,
+  velocityStretch = 0,
+  meshExtentZ = 1
 ): MeshBasicNodeMaterial | MeshStandardNodeMaterial {
   const u = createParticleUniforms(sharedUniforms);
-  // Velocity alignment needs the compute backend's packed travel direction.
-  const useVelocityAlign = alignToVelocity && gpuCompute;
+  // The motion-blur streak needs the compute backend's travel speed.
+  const useStretch = velocityStretch > 0 && gpuCompute;
+  // Velocity alignment needs the compute backend's packed travel direction;
+  // a streak has to point along the heading, so it brings alignment with it.
+  const useVelocityAlign = (alignToVelocity || useStretch) && gpuCompute;
+  /** Seconds of travel the streak spans. */
+  const uVelocityStretch = uniform(float(velocityStretch));
+  /** The mesh's own depth along local +Z, before any scale. */
+  const uMeshExtentZ = uniform(float(Math.max(meshExtentZ, 1e-4)));
 
   // ── Per-instance attributes ────────────────────────────────────────────────
 
@@ -154,7 +164,8 @@ export function createMeshParticleTSLMaterial(
     if (gpuCompute) {
       vLifetime.assign(aParticleState!.x);
       vStartLifetime.assign(aStartValues!.x);
-      vStartFrame.assign(aParticleState!.w);
+      // While stretching, particleState.w carries the travel speed instead.
+      vStartFrame.assign(useStretch ? float(0) : aParticleState!.w);
       vRotation.assign(aParticleState!.z);
     } else {
       vLifetime.assign(aLifetime!);
@@ -176,7 +187,26 @@ export function createMeshParticleTSLMaterial(
     // 0. Per-axis scale in the mesh's local frame, BEFORE the rotation, so a
     // non-uniform scale stretches the shape itself rather than shearing it
     // along world axes as the particle spins.
-    const localPos = positionLocal.mul(u.uMeshScale);
+    const localPos = positionLocal.mul(u.uMeshScale).toVar();
+
+    // The streak: the distance the particle covered in `velocityStretch`
+    // seconds, in world units. The mesh is lengthened along its local +Z (the
+    // heading, once aligned) by that much and, further down, slid back by
+    // half of it — so its front stays on the particle and the whole extra
+    // length trails behind. Scaling happens here in local units, which the
+    // per-particle size multiplies later, hence the divide by the size.
+    let streak: ShaderNodeObject<Node> | null = null;
+    let stretchFactor: ShaderNodeObject<Node> | null = null;
+    if (useStretch) {
+      streak = aParticleState!.w.mul(uVelocityStretch).toVar();
+      const extentWorld = uMeshExtentZ
+        .mul(u.uMeshScale.z)
+        .mul(aParticleState!.y);
+      stretchFactor = float(1.0)
+        .add(streak.div(max(extentWorld, float(1e-4))))
+        .toVar();
+      localPos.z.assign(localPos.z.mul(stretchFactor));
+    }
 
     // Velocity alignment builds an orthonormal frame from the direction of
     // travel: local +Z maps to the heading, +X/+Y span the perpendicular
@@ -236,12 +266,18 @@ export function createMeshParticleTSLMaterial(
 
     // 3. Translate to particle world position
     // Use .xyz to handle vec3→vec4 padding by WebGPU storage buffer alignment
-    const worldPos = scaledPos.add(aInstanceOffset.xyz);
+    const worldPos = scaledPos.add(aInstanceOffset.xyz).toVar();
+    if (useStretch) {
+      worldPos.assign(worldPos.sub(basis!.forward.mul(streak!.mul(0.5))));
+    }
 
     // Transform normal: normals scale by the inverse-transpose, which for a
     // diagonal scale is a component-wise divide, then rotate into view space.
+    const normalScale = stretchFactor
+      ? u.uMeshScale.mul(vec3(1.0, 1.0, stretchFactor))
+      : u.uMeshScale;
     const scaledNormal = normalLocal
-      .div(max(u.uMeshScale, vec3(0.0001)))
+      .div(max(normalScale, vec3(0.0001)))
       .normalize();
     const rotatedNormal = basis
       ? basis.right
@@ -419,6 +455,10 @@ export function createMeshParticleTSLMaterial(
       );
     }
   }
+
+  // Readable by whoever holds the material, so a harness can tell a stretched
+  // build from a plain one without decompiling the shader.
+  material.userData.velocityStretch = useStretch ? velocityStretch : 0;
 
   return material;
 }

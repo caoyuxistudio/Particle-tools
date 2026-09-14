@@ -28,6 +28,7 @@ are merged in and never read, so the piece silently renders wrong.
 | Image brightness drives curl strength (signed, so dark or bright can be the moving half) | `particleColorInstance.useLuminanceForNoise`, `luminanceNoiseAmount` |
 | Per-axis mesh scale | `renderer.mesh.scale` |
 | Mesh oriented along its direction of travel | `renderer.mesh.alignToVelocity` |
+| Mesh stretched along its direction of travel by the distance covered in N seconds (a motion-blur streak, speed taken from the actual displacement so noise-driven motion counts) | `renderer.mesh.velocityStretch` |
 
 All of the above run on the **WebGPU compute backend**. On the CPU backend they
 are ignored or fall back to the stock behaviour.
