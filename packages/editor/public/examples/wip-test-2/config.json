@@ -370,7 +370,7 @@
     "metadata": {
       "name": "WIP-Test-2",
       "createdAt": 1787000000000,
-      "modifiedAt": 1789374790631,
+      "modifiedAt": 1789376747824,
       "editorVersion": "2.10.0"
     },
     "embeddedVideos": {
@@ -486,7 +486,15 @@
           "z": 12.6
         },
         "color": "#ffffff",
-        "intensity": 2
+        "intensity": 2,
+        "shadow": {
+          "enabled": true,
+          "mapSize": 2048,
+          "radius": 1,
+          "bias": -0.0005,
+          "normalBias": 0.02,
+          "intensity": 1
+        }
       }
     ]
   },

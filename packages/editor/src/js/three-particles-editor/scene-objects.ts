@@ -54,6 +54,35 @@ const parametric = (type?: SceneObjectType): boolean => type === 'FRAME';
 
 export type Vec3 = { x: number; y: number; z: number };
 
+/**
+ * A directional light's shadow, in the config next to its colour and power.
+ * Every field but `enabled` is a uniform on three's side and lands on the next
+ * frame; `enabled` toggles castShadow, which the lights node keys its shader
+ * cache on, so materials recompile on their own.
+ */
+export type LightShadowSettings = {
+  enabled: boolean;
+  /** Shadow map side, in texels. The same radius reads sharper on a bigger map. */
+  mapSize: number;
+  /** Filter radius, in shadow-map texels: the softness. */
+  radius: number;
+  /** Depth bias against self-shadowing; small and negative works here. */
+  bias: number;
+  /** Bias along the surface normal; does most of the work against the stepped moiré. */
+  normalBias: number;
+  /** How dark the shadow is, 0..1. */
+  intensity: number;
+};
+
+export const defaultLightShadowSettings = (): LightShadowSettings => ({
+  enabled: true,
+  mapSize: 2048,
+  radius: 1,
+  bias: -0.0005,
+  normalBias: 0.02,
+  intensity: 1,
+});
+
 export type SceneObject = {
   id: string;
   type: SceneObjectType;
@@ -78,6 +107,11 @@ export type SceneObject = {
    * meaningless, which is why the gizmo offers no rotate mode for it.
    */
   target?: Vec3;
+  /**
+   * DIRECTIONAL_LIGHT only: the shadow it casts. The sun is the shadow light;
+   * a point light never casts here (six faces of the particle bed per frame).
+   */
+  shadow?: LightShadowSettings;
   /** Point light only; 0 means no cutoff. */
   distance?: number;
   decay?: number;
@@ -350,6 +384,7 @@ const DEFAULTS: Record<SceneObjectType, () => Omit<SceneObject, 'id' | 'name'>> 
     target: { x: 0, y: 0, z: 0 },
     color: '#ffffff',
     intensity: 2,
+    shadow: defaultLightShadowSettings(),
   }),
   LIGHT_PROBE: () => ({
     type: 'LIGHT_PROBE',
@@ -711,15 +746,13 @@ const buildThreeObject = (obj: SceneObject): THREE.Object3D => {
     }
     case 'DIRECTIONAL_LIGHT': {
       const light = new THREE.DirectionalLight(0xffffff, 1);
+      // castShadow, map size, radius and the two biases come from the object's
+      // `shadow` block in applyToThree. Without a bias, a lit surface samples
+      // its own depth and self-shadows in a regular moire — the stepped look
+      // on flat faces; normalBias does the heavy lifting there. What stays
+      // fixed is the shadow camera's box, sized for the scenes this editor
+      // frames.
       light.castShadow = true;
-      light.shadow.mapSize.set(2048, 2048);
-      // Without a bias, a lit surface samples its own depth and self-shadows
-      // in a regular moire — the stepped/terraced look on flat faces. Point
-      // lights here don't cast shadows, which is why only the sun showed it.
-      // normalBias does the heavy lifting; the small depth bias cleans up
-      // surfaces that face the light almost edge-on.
-      light.shadow.normalBias = 0.02;
-      light.shadow.bias = -0.0005;
       light.shadow.camera.left = -14;
       light.shadow.camera.right = 14;
       light.shadow.camera.top = 14;
@@ -838,6 +871,15 @@ const applyToThree = (obj: SceneObject): void => {
     const t = obj.target ?? { x: 0, y: 0, z: 0 };
     light.target.position.set(t.x, t.y, t.z);
     light.target.updateMatrixWorld();
+    // Lights saved before the block existed get the defaults, which are the
+    // values that used to be hard-coded here.
+    const shadow = { ...defaultLightShadowSettings(), ...(obj.shadow ?? {}) };
+    light.castShadow = shadow.enabled;
+    light.shadow.mapSize.set(shadow.mapSize, shadow.mapSize);
+    light.shadow.radius = shadow.radius;
+    light.shadow.bias = shadow.bias;
+    light.shadow.normalBias = shadow.normalBias;
+    light.shadow.intensity = shadow.intensity;
   } else if (obj.type === 'LIGHT_PROBE') {
     const probe = three as THREE.LightProbe;
     probe.intensity = obj.visible ? (obj.intensity ?? 1) : 0;

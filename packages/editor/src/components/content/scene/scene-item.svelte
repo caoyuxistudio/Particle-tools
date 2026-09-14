@@ -1,5 +1,9 @@
 <script>
-  import { CORNER_PRESETS, squareCorners } from '../../../js/three-particles-editor/scene-objects';
+  import {
+    CORNER_PRESETS,
+    squareCorners,
+    defaultLightShadowSettings,
+  } from '../../../js/three-particles-editor/scene-objects';
   import { Icon } from '@smui/common';
   import * as THREE from 'three';
   import {
@@ -38,6 +42,8 @@
    */
   const setSsr = (patch) => set({ ssr: { ...defaultSsrSettings(), ...(obj.ssr ?? {}), ...patch } });
   const setAo = (patch) => set({ ao: { ...defaultAoSettings(), ...(obj.ao ?? {}), ...patch } });
+  const setShadow = (patch) =>
+    set({ shadow: { ...defaultLightShadowSettings(), ...(obj.shadow ?? {}), ...patch } });
   const setParallax = (patch) =>
     set({ parallax: { ...defaultParallaxSettings(), ...(obj.parallax ?? {}), ...patch } });
 
@@ -915,6 +921,53 @@
           <div class="hint">
             A directional light points from its position to this target; rotating it has no effect.
           </div>
+
+          <div class="group-label">shadow</div>
+          <label class="row check">
+            <span>casts</span>
+            <input
+              type="checkbox"
+              checked={obj.shadow?.enabled ?? true}
+              onchange={(e) => setShadow({ enabled: e.target.checked })}
+            />
+          </label>
+          {#if obj.shadow?.enabled ?? true}
+            {#each [{ key: 'radius', label: 'softness', min: 0, max: 8, step: 0.1, fallback: 1 }, { key: 'intensity', label: 'darkness', min: 0, max: 1, step: 0.01, fallback: 1 }, { key: 'normalBias', label: 'normal bias', min: 0, max: 0.2, step: 0.005, fallback: 0.02 }, { key: 'bias', label: 'depth bias', min: -0.005, max: 0.005, step: 0.0001, fallback: -0.0005 }] as p}
+              <label class="row">
+                <span>{p.label}</span>
+                <input
+                  type="range"
+                  min={p.min}
+                  max={p.max}
+                  step={p.step}
+                  value={obj.shadow?.[p.key] ?? p.fallback}
+                  oninput={(e) => setShadow({ [p.key]: +e.target.value })}
+                />
+                <input
+                  type="number"
+                  step={p.step}
+                  value={obj.shadow?.[p.key] ?? p.fallback}
+                  oninput={(e) => setShadow({ [p.key]: +e.target.value })}
+                />
+              </label>
+            {/each}
+            <label class="row">
+              <span>map size</span>
+              <select
+                value={obj.shadow?.mapSize ?? 2048}
+                onchange={(e) => setShadow({ mapSize: +e.target.value })}
+              >
+                {#each [512, 1024, 2048, 4096] as n}
+                  <option value={n}>{n}</option>
+                {/each}
+              </select>
+            </label>
+            <p class="hint">
+              Softness is the filter radius in shadow-map texels, so the same value reads sharper on a
+              bigger map. If flat faces show a stepped moiré, raise the normal bias before touching the
+              depth bias. Only directional lights cast; particles take part only as MESH.
+            </p>
+          {/if}
         {/if}
         {#if obj.type === 'POINT_LIGHT'}
           <label class="row">

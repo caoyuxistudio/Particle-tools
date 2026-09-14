@@ -74,7 +74,7 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 - **输出相机 + 右上角预览窗**。拖左下角红色把手改大小，最大可占屏幕 70%。尺寸会记住。
 - **后期属于相机**，不属于编辑器会话。SSR 的开关和参数存在 CAMERA 物体上，跟着 config 走。一个场景可以放多个相机各带各的设置，隐藏其余的就是切换机位。
 
-**阴影**（2026-09-14）。渲染器的 shadowMap 现在是开的（`world.ts`，PCFSoft）——之前画框和平行光上的 castShadow 一直是死设置，场景里从来没有过阴影。只有 `DIRECTIONAL_LIGHT` 投影（2048 阴影图，bias 在 scene-objects 里），点光不投（六个面的代价）。**粒子进了 shadow pass**：MESH 材质通过 `castShadowPositionNode`（深度 pass 拿一个局部坐标、套阴影相机自己的 MVP，不跑 vertexNode）和 `receivedShadowPositionNode`（片元查阴影图用的世界坐标；内置的 positionWorld 不认识每实例变换）接进去，`particle-factory` 只对 MESH 打开 cast / receive，其他材质进 pass 会把全部实例画在原点。顶点数学抽成 `instanceVertex()` 给两条路共用；阴影那条路也要给 varyings 赋值，否则深度材质评估 colorNode 的 alpha 时 vColor 是 0、全部 discard、一个影子都没有；死粒子在那条路里推到 1e6 外面（positionNode 没有负 w 可用）。效果是三向的：画框边框压在粒子上、粒子落到内壁和底上、粒子之间。用法：Scene 面板加一盏 Directional Light 就有了，随 config 走。WIP-Test-2 已经换成一盏平行光（位置 4 / 19.2 / 4，瞄准 1.9 / −2.8 / 12.6，强度 2，仰角约 68°），原来的点光删了；这是 2026-09-14 在编辑器里调好后按同一套流程写回 config 的。防频闪的旋钮在灯上：`shadow.radius`、阴影图分辨率、`VSMShadowMap`（r182 的 WebGPU 支持，时间上最稳，密集云里会漏光）。掠射角要注意画框墙深 4.08：太阳仰角低于 45° 时一面墙的影子就盖过 4 宽的开口，框内只剩漏光。台式机上 200k 粒子多一遍深度 pass 的开销没量出可信数字（见下面「坑」），手机端等 player 那一轮再说。
+**阴影**（2026-09-14）。渲染器的 shadowMap 现在是开的（`world.ts`，PCFSoft）——之前画框和平行光上的 castShadow 一直是死设置，场景里从来没有过阴影。只有 `DIRECTIONAL_LIGHT` 投影，点光不投（六个面的代价）。投影的参数在**灯物体的 `shadow` 块**里随 config 走：`enabled`、`mapSize`、`radius`（软硬，单位是阴影图的纹素）、`bias`、`normalBias`、`intensity`（暗度）；除 enabled 外全是 three 侧的 uniform，拖了即生效，enabled 切的是 castShadow，LightsNode 的缓存键含它，材质自己重编译。面板在灯的 aims at 下面那组「shadow」。旧 config 没这个块就按默认补，默认值就是原来写死的那组。**粒子进了 shadow pass**：MESH 材质通过 `castShadowPositionNode`（深度 pass 拿一个局部坐标、套阴影相机自己的 MVP，不跑 vertexNode）和 `receivedShadowPositionNode`（片元查阴影图用的世界坐标；内置的 positionWorld 不认识每实例变换）接进去，`particle-factory` 只对 MESH 打开 cast / receive，其他材质进 pass 会把全部实例画在原点。顶点数学抽成 `instanceVertex()` 给两条路共用；阴影那条路也要给 varyings 赋值，否则深度材质评估 colorNode 的 alpha 时 vColor 是 0、全部 discard、一个影子都没有；死粒子在那条路里推到 1e6 外面（positionNode 没有负 w 可用）。效果是三向的：画框边框压在粒子上、粒子落到内壁和底上、粒子之间。用法：Scene 面板加一盏 Directional Light 就有了，随 config 走。WIP-Test-2 已经换成一盏平行光（位置 4 / 19.2 / 4，瞄准 1.9 / −2.8 / 12.6，强度 2，仰角约 68°），原来的点光删了；这是 2026-09-14 在编辑器里调好后按同一套流程写回 config 的。防频闪的旋钮：面板上的 softness（`shadow.radius`）和 map size；`VSMShadowMap` 还是 world.ts 里的一行代码开关（r182 的 WebGPU 支持，时间上最稳，密集云里会漏光），没进 config。掠射角要注意画框墙深 4.08：太阳仰角低于 45° 时一面墙的影子就盖过 4 宽的开口，框内只剩漏光。台式机上 200k 粒子多一遍深度 pass 的开销面板里量不出来（见下面「坑」），作者自己用 `?gputime` 看，不记账；手机端等 player 那一轮再说。
 
 **SSAO**（2026-09-14，`world.ts`，参数在 CAMERA 物体的 `ao` 里随 config 走，和 SSR 并排）。用的是 three 附带的 `GTAONode` 加 `DenoiseNode`，吃的是 SSR 那个 MRT 里现成的深度和法线，**不加 scene pass**。合成顺序固定：先算遮蔽、把它乘进 beauty（整张乘，直接光也压，这是 contact shade 的要求；three 自己的 `builtinAOContext` 只压间接光，一盏太阳的场景里等于没有，而且要多一遍 prepass），落成纹理（SSR 要对颜色输入调 `sample()`，算出来的节点没有），SSR 追踪的就是这张已经带遮蔽的图，反射项再乘一次接收面的遮蔽后 `blendColor` 上去。管线由 `pipelineKey`（`ssr|ao`）决定形状，开关任一项都会在下一帧重建；其余参数全是 uniform，拖滑块不重编译。**不做时间滤波**：GTAO 的噪声图是固定的 magic square，帧与帧之间一样，靠 denoise 做空间去噪；TRAA 那条路要 velocity，compute 驱动的粒子没有上一帧位置，会拖影。默认：强度 0.7、半径 0.3（世界单位，颗粒尺度；大半径在这个场景里反而更淡，horizons 饱和、腔体比半径深）、8 采样、thickness 0.5、对比 1.5、半分辨率、denoise 4。view 菜单加了 `Occlusion only`，调参先看这张图。WIP-Test-2 开着，WIP-Test 关着但带完整的块（harness 查相机上的块是否完整）。HUD 有 `AO` 开关和一行报表。`aoReport` 把后期管线渲进离屏 RT 读回，比较强度 0.9 和 0 的均值、看遮蔽图不是一片白也不是一片黑、关掉后图里没有那个 pass。
 
@@ -156,9 +156,9 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 ### 当前状态
 
 - 测试场景是内置 example **WIP-Test**（`packages/editor/public/examples/wip-test/`），存在磁盘上，清空 localStorage 也在。它引用的是那张山水画；73MB 的那个测试视频进不了仓库
-- **WIP-Test-2** 是作品本身：画框 + 一盏投影的平行光 + 俯视输出相机（iPhone 17 Pro Max 画幅、SSR 开）+ 视频 color source。参数是 2026-09-11 在手机上调好后用 COPY 拷出的 JSON 直接写进去的（以后也这么更新：贴 JSON，不用截图），测试用的红球已经删掉。**编辑器一启动就直接加载它**（`DEFAULT_EXAMPLE`，在 `src/examples-config.js`；boot 一开始就 fetch，场景就绪后走和点 Examples 一样的 `window.editor.load`；fetch 失败就留在默认发射器，HUD 的 `boot:` 一行会写 `default … failed`）。代价是**刷新即回到示例**：面板里没导出的改动不会保留——粒子参数本来就不跨刷新，场景以前会留，现在也不留了；要保留就 Save 或者抄回 example。视频是 `public/assets/videos/wechat-20240829.mp4`（1000²、53s、1.6Mbps、10.6MB，随站点部署），config 用 **URL** 引用它（`_editorData.embeddedVideos`），所以任何能打开站点的设备都能播，手机上也是从 Examples 一点就开。这是「资产走 URL、config 走仓库」这条路的第一个样品
+- **WIP-Test-2** 是作品本身：画框 + 一盏投影的平行光（带 `shadow` 块）+ 俯视输出相机（iPhone 17 Pro Max 画幅、SSR 和 SSAO 都开）+ 视频 color source。它的 `preview.webp` 还是换灯前的画面，刷新确认过不是 bug，维持现状。参数是 2026-09-11 在手机上调好后用 COPY 拷出的 JSON 直接写进去的（以后也这么更新：贴 JSON，不用截图），测试用的红球已经删掉。**编辑器一启动就直接加载它**（`DEFAULT_EXAMPLE`，在 `src/examples-config.js`；boot 一开始就 fetch，场景就绪后走和点 Examples 一样的 `window.editor.load`；fetch 失败就留在默认发射器，HUD 的 `boot:` 一行会写 `default … failed`）。代价是**刷新即回到示例**：面板里没导出的改动不会保留——粒子参数本来就不跨刷新，场景以前会留，现在也不留了；要保留就 Save 或者抄回 example。视频是 `public/assets/videos/wechat-20240829.mp4`（1000²、53s、1.6Mbps、10.6MB，随站点部署），config 用 **URL** 引用它（`_editorData.embeddedVideos`），所以任何能打开站点的设备都能播，手机上也是从 Examples 一点就开。这是「资产走 URL、config 走仓库」这条路的第一个样品
 - **做一个带视频的 example 的步骤**：把视频放进 `public/assets/videos/`；Textures 面板 **Add Video by URL** 填 `./assets/videos/<文件>`（相对地址，本地和 Pages 都能解析），Use；调好后 Copy，把 JSON 存成 `public/examples/<slug>/config.json`（slug 是名字小写、非字母数字换成连字符），配一张 `preview.webp`，在 `src/examples-config.js` 里加名字。本地上传（Add Video）的视频只在本机浏览器里，带不进 config
-- 控制台 harness `public/__ai-test.js`，当前基线 **255/255**（含 `aoReport` 7、`shadowReport` 7、`report` 19、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 33、`frameReport` 24）
+- 控制台 harness `public/__ai-test.js`，当前基线 **258/258**（含 `aoReport` 7、`shadowReport` 10、`report` 19、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 33、`frameReport` 24）
 
 ---
 
@@ -208,7 +208,7 @@ await __t.presentReport()   // 演示模式：进、量、出
 await __t.parallaxReport()  // 视差：平面不动、更深的动、来源、上限、翻转
 await __t.touchReport()     // 手指尾迹：屏幕→发射面、半径按视宽、样本进出
 await __t.standaloneReport() // 独立 player：iframe 里真起一个，贴 COPY 的字符串，逐字段比对，零存储
-await __t.shadowReport()    // 阴影：渲染器开关、粒子的两个钩子、太阳投 / 点光不投、离屏读回的开关对照
+await __t.shadowReport()    // 阴影：渲染器开关、粒子的两个钩子、太阳投 / 点光不投、灯上的 shadow 块、离屏读回的开关对照
 await __t.aoReport()        // SSAO：相机上的块到渲染器、管线形状、读回的强度对照、遮蔽图、关掉即无
 ```
 
@@ -285,7 +285,8 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 - 走 three 自己的阴影图：打开 shadowMap，MESH 粒子材质接 `castShadowPositionNode` / `receivedShadowPositionNode`，平行光投影、点光不投。`shadowReport` 用离屏读回验证开关差异。WIP-Test-2 的点光换成了平行光（example 的 preview.webp 没有重出）。
 - `?gputime` 打开 GPU 时间戳；面板截图对 WebGPU 画布陈旧这条坑记进「坑」。
 - SSAO 挂在相机上（`ao` 块），GTAO + denoise，复用 SSR 的 MRT，先遮蔽后反射；`aoReport` 7 条。
-- harness 基线 255/255。
+- 灯的阴影参数进了 config（平行光的 `shadow` 块），面板有对应一组；`shadowReport` 加到 10 条。阴影 / AO 的 GPU 开销由作者自己用 `?gputime` 看；粒子只有 MESH 收发阴影，接受；WIP-Test-2 的缩略图维持现状。
+- harness 基线 258/258。
 
 ### 2026-09-13 · Player 独立成放映端
 
@@ -300,8 +301,7 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 
 - 新增的功能代码基本没有单元测试，提交时绕过了覆盖率门禁（浏览器 harness 补了一部分，但不是一回事）
 - `world.ts` 有 `window.__world`、`player.ts` 有 `window.__player`、`three-particles-editor.ts` 有 `window.__playerLink`（挂起规则的焦点输入，harness 没法真的让页面失焦）、`window.__videoTextures`（绕过文件对话框）和 `window.__perfHud`，加上 `window.__gyroHud`、`window.__touch`，七个调试出口，harness 依赖它们，正式发布前要处理
-- 粒子的阴影只接了 MESH 材质；POINTS / INSTANCED（billboard）没接，billboard 的 vertexNode 同样不进 shadow pass，进了会把全部实例画在原点
-- 阴影多出的那遍深度 pass 在台式机上的开销没有可信数字：面板里量不了，要在自己的浏览器里用 `?gputime` 读
+- 粒子的阴影只接了 MESH 材质；POINTS / INSTANCED（billboard）没接，billboard 的 vertexNode 同样不进 shadow pass，进了会把全部实例画在原点。已知、接受，作品用的是 MESH
 - 超过 4MB 的全景图存不进 localStorage，当前会话可用但刷新即失
 - 只有发射器的内置运动（`simulation.ts`）在两个窗口间对了相位；粒子本身各自独立模拟，永远不会逐帧一致
 - 视频在两个窗口里各自播放，相位不对齐（跟粒子一样）；要对齐得把 `currentTime` 塞进快照，还没做

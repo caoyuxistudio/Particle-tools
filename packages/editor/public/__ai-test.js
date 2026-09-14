@@ -1396,11 +1396,13 @@
     const fx = frame?.position.x ?? 0;
     const fy = frame?.position.y ?? 0;
     const fz = frame?.position.z ?? 0;
-    objs.push({
+    const probeShadow = { enabled: true, mapSize: 1024, radius: 2, bias: -0.0005, normalBias: 0.02, intensity: 1 };
+    const probe = {
       id: 'obj-sun-probe', type: 'DIRECTIONAL_LIGHT', name: 'Sun probe', visible: true,
       position: { x: fx + 12, y: fy + 5, z: fz }, target: { x: fx, y: fy, z: fz },
-      color: '#ffffff', intensity: 3,
-    });
+      color: '#ffffff', intensity: 3, shadow: probeShadow,
+    };
+    objs.push(probe);
     cfg._editorData.sceneObjects = objs;
     window.editor.load(cfg);
     await wait(2500); // let the bed fill
@@ -1409,6 +1411,14 @@
     const sun = scene.children.find((o) => o.isDirectionalLight);
     const points = scene.children.filter((o) => o.isPointLight);
     check('the sun casts, point lights do not', !!sun && sun.castShadow && points.every((p) => !p.castShadow), `${points.length} point`);
+    // The shadow's own settings ride on the light in the config.
+    const storedSun = storedScene().find((o) => o.type === 'DIRECTIONAL_LIGHT');
+    check('the light carries its shadow settings', storedSun?.shadow && Object.keys(storedSun.shadow).length === Object.keys(probeShadow).length, `${Object.keys(storedSun?.shadow ?? {}).length} of ${Object.keys(probeShadow).length} keys`);
+    check(
+      'and the renderer uses them',
+      !!sun && sun.shadow.mapSize.x === 1024 && Math.abs(sun.shadow.radius - 2) < 1e-9 && Math.abs(sun.shadow.normalBias - 0.02) < 1e-9,
+      sun ? `map ${sun.shadow.mapSize.x}, radius ${sun.shadow.radius}, normalBias ${sun.shadow.normalBias}` : 'no sun'
+    );
     let particles = null;
     scene.traverse((o) => { if (o.geometry?.isInstancedBufferGeometry) particles = o; });
     check('mesh particles are in the shadow exchange', !!particles && particles.castShadow && particles.receiveShadow);
@@ -1465,6 +1475,13 @@
       litNoFrame > 0 && litNoFrame < flatNoFrame * 0.97,
       `${litNoFrame.toFixed(1)} with, ${flatNoFrame.toFixed(1)} without, frame hidden`
     );
+
+    // Off in the config means the light stops casting, not a shadow at zero.
+    probe.shadow = { ...probeShadow, enabled: false };
+    window.editor.load(cfg);
+    await wait(1200);
+    const sunOff = w.scene.children.find((o) => o.isDirectionalLight);
+    check('shadow off in the config stops the sun casting', !!sunOff && sunOff.castShadow === false);
 
     const failed = lines.filter((l) => l.startsWith('FAIL')).length;
     return [`shadow: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
