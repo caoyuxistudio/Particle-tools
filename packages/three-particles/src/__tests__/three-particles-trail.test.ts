@@ -73,6 +73,105 @@ const countActiveParticles = (ps: ParticleSystem): number => {
 };
 
 describe('Trail / Ribbon Renderer (RendererType.TRAIL)', () => {
+  describe('the ribbon follows the particle', () => {
+    const headOf = (ps: ParticleSystem, length: number) => {
+      const mesh = getTrailMesh(ps)!;
+      const g = mesh.geometry;
+      const hw = g.getAttribute('trailHalfWidth').array as Float32Array;
+      const alpha = g.getAttribute('trailAlpha').array as Float32Array;
+      const color = g.getAttribute('trailColor').array as Float32Array;
+      const uv = g.getAttribute('trailUV').array as Float32Array;
+      const isActive = getSimulationObject(ps).geometry.attributes.isActive;
+      for (let p = 0; p < isActive.count; p++) {
+        if (!isActive.getX(p)) continue;
+        const v = p * length * 2;
+        if (Math.abs(hw[v]) < 1e-6) continue;
+        return {
+          p,
+          halfWidth: hw[v],
+          alpha: alpha[v],
+          colorA: color[v * 4 + 3],
+          roll: uv[v * 2],
+        };
+      }
+      return null;
+    };
+
+    it('is as wide as the particle is big', () => {
+      const { ps, step } = createTrailSystem({
+        startSize: 3,
+        emission: { rateOverTime: 1000 },
+        renderer: {
+          rendererType: RendererType.TRAIL,
+          trail: { length: 8, width: 1 },
+        },
+      });
+      step(16);
+      const head = headOf(ps, 8)!;
+      expect(head).not.toBeNull();
+      // width × widthOverTrail(0) = 1 × size 3, halved for each edge
+      expect(head.halfWidth).toBeCloseTo(1.5, 5);
+      ps.dispose();
+    });
+
+    it('grows with size over lifetime', () => {
+      const { ps, step } = createTrailSystem({
+        maxParticles: 1,
+        emission: { rateOverTime: 1000 },
+        startLifetime: 4,
+        sizeOverLifetime: {
+          isActive: true,
+          lifetimeCurve: {
+            type: 'BEZIER',
+            scale: 1,
+            bezierPoints: [
+              { x: 0, y: 0.1, percentage: 0 },
+              { x: 1, y: 1, percentage: 1 },
+            ],
+          },
+        },
+        renderer: {
+          rendererType: RendererType.TRAIL,
+          trail: { length: 8, width: 1 },
+        },
+      });
+      step(16);
+      const young = headOf(ps, 8)!.halfWidth;
+      for (let t = 32; t <= 2000; t += 16) step(t);
+      const older = headOf(ps, 8)!.halfWidth;
+      expect(older).toBeGreaterThan(young * 3);
+      ps.dispose();
+    });
+
+    it('carries the particle opacity once, in the colour', () => {
+      const { ps, step } = createTrailSystem({
+        startOpacity: 0.5,
+        emission: { rateOverTime: 1000 },
+      });
+      step(16);
+      const head = headOf(ps, 8)!;
+      expect(head.colorA).toBeCloseTo(0.5, 5);
+      // opacityOverTrail(0) = 1, no age fade: nothing else in the vertex alpha
+      expect(head.alpha).toBeCloseTo(1, 5);
+      ps.dispose();
+    });
+
+    it('rolls with the particle rotation', () => {
+      const { ps, step } = createTrailSystem({
+        startRotation: 1.25,
+        emission: { rateOverTime: 1000 },
+      });
+      step(16);
+      const head = headOf(ps, 8)!;
+      const rotation = getSimulationObject(
+        ps
+      ).geometry.attributes.rotation.getX(head.p);
+      expect(rotation).toBeCloseTo(1.25, 5);
+      expect(head.roll).toBeCloseTo(rotation, 5);
+      ps.dispose();
+    });
+  });
+
   describe('the slot that closes a ribbon', () => {
     /**
      * The index buffer draws a segment from the last live sample to the next
@@ -85,13 +184,15 @@ describe('Trail / Ribbon Renderer (RendererType.TRAIL)', () => {
     const closingSlotsOffTheirHeads = (ps: ParticleSystem, length: number) => {
       const mesh = getTrailMesh(ps)!;
       const pos = mesh.geometry.getAttribute('position').array as Float32Array;
-      const hw = mesh.geometry.getAttribute('trailHalfWidth').array as Float32Array;
+      const hw = mesh.geometry.getAttribute('trailHalfWidth')
+        .array as Float32Array;
       const uv = mesh.geometry.getAttribute('trailUV').array as Float32Array;
       const isActive = getSimulationObject(ps).geometry.attributes.isActive;
       // A cleared slot has no width and no position along the trail; a live
       // tail may also have no width (the width curve ends at 0) but sits at
       // t = 1, which tells the two apart.
-      const cleared = (v: number) => Math.abs(hw[v]) < 1e-6 && uv[v * 2 + 1] === 0;
+      const cleared = (v: number) =>
+        Math.abs(hw[v]) < 1e-6 && uv[v * 2 + 1] === 0;
       let violations = 0;
       let singleSample = 0;
       for (let p = 0; p < isActive.count; p++) {

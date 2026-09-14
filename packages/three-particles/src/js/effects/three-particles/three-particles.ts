@@ -3634,6 +3634,7 @@ const writeTrailVertex = (
   nz: number,
   halfWidth: number,
   t: number,
+  roll: number,
   alpha: number,
   fr: number,
   fg: number,
@@ -3660,9 +3661,11 @@ const writeTrailVertex = (
   trailNextArr[vIdx + 5] = nz;
   trailHalfWidthArr[aIdx] = halfWidth;
   trailHalfWidthArr[aIdx + 1] = halfWidth;
-  trailUVArr[uvIdx] = 0;
+  // uv.x carries the roll about the tangent (the shader derives the
+  // across-ribbon coordinate from trailOffset); uv.y is the place along it.
+  trailUVArr[uvIdx] = roll;
   trailUVArr[uvIdx + 1] = t;
-  trailUVArr[uvIdx + 2] = 1;
+  trailUVArr[uvIdx + 2] = roll;
   trailUVArr[uvIdx + 3] = t;
   trailAlphaArr[aIdx] = alpha;
   trailAlphaArr[aIdx + 1] = alpha;
@@ -3883,6 +3886,12 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
       const cg = trailScalarArr[trailBase + S_COLOR_G];
       const cb = trailScalarArr[trailBase + S_COLOR_B];
       const ca = trailScalarArr[trailBase + S_COLOR_A];
+      // The ribbon follows the particle: its width is in units of the
+      // particle's current size (startSize, sizeOverLifetime, the noise's
+      // size amount), and its rotation rolls the ribbon about its own
+      // tangent — edge-on it is a line, face-on it is full width.
+      const size = trailScalarArr[trailBase + S_SIZE];
+      const roll = trailScalarArr[trailBase + S_ROTATION];
 
       const ringOff = index * trailLength * 3;
 
@@ -4124,8 +4133,11 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
 
         const widthScale = trailWidthCurveFn(t);
         const opacityScale = trailOpacityCurveFn(t);
-        const halfWidth = ribbonWidth * widthScale * 0.5;
-        const alpha = ca * opacityScale * timeFade;
+        const halfWidth = ribbonWidth * widthScale * size * 0.5;
+        // The particle's own alpha (startOpacity, opacityOverLifetime) goes
+        // in the colour; the fragment multiplies the two, so it must not be
+        // in here as well or the ribbon fades by its square.
+        const alpha = opacityScale * timeFade;
 
         const fr = trailColorOverTrailFns
           ? cr * trailColorOverTrailFns.r(t)
@@ -4150,6 +4162,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
           nz,
           halfWidth,
           t,
+          roll,
           alpha,
           fr,
           fg,
@@ -4348,6 +4361,8 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
     const leaderCg = trailScalarArr[leaderBase + S_COLOR_G];
     const leaderCb = trailScalarArr[leaderBase + S_COLOR_B];
     const leaderCa = trailScalarArr[leaderBase + S_COLOR_A];
+    const leaderSize = trailScalarArr[leaderBase + S_SIZE];
+    const leaderRoll = trailScalarArr[leaderBase + S_ROTATION];
 
     const leaderPrevFilled = prevFilled ? prevFilled[leader] : trailLength;
     if (prevFilled) prevFilled[leader] = filledCount;
@@ -4442,8 +4457,8 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
 
       const widthScale = trailWidthCurveFn(t);
       const opacityScale = trailOpacityCurveFn(t);
-      const halfWidth = trailConfig.width * widthScale * 0.5;
-      const alpha = leaderCa * opacityScale * ribbonTimeFade;
+      const halfWidth = trailConfig.width * widthScale * leaderSize * 0.5;
+      const alpha = opacityScale * ribbonTimeFade;
       const fr = trailColorOverTrailFns
         ? leaderCr * trailColorOverTrailFns.r(t)
         : leaderCr;
@@ -4467,6 +4482,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
         nz,
         halfWidth,
         t,
+        leaderRoll,
         alpha,
         fr,
         fg,

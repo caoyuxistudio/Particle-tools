@@ -32,6 +32,8 @@ import {
   abs,
   mix,
   smoothstep,
+  sin,
+  cos,
   screenUV,
   Discard,
   If,
@@ -121,7 +123,9 @@ function createTrailUniforms(trailUniforms: TrailUniforms) {
  * - `trailOffset`    — ribbon edge side: −0.5 (left) or +0.5 (right)
  * - `trailHalfWidth` — half-width of the ribbon at this vertex
  * - `trailNext`      — world-space position of the next trail sample
- * - `trailUV`        — UV coordinates (x: along-trail, y: across-ribbon)
+ * - `trailUV`        — x: roll about the tangent in radians (the particle's
+ *                      rotation), y: place along the trail 0..1; the
+ *                      across-ribbon coordinate comes from `trailOffset`
  *
  * @param trailUniforms  - Per-trail uniform values (map, soft particles, bg discard, …).
  * @param rendererConfig - Blending / depth state forwarded to the material.
@@ -169,7 +173,8 @@ export function createTrailRibbonTSLMaterial(
     // Pass varyings to fragment stage
     vAlpha.assign(aTrailAlpha);
     vColor.assign(aTrailColor);
-    vUv.assign(aTrailUV);
+    // Across the ribbon from the edge side, along it from the attribute.
+    vUv.assign(vec2(aTrailOffset.mul(0.5).add(0.5), aTrailUV.y));
 
     const current = vec3(positionLocal);
     const next = vec3(aTrailNext);
@@ -224,8 +229,17 @@ export function createTrailRibbonTSLMaterial(
         )
     );
 
+    // Roll the ribbon about its tangent by the particle's rotation: face-on
+    // it shows its full width, edge-on it thins to a line.
+    const roll = aTrailUV.x;
+    const rolled = normalize(
+      perp.mul(cos(roll)).add(cross(tangent, perp).mul(sin(roll)))
+    );
+
     // Expand ribbon vertex by offset side and half-width
-    const offsetPos = current.add(perp.mul(aTrailOffset).mul(aTrailHalfWidth));
+    const offsetPos = current.add(
+      rolled.mul(aTrailOffset).mul(aTrailHalfWidth)
+    );
 
     // Emit view-space depth for soft particles
     const mvOffset = modelViewMatrix.mul(vec4(offsetPos, 1.0));

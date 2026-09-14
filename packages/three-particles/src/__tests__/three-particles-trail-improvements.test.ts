@@ -2078,9 +2078,11 @@ describe('Trail Improvements', () => {
       for (let s = 0; s < trailLength; s++) {
         if (hwArr[s * 2] !== 0) {
           const uvIdx = s * 2 * 2; // s * 2 vertices * 2 components
-          // Left vertex: UV.x should be 0, right vertex: UV.x should be 1
-          expect(uvArr[uvIdx]).toBeCloseTo(0, 5); // left U = 0
-          expect(uvArr[uvIdx + 2]).toBeCloseTo(1, 5); // right U = 1
+          // UV.x carries the roll about the tangent (the particle's rotation,
+          // 0 here) on both edges; the across-ribbon coordinate comes from
+          // trailOffset in the shader.
+          expect(uvArr[uvIdx]).toBeCloseTo(0, 5);
+          expect(uvArr[uvIdx + 2]).toBeCloseTo(uvArr[uvIdx], 5);
           // UV.y (trail progress) should be same for left and right
           expect(uvArr[uvIdx + 1]).toBeCloseTo(uvArr[uvIdx + 3], 5);
           uvYValues.push(uvArr[uvIdx + 1]);

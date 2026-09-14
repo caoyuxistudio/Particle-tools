@@ -18,7 +18,8 @@ const TrailVertexShader = `
   {
     vAlpha = trailAlpha;
     vColor = trailColor;
-    vUv = trailUV;
+    // Across the ribbon from the edge side; trailUV.x carries the roll.
+    vUv = vec2(trailOffset * 0.5 + 0.5, trailUV.y);
 
     // Compute tangent from current position to next sample
     vec3 tangent = trailNext - position;
@@ -53,6 +54,10 @@ const TrailVertexShader = `
       float blendFactor = smoothstep(0.0, 0.7, perpLen);
       perp = normalize(mix(fallbackPerp, perp, blendFactor));
     }
+
+    // Roll the ribbon about its tangent by the particle's rotation.
+    float roll = trailUV.x;
+    perp = normalize(perp * cos(roll) + cross(tangent, perp) * sin(roll));
 
     vec3 offsetPos = position + perp * trailOffset * trailHalfWidth;
     vec4 mvPosition = modelViewMatrix * vec4(offsetPos, 1.0);
