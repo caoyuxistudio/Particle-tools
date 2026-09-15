@@ -236,6 +236,8 @@ export type ModifierComputePipeline = {
     offset: number;
     /** Uniform for the active collision plane count. */
     countUniform: ShaderNodeObject<Node>;
+    /** Uniform: the longest bounce recover time among the planes, seconds. */
+    recoverUniform: ShaderNodeObject<Node>;
   } | null;
   /** Touch wake metadata for per-frame updates (null when fingers cannot move the particles). */
   touchWakeInfo: {
@@ -888,24 +890,19 @@ export function createModifierComputeUpdate(
         // Snapshot before any movement so the frame's travel direction can be
         // derived below — modifiers (curl noise especially) move `pos` directly
         // rather than through `vel`, so `vel` alone is not the heading.
-        const posAtFrameStart = flags.trackTravelDirection
-          ? vec3(pos).toVar()
-          : null;
+        // The collision planes need it too: they respond to the frame's
+        // whole motion, measured against this.
+        const posAtFrameStart =
+          flags.trackTravelDirection || flags.collisionPlanes
+            ? vec3(pos).toVar()
+            : null;
 
         pos.assign(pos.add(vel.mul(uDelta)));
 
-        // Collision planes — after position update, before modifiers
+        // A bounce is stored as velocity relative to the flow; with a recover
+        // time it decays back into the field from here on.
         if (collisionPlaneNodes) {
-          collisionPlaneNodes.apply({
-            pos,
-            vel,
-            oiaVec,
-            sColorNode: sColor,
-            ps,
-            startLife,
-            particleIdx: i,
-            sOrbitalIsActiveNode: sOrbitalIsActive,
-          });
+          collisionPlaneNodes.recover({ vel, delta: uDelta });
         }
 
         // The finger trail — moves the position directly, like curl noise.
@@ -1193,6 +1190,26 @@ export function createModifierComputeUpdate(
           });
         }
 
+        // Collision planes — last, after every modifier that moves a particle,
+        // so they see where it really ended up and how it really moved.
+        if (collisionPlaneNodes) {
+          const effVel = pos
+            .sub(posAtFrameStart!)
+            .div(tslMax(uDelta, float(1e-6)))
+            .toVar();
+          collisionPlaneNodes.apply({
+            pos,
+            vel,
+            effVel,
+            oiaVec,
+            sColorNode: sColor,
+            ps,
+            startLife,
+            particleIdx: i,
+            sOrbitalIsActiveNode: sOrbitalIsActive,
+          });
+        }
+
         // === WRITE BACK ===
 
         if (flags.trackTravelDirection) {
@@ -1311,6 +1328,7 @@ export function createModifierComputeUpdate(
       ? {
           offset: collisionPlaneOffset,
           countUniform: collisionPlaneNodes.countUniform,
+          recoverUniform: collisionPlaneNodes.recoverUniform,
         }
       : null,
     touchWakeInfo: touchWakeNodes

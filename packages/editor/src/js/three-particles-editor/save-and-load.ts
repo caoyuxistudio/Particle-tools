@@ -211,6 +211,7 @@ export const serializeConfig = (particleSystemConfig) => {
       if (cp.normal) result.normal = { x: cp.normal.x, y: cp.normal.y, z: cp.normal.z };
       if (cp.dampen !== undefined) result.dampen = cp.dampen;
       if (cp.lifetimeLoss !== undefined) result.lifetimeLoss = cp.lifetimeLoss;
+      if (cp.recover !== undefined) result.recover = cp.recover;
       return result;
     });
   }

@@ -412,6 +412,7 @@ const normalizeCollisionPlanes = (
     mode: cp.mode ?? CollisionPlaneMode.KILL,
     dampen: Math.max(0, Math.min(1, cp.dampen ?? 0.5)),
     lifetimeLoss: Math.max(0, Math.min(1, cp.lifetimeLoss ?? 0)),
+    recover: Math.max(0, cp.recover ?? 0),
   }));
 
 /**
@@ -3106,6 +3107,7 @@ const updateParticleSystemInstance = (
           mode: CollisionPlaneMode.KILL,
           dampen: 0.5,
           lifetimeLoss: 0,
+          recover: 0,
         };
         _localCollisionPlanes[i] = dst;
       }
@@ -3113,6 +3115,7 @@ const updateParticleSystemInstance = (
       dst.mode = src.mode;
       dst.dampen = src.dampen;
       dst.lifetimeLoss = src.lifetimeLoss;
+      dst.recover = src.recover;
 
       if (simulationSpace === SimulationSpace.WORLD) {
         dst.position.copy(src.position);
@@ -3236,6 +3239,15 @@ const updateParticleSystemInstance = (
         cp.collisionPlaneInfo.countUniform,
         normalizedCollisionPlanes.length
       );
+      // The bounce recovery is one decay for the whole system: the longest
+      // recover time among the active bounce planes.
+      let recover = 0;
+      for (let k = 0; k < normalizedCollisionPlanes.length; k++) {
+        const plane = normalizedCollisionPlanes[k];
+        if (plane.isActive && plane.mode === CollisionPlaneMode.BOUNCE)
+          recover = Math.max(recover, plane.recover);
+      }
+      setUniformFloat(cp.collisionPlaneInfo.recoverUniform, recover);
     }
 
     // The finger trail: samples to the curveData tail (its own range, like

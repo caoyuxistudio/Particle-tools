@@ -36,6 +36,8 @@ const ensureCollisionPlaneDefaults = (cp: any): void => {
   if (cp.mode === undefined) cp.mode = 'KILL';
   if (cp.dampen === undefined) cp.dampen = 0.5;
   if (cp.lifetimeLoss === undefined) cp.lifetimeLoss = 0;
+  // How long a bounce takes to hand the particle back to the flow.
+  if (cp.recover === undefined) cp.recover = 1;
 };
 
 const recreateAndUpdateHelpers = (): void => {
@@ -146,6 +148,15 @@ const createCollisionPlaneFolder = (
     folder
       .add(cp, 'dampen', 0, 1, 0.01)
       .name('Dampen')
+      .onChange(() => recreateAndUpdateHelpers())
+      .listen()
+  );
+
+  // Recover: seconds for a bounce to fade back into the flow
+  controllers.push(
+    folder
+      .add(cp, 'recover', 0, 5, 0.05)
+      .name('Recover (s, bounce)')
       .onChange(() => recreateAndUpdateHelpers())
       .listen()
   );
@@ -261,6 +272,7 @@ export const createCollisionPlaneEntries = ({
         mode: 'KILL',
         dampen: 0.5,
         lifetimeLoss: 0,
+        recover: 1,
       };
       particleSystemConfig.collisionPlanes.push(newCP);
       rebuildCollisionPlaneFolders(particleSystemConfig, recreateParticleSystem);

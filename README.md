@@ -29,6 +29,7 @@ are merged in and never read, so the piece silently renders wrong.
 | Per-axis mesh scale | `renderer.mesh.scale` |
 | Mesh oriented along its direction of travel | `renderer.mesh.alignToVelocity` |
 | Mesh stretched along its direction of travel by the distance covered in N seconds (a motion-blur streak, speed taken from the actual displacement so noise-driven motion counts) | `renderer.mesh.velocityStretch` |
+| Collision planes applied after every modifier, against the frame's real motion; BOUNCE mirrors the position and stores the reflection relative to the flow, fading back over `recover` seconds | `collisionPlanes[].recover` |
 | Trail ribbons built on the GPU: the compute kernel records a per-particle history ring, the vertex stage expands it (smoothing, age fade, curves, roll); a trail piece runs the GPU simulation | `renderer.rendererType: 'TRAIL'` with WebGPU |
 
 All of the above run on the **WebGPU compute backend**. On the CPU backend

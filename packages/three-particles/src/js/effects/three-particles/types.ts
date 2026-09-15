@@ -1206,6 +1206,16 @@ export type CollisionPlaneConfig = {
    * @default 0
    */
   lifetimeLoss?: number;
+  /**
+   * BOUNCE only: how many seconds a bounced particle takes to hand itself
+   * back to the flow. A bounce is stored as velocity relative to what the
+   * field (curl noise, fingers, forces) is doing; this is the time constant
+   * it decays with. 0 keeps the bounce velocity for good.
+   *
+   * GPU (WebGPU compute) backend only.
+   * @default 0
+   */
+  recover?: number;
 };
 
 /**
@@ -1219,6 +1229,7 @@ export type NormalizedCollisionPlaneConfig = {
   mode: CollisionPlaneMode;
   dampen: number;
   lifetimeLoss: number;
+  recover: number;
 };
 
 /**

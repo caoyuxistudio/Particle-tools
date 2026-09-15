@@ -1758,7 +1758,97 @@
     return [`trail: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
   };
 
+
+  /**
+   * Collision planes on the GPU: applied at the end of the frame against the
+   * particle's real motion. With WIP-Test-2's four walls switched to BOUNCE
+   * the particles stay inside the box and leave the walls; with CLAMP they
+   * stay inside and keep sliding rather than freezing; KILL keeps killing.
+   * Reads the compute buffers back, so it needs frames.
+   */
+  const collisionReport = async () => {
+    const lines = [];
+    const check = (label, ok, detail = '') =>
+      lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+    const w = window.__world;
+    const r = w.renderer;
+    const scene = w.scene;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const errBefore = errs.length;
+
+    const walls = (mode) => [
+      { isActive: true, mode, position: { x: -5.33, y: 0.25, z: -0.74 }, normal: { x: 1, y: 0, z: 0 }, dampen: 0.5, lifetimeLoss: 0, recover: 1 },
+      { isActive: true, mode, position: { x: 5.4, y: 0, z: 0 }, normal: { x: -1, y: 0, z: 0 }, dampen: 0.5, lifetimeLoss: 0, recover: 1 },
+      { isActive: true, mode, position: { x: 0, y: 0, z: -5.4 }, normal: { x: 0, y: 0, z: 1 }, dampen: 0.5, lifetimeLoss: 0, recover: 1 },
+      { isActive: true, mode, position: { x: 0, y: 0, z: 6.4 }, normal: { x: 0, y: 0, z: -1 }, dampen: 0.5, lifetimeLoss: 0, recover: 1 },
+    ];
+    const particles = () => { let m = null; scene.traverse((o) => { if (o.geometry?.isInstancedBufferGeometry) m = o; }); return m; };
+    const readBuffers = async () => {
+      const g = particles().geometry;
+      const [pb, vb, cb] = await Promise.all([r.getArrayBufferAsync(g.attributes.instanceOffset), r.getArrayBufferAsync(g.attributes.instanceVelocity), r.getArrayBufferAsync(g.attributes.instanceColor)]);
+      return { pos: new Float32Array(pb), vel: new Float32Array(vb), col: new Float32Array(cb), n: g.attributes.instanceOffset.count };
+    };
+    // The box the walls enclose, in world units (the piece simulates in WORLD space).
+    const inside = (x, z) => x > -5.33 - 0.05 && x < 5.4 + 0.05 && z > -5.4 - 0.05 && z < 6.4 + 0.05;
+    const wallDist = (x, z) => Math.min(x + 5.33, 5.4 - x, z + 5.4, 6.4 - z);
+    const outwardNormal = (x, z) => { const d = [x + 5.33, 5.4 - x, z + 5.4, 6.4 - z]; const k = d.indexOf(Math.min(...d)); return [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]][k]; };
+    const measure = async () => {
+      const a = await readBuffers();
+      await wait(150);
+      const b = await readBuffers();
+      let alive = 0, outside = 0, nearWall = 0, leaving = 0, nearSpeedSum = 0;
+      for (let i = 0; i < a.n; i++) {
+        if (a.col[i * 4 + 3] <= 0.01 || b.col[i * 4 + 3] <= 0.01) continue;
+        alive++;
+        const x = b.pos[i * 4], z = b.pos[i * 4 + 2];
+        if (!inside(x, z)) outside++;
+        if (wallDist(x, z) < 0.4) {
+          nearWall++;
+          const n = outwardNormal(x, z);
+          // A bounce leaves the particle with a stored velocity away from the wall.
+          if (b.vel[i * 4] * n[0] + b.vel[i * 4 + 2] * n[2] > 0.1) leaving++;
+          const dx = b.pos[i * 4] - a.pos[i * 4], dz = b.pos[i * 4 + 2] - a.pos[i * 4 + 2];
+          nearSpeedSum += Math.hypot(dx, dz) / 0.15;
+        }
+      }
+      return { alive, outsidePct: alive ? (100 * outside) / alive : 0, nearWall, leaving, nearSpeed: nearWall ? nearSpeedSum / nearWall : 0 };
+    };
+
+    const cfg = await fixture();
+    cfg.maxParticles = 20000;
+    cfg.collisionPlanes = walls('BOUNCE');
+    window.editor.load(cfg);
+    await wait(3500);
+    check('the piece runs on the GPU path', !!particles()?.geometry.attributes.instanceParticleState);
+    const bounce = await measure();
+    check('BOUNCE keeps the particles inside the walls (needs frames)', bounce.outsidePct < 1, `${bounce.outsidePct.toFixed(2)}% of ${bounce.alive} outside`);
+    check('and the ones that hit a wall carry a velocity away from it (needs frames)', bounce.nearWall > 20 && bounce.leaving >= 50, `${bounce.leaving} of ${bounce.nearWall} near a wall are leaving it`);
+
+    const live = window.editor.getCurrentParticleSystemConfig();
+    live.collisionPlanes = walls('CLAMP');
+    window.editor.reset();
+    await wait(3500);
+    const clamp = await measure();
+    check('CLAMP keeps the particles inside the walls (needs frames)', clamp.outsidePct < 1, `${clamp.outsidePct.toFixed(2)}% outside`);
+    check('and they keep sliding along the wall rather than freezing (needs frames)', clamp.nearWall > 20 && clamp.nearSpeed > 0.05, `${clamp.nearWall} near a wall, mean speed ${clamp.nearSpeed.toFixed(3)}`);
+
+    live.collisionPlanes = walls('KILL');
+    window.editor.reset();
+    await wait(3500);
+    const kill = await measure();
+    check('KILL leaves nothing outside (needs frames)', kill.outsidePct < 0.5, `${kill.outsidePct.toFixed(2)}% outside`);
+
+    // The recover time is part of the piece.
+    const json = JSON.parse(window.editor.serialize());
+    check('the recover time travels in the config', json.collisionPlanes?.every((cp) => cp.recover === 1), JSON.stringify(json.collisionPlanes?.map((cp) => cp.recover)));
+    check('no runtime errors', errs.length === errBefore, errs.slice(errBefore, errBefore + 3).join(' | '));
+
+    const failed = lines.filter((l) => l.startsWith('FAIL')).length;
+    return [`collision: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
+  };
+
   window.__t = {
+    collisionReport,
     trailReport,
     stretchReport,
     aoReport,

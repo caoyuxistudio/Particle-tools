@@ -11,7 +11,15 @@
  * Collision plane modes:
  *   - KILL (0): deactivate the particle immediately
  *   - CLAMP (1): project position onto plane, zero velocity along normal
- *   - BOUNCE (2): reflect velocity with damping, project position
+ *   - BOUNCE (2): mirror the position across the plane and reflect the
+ *     frame's actual motion (velocity, forces, curl noise, fingers — all of
+ *     it) with damping. The bounce is stored as a velocity relative to the
+ *     flow, so a particle the field carried into a wall leaves it at the
+ *     reflected speed and, when the plane has a `recover` time, hands itself
+ *     back to the flow over that many seconds.
+ *
+ * The planes are applied at the end of the frame, after every modifier that
+ * moves a particle, so what they see is where the particle really ended up.
  *
  * @module
  */
@@ -25,6 +33,7 @@ import {
   Loop,
   Continue,
   dot,
+  exp,
   type ShaderNodeObject,
   type Node,
 } from 'three/tsl';
@@ -44,7 +53,8 @@ import type { NormalizedCollisionPlaneConfig } from '../types.js';
  *   [5-7]  normal (x, y, z) — normalized
  *   [8]    dampen (0–1)
  *   [9]    lifetimeLoss (0–1)
- *   [10-11] padding (reserved)
+ *   [10]   recover (seconds; BOUNCE only)
+ *   [11]   padding (reserved)
  */
 const PLANE_STRIDE = 12;
 
@@ -94,7 +104,7 @@ export function encodeCollisionPlanesForGPU(
     data[base + 7] = cp.normal.z;
     data[base + 8] = cp.dampen;
     data[base + 9] = cp.lifetimeLoss;
-    data[base + 10] = 0; // padding
+    data[base + 10] = cp.recover ?? 0;
     data[base + 11] = 0; // padding
   }
 
@@ -123,12 +133,36 @@ export function createCollisionPlaneTSL(
   const count = Math.min(collisionPlaneCount, MAX_COLLISION_PLANES);
   const uCollisionPlaneCount = uniform(float(count));
   const cpBase = collisionPlaneOffset;
+  /**
+   * The longest `recover` among the bounce planes, seconds. While it is
+   * above zero, the stored velocity — which after a bounce is the particle's
+   * motion relative to the flow — decays toward zero at that time constant,
+   * so a bounced particle settles back into the field.
+   */
+  const uBounceRecover = uniform(float(0));
+
+  const applyBounceRecovery = Fn(
+    ({
+      vel,
+      delta,
+    }: {
+      vel: ShaderNodeObject<Node>;
+      delta: ShaderNodeObject<Node>;
+    }) => {
+      If(uBounceRecover.greaterThan(0.0), () => {
+        vel.assign(vel.mul(exp(delta.negate().div(uBounceRecover))));
+      });
+    },
+    'void'
+  );
 
   /**
    * TSL function that applies all collision planes to a particle.
    *
    * @param pos - Current particle position (vec3, modified in place)
    * @param vel - Current particle velocity (vec3, modified in place)
+   * @param effVel - The frame's actual motion as a velocity: (pos − pos at
+   *   frame start) / dt, which includes what the modifiers did
    * @param oiaVec - orbitalIsActive vec4 (w = isActive, modified for KILL)
    * @param sColor - Color storage node (modified for KILL)
    * @param ps - particleState vec4 (x = lifetime, modified for lifetime loss)
@@ -140,6 +174,7 @@ export function createCollisionPlaneTSL(
     ({
       pos,
       vel,
+      effVel,
       oiaVec,
       sColorNode,
       ps,
@@ -149,6 +184,7 @@ export function createCollisionPlaneTSL(
     }: {
       pos: ShaderNodeObject<Node>;
       vel: ShaderNodeObject<Node>;
+      effVel: ShaderNodeObject<Node>;
       oiaVec: ShaderNodeObject<Node>;
       sColorNode: ShaderNodeObject<Node>;
       ps: ShaderNodeObject<Node>;
@@ -210,13 +246,22 @@ export function createCollisionPlaneTSL(
             })
             // BOUNCE mode (2)
             .Else(() => {
-              // Project position onto the plane surface
-              pos.assign(pos.sub(planeNormal.mul(signedDist)));
+              // Mirror the position across the plane: the particle went
+              // |signedDist| through, so it comes out that far in front.
+              pos.assign(pos.sub(planeNormal.mul(signedDist.mul(2.0))));
 
-              // Reflect velocity: v' = (v - 2 * dot(v, n) * n) * dampen
-              const vDotN = dot(vel, planeNormal);
-              const reflected = vel.sub(planeNormal.mul(vDotN.mul(2.0)));
-              vel.assign(reflected.mul(dampen));
+              // Reflect the frame's actual motion, not just `vel`: in a piece
+              // driven by curl noise `vel` is zero and the field did all the
+              // moving. The stored velocity is then the bounce *relative to
+              // the flow* — next frame the field adds its push again, and
+              // flow + stored = the reflected motion. A pure-velocity
+              // particle has no flow part and gets the classic reflection.
+              const eDotN = dot(effVel, planeNormal);
+              const reflected = effVel
+                .sub(planeNormal.mul(eDotN.mul(2.0)))
+                .mul(dampen);
+              const flow = effVel.sub(vel);
+              vel.assign(reflected.sub(flow));
 
               // Apply lifetime loss
               If(lifetimeLoss.greaterThan(0.0), () => {
@@ -232,7 +277,11 @@ export function createCollisionPlaneTSL(
   return {
     /** Uniform for the active collision plane count. */
     countUniform: uCollisionPlaneCount,
-    /** TSL function to call in the compute kernel: apply({ pos, vel, ... }) */
+    /** Uniform: the longest bounce `recover` time among the planes, seconds (0 = none). */
+    recoverUniform: uBounceRecover,
+    /** TSL function to call in the compute kernel: apply({ pos, vel, effVel, ... }) */
     apply: applyCollisionPlanesTSL,
+    /** TSL function to call once per frame after the velocity step: recover({ vel, delta }) */
+    recover: applyBounceRecovery,
   };
 }
