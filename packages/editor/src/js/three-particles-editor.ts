@@ -374,7 +374,19 @@ const pauseTime = (): void => {
 
 /** Boot guard, and the counters the HUD reports so a double boot can be seen from a phone. */
 let booted = false;
-const bootStats = { attempts: 0, chains: 0, loops: 0, defaultExample: 'pending' };
+const bootStats = {
+  attempts: 0,
+  chains: 0,
+  loops: 0,
+  defaultExample: 'pending',
+  /** Milliseconds since navigation at each boot phase, in order. */
+  marks: {} as Record<string, number>,
+};
+/** Stamps a boot phase: on the HUD's boot line and as a performance mark. */
+const bootMark = (name: string): void => {
+  bootStats.marks[name] = Math.round(performance.now());
+  performance.mark(`boot:${name}`);
+};
 
 /**
  * The piece the editor opens on. Fetched the moment boot starts, so by the
@@ -401,12 +413,14 @@ export const createParticleSystemEditor = async (targetQuery: string): Promise<v
     return;
   }
   booted = true;
+  bootMark('start');
   const defaultExample = fetchDefaultExample();
   clock = new THREE.Clock();
 
   // WebGPU where it exists; TSL materials over WebGL2 with CPU simulation
   // where it does not (the iOS Simulator, older browsers).
   webGPUAvailable = (await prepareParticleBackend()) === 'webgpu';
+  bootMark('backend');
 
   // Debug: log WGSL shader compilation errors with source code
   if (typeof GPUDevice !== 'undefined') {
@@ -434,6 +448,7 @@ export const createParticleSystemEditor = async (targetQuery: string): Promise<v
   }
 
   scene = await createWorld(targetQuery);
+  bootMark('world');
 
   particleSystemContainer = new Object3D();
   scene.add(particleSystemContainer);
@@ -493,7 +508,10 @@ export const createParticleSystemEditor = async (targetQuery: string): Promise<v
             `canvases ${document.querySelectorAll('#three-particles-editor canvas').length}, ` +
             `panels ${document.querySelectorAll('.lil-gui.root').length}, ` +
             `scene meshes+lights ${meshes} for ${getSceneObjects().length} objects, ` +
-            `default ${bootStats.defaultExample}`,
+            `default ${bootStats.defaultExample}, ` +
+            `timeline ${Object.entries(bootStats.marks)
+              .map(([name, ms]) => `${name} ${ms}`)
+              .join(' → ')}`,
         ],
         ['parallax', describeParallax()],
         [
@@ -608,12 +626,14 @@ export const createParticleSystemEditor = async (targetQuery: string): Promise<v
           createCurveEditor();
           recreateParticleSystem(false);
           isInitializing = false;
+          bootMark('panel');
           // The piece itself rather than the default emitter — the same load
           // an Examples click does, so nothing has to be picked after a reload.
           const example = await defaultExample;
           if (example) {
             try {
               window.editor.load(example);
+              bootMark('example');
               bootStats.defaultExample = `${DEFAULT_EXAMPLE} loaded`;
             } catch (error) {
               bootStats.defaultExample = `${DEFAULT_EXAMPLE} failed (${(error as Error).message})`;
@@ -707,6 +727,8 @@ const animate = (): void => {
   // for either).
   if (isPresenting()) renderPlayer(softParticlesEnabled, particleSystemContainer, computeNode);
   else updateWorld(softParticlesEnabled, particleSystemContainer, computeNode);
+  // The first frame carries the shader and pipeline compilation.
+  if (framesDrawn === 1) bootMark('first-frame');
   requestAnimationFrame(animate);
 };
 
