@@ -108,7 +108,10 @@
     // frame → panel with nothing built twice.
     const fontLinks = performance.getEntriesByType('resource').filter((e) => /fonts\.googleapis/.test(e.name));
     check('the font stylesheets do not block the first paint', fontLinks.length > 0 && fontLinks.every((e) => e.renderBlockingStatus === 'non-blocking'), fontLinks.map((e) => e.renderBlockingStatus).join(','));
-    check('the page is black before any stylesheet', (document.documentElement.getAttribute('style') || '').replace(/\s/g, '').includes('background:#000'));
+    // Read through the CSSOM, not the attribute: once anything sets a custom
+    // property on the root (fitPlayerCanvas does, for the viewport gaps) the
+    // browser re-serialises the attribute and #000 comes back as rgb(0, 0, 0).
+    check('the page is black before any stylesheet', document.documentElement.style.backgroundColor === 'rgb(0, 0, 0)', document.documentElement.style.backgroundColor);
     const timeline = (bootLine.split('timeline ')[1] || '').split(' → ').map((s) => s.split(' ')[0]);
     check('the boot loads the piece before it builds a panel', timeline.indexOf('example') >= 0 && timeline.indexOf('first-frame') > timeline.indexOf('example') && timeline.indexOf('panel') > timeline.indexOf('first-frame'), timeline.join(' → '));
     check('and compiles the shaders ahead of the first frame', timeline.indexOf('compiled') > timeline.indexOf('example') && timeline.indexOf('compiled') < timeline.indexOf('first-frame'), timeline.join(' → '));
