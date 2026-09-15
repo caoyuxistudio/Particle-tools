@@ -1191,7 +1191,14 @@ export function createModifierComputeUpdate(
         }
 
         // Collision planes — last, after every modifier that moves a particle,
-        // so they see where it really ended up and how it really moved.
+        // so they see where it really ended up and how it really moved. Where
+        // the particle got to under its own motion is kept: a bounce mirrors
+        // the position across the plane, and that jump — several units for a
+        // particle born behind a wall — is a correction, not travel. The
+        // heading and speed below are measured against this, not the mirror.
+        const posBeforeCollision = collisionPlaneNodes
+          ? vec3(pos).toVar()
+          : null;
         if (collisionPlaneNodes) {
           const effVel = pos
             .sub(posAtFrameStart!)
@@ -1213,7 +1220,9 @@ export function createModifierComputeUpdate(
         // === WRITE BACK ===
 
         if (flags.trackTravelDirection) {
-          const travel = pos.sub(posAtFrameStart!).toVar();
+          const travel = (posBeforeCollision ?? pos)
+            .sub(posAtFrameStart!)
+            .toVar();
           const dist = length(travel).toVar();
           // Below the threshold the particle has effectively not moved; keep
           // the previous heading so a momentary stall does not snap the mesh.

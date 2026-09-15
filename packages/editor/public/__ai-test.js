@@ -1847,6 +1847,30 @@
     const kill = await measure();
     check('KILL leaves nothing outside (needs frames)', kill.outsidePct < 0.5, `${kill.outsidePct.toFixed(2)}% outside`);
 
+    // A bounce mirrors the position across the plane; a particle born behind
+    // a wall jumps units in one frame. The velocity stretch reads its speed
+    // from the frame's travel, which must not include that jump — or every
+    // such birth draws a streak dozens of units long out through the wall.
+    live.collisionPlanes = walls('BOUNCE').map((cp) => ({ ...cp, position: { ...cp.position, x: cp.position.x * 0.36, z: cp.position.z * 0.75 } }));
+    live.renderer.mesh.velocityStretch = 0.15;
+    window.editor.reset();
+    await wait(3500);
+    {
+      const g = particles().geometry;
+      const st = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceParticleState));
+      const col = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceColor));
+      let alive = 0, fast = 0, maxSpeed = 0;
+      for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
+        if (col[i * 4 + 3] <= 0.01) continue;
+        alive++;
+        const speed = st[i * 4 + 3];
+        if (speed > maxSpeed) maxSpeed = speed;
+        if (speed > 20) fast++;
+      }
+      check('a bounce\'s mirror jump is not read as speed by the stretch (needs frames)', alive > 1000 && fast === 0, `${fast} of ${alive} faster than 20 u/s, max ${maxSpeed.toFixed(1)}`);
+    }
+    live.renderer.mesh.velocityStretch = 0;
+
     // The recover time is part of the piece.
     const json = JSON.parse(window.editor.serialize());
     check('the recover time travels in the config', json.collisionPlanes?.every((cp) => cp.recover === 1), JSON.stringify(json.collisionPlanes?.map((cp) => cp.recover)));
