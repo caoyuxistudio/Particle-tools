@@ -170,7 +170,7 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 - 测试场景是内置 example **WIP-Test**（`packages/editor/public/examples/wip-test/`），存在磁盘上，清空 localStorage 也在。它引用的是那张山水画；73MB 的那个测试视频进不了仓库
 - **WIP-Test-2** 是作品本身：画框 + 一盏投影的平行光（带 `shadow` 块）+ 俯视输出相机（iPhone 17 Pro Max 画幅、SSR 和 SSAO 都开）+ 视频 color source。它的 `preview.webp` 还是换灯前的画面，刷新确认过不是 bug，维持现状。参数是 2026-09-11 在手机上调好后用 COPY 拷出的 JSON 直接写进去的（以后也这么更新：贴 JSON，不用截图），测试用的红球已经删掉。**编辑器一启动就直接加载它**（`DEFAULT_EXAMPLE`，在 `src/examples-config.js`；boot 一开始就 fetch，场景就绪后走和点 Examples 一样的 `window.editor.load`；fetch 失败就留在默认发射器，HUD 的 `boot:` 一行会写 `default … failed`）。代价是**刷新即回到示例**：面板里没导出的改动不会保留——粒子参数本来就不跨刷新，场景以前会留，现在也不留了；要保留就 Save 或者抄回 example。视频是 `public/assets/videos/wechat-20240829.mp4`（1000²、53s、1.6Mbps、10.6MB，随站点部署），config 用 **URL** 引用它（`_editorData.embeddedVideos`），所以任何能打开站点的设备都能播，手机上也是从 Examples 一点就开。这是「资产走 URL、config 走仓库」这条路的第一个样品
 - **做一个带视频的 example 的步骤**：把视频放进 `public/assets/videos/`；Textures 面板 **Add Video by URL** 填 `./assets/videos/<文件>`（相对地址，本地和 Pages 都能解析），Use；调好后 Copy，把 JSON 存成 `public/examples/<slug>/config.json`（slug 是名字小写、非字母数字换成连字符），配一张 `preview.webp`，在 `src/examples-config.js` 里加名字。本地上传（Add Video）的视频只在本机浏览器里，带不进 config
-- 控制台 harness `public/__ai-test.js`，当前基线 **299/299**（含 `collisionReport` 9、`trailReport` 9、`stretchReport` 9、`aoReport` 7、`shadowReport` 10、`report` 30、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 36、`frameReport` 24）
+- 控制台 harness `public/__ai-test.js`，当前基线 **300/300**（含 `collisionReport` 9、`trailReport` 9、`stretchReport` 9、`aoReport` 8、`shadowReport` 10、`report` 30、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 36、`frameReport` 24；`perfReport` 是测量不是断言，不计入）
 
 ---
 
@@ -241,6 +241,18 @@ ln -sfn "$PWD/assets4test/AnimateDiff_00013.mp4" packages/editor/public/assets-l
 
 真实帧率只能在人自己的浏览器里读：编辑器看左上角那个 stats，显示窗口看它自己左上角那个（`S` 隐藏）。两个窗口一起跑的时候，**要看的是显示窗口那个数**——编辑器失焦就停画了，它那个读数是冻住的，所以挂起时会被压暗，提醒你别去读它。
 
+**Agent 自己要量真实帧率**（2026-09-15 起）：开一个独立的 Chrome 实例，用 DevTools 协议往里面跑脚本——真实窗口、真实 rAF、真实的 6K 画布，面板那套 1 fps 的问题全没有：
+
+```bash
+open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir=/tmp/three-particles-chrome --no-first-run --start-maximized "http://localhost:8080/?gputime"
+```
+
+```bash
+node packages/editor/scripts/cdp-eval.mjs localhost:8080 <写着表达式的文件> 60000
+```
+
+表达式可以是 async IIFE；在里面 `await fetch('/__ai-test.js').then(r=>r.text()).then(eval)` 之后 `await __t.perfReport()` 就是一份帧预算：fps、每帧主线程按 pass 拆开的独占时间（`r_viewport` / `r_output` / `r_shadow` / `r_quad` / `compute`，`rest` 是模拟和面板）、GPU 时间戳之和（`?gputime`；注意那是各 pass 时长相加，GPU 并行时会大于帧时长，只能比相对值）、画布和预览各 pass 的尺寸。编辑器和播放页都能跑（播放页地址 `/player/?config=/examples/wip-test-2/config.json&gputime`）。一次只动一个变量再量一次：`__world.setSsrSettings({enabled:false})`、`setAoSettings`、`__sun` 之类的 `castShadow`、`setPreviewScale`、`setRenderScale(1)`、`.presentation-toggle` 点进演示模式。用完 `pkill -f three-particles-chrome`。这台机器（M3 Ultra、6K、窗口 3008×1509 @2）修完预览尺寸之后：编辑器 59.6 fps、主线程 3 ms、播放页 59.7 fps。播放页的快捷键：`S` 帧数表、`P` Perf 面板（fps / 最差帧 / ms 每帧 + Copy report）、`F` 全屏、`G` Gyro 面板。
+
 挂起相关的断言只能验结构（帧数确实不再前进、焦点回来确实恢复、卡片层级低于面板），**省了多少帧验不了**，别写成好像验过了。
 
 同理，`videoReport` 里标着「needs frames / needs a visible window」的几条依赖 rAF 和 `requestVideoFrameCallback`，面板隐藏时会假失败；读回的**成本数字**（worker 里几毫秒、主线程零点几毫秒）是在真实负载下另外量的，harness 只断言量级。
@@ -264,6 +276,8 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 **TSL 会吞掉 shader 里的异常**。表现是"没报错也没效果"，所有输入单独看都对。SSR 卡了两天就是这个——传进去的节点缺 `.sample()` 方法，每次采样都抛异常。遇到这类情况，直接往 shader 内部插探针读它自己看到的值，不对称的地方就是 bug。
 
 **post-processing 不能被 scissor 裁到角落**——它内部的 scene pass 会跟着被裁，整个画布变黑。预览是先渲进离屏 RT 再贴过去的。
+
+**预览的后期管线原来按整个画布的尺寸在跑**（2026-09-15 修）。three 的 `PassNode` / `SSRNode` / `GTAONode`（还有 `viewportSize` 那组 uniform）取尺寸都是 `renderer.getSize()` / `getDrawingBufferSize()`，不看当前的 render target。预览把管线渲进一张 1360×2954 的离屏 RT，里面的场景 pass（三张 MRT）、SSR、模糊、AO 却各自是 6016×3018（6K 屏满窗、像素比 2），算完只采一角。在这台机器上：编辑器 19 fps、一半的帧超过 50 ms；SSR 关掉 58 fps；缩小预览窗**没有任何变化**（这就是线索）；阴影关掉没变化；像素比降到 1 就 60 fps；演示模式 60 fps（画布就是目标，尺寸对得上）；播放页 60 fps（同理）。修法是 `world.ts` 的 `withDisplaySize`：渲预览那一下，用 own property 把渲染器的 `getSize` / `getDrawingBufferSize` 遮成预览框的尺寸，渲完删掉，pass 就落在预览 RT 的尺寸上（SSR 1360×2954、AO 半分辨率 680×1477）。修后编辑器 59.6 fps，主线程每帧 3 ms。`aoReport` 加了一条断言 SSR pass 的尺寸等于预览 RT（要帧）。以后凡是往离屏 RT 里跑 `PostProcessing`，都要想到这一条。
 
 **自动化面板的截图里 WebGPU 画布是陈旧的**。面板的 screenshot 对 DOM 是新鲜的（叠一个红块立刻能看到），对 WebGPU 画布却可能停在几分钟前的一帧：帧计数在走、相机也动了、图一动不动。帧间 `drawImage(canvas)` 读到的是黑，rAF 里读也是黑。要看画面就渲到 `RenderTarget` 再 `readRenderTargetPixelsAsync`，宽度取 256 字节对齐（512 / 1024），否则读回的行会错位；`shadowReport` 就是这么量的。演示模式（全屏）的截图偶尔是新鲜的，别指望它。
 
@@ -314,6 +328,8 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 - 碰撞面：kernel 里挪到一帧最后、按真实位移响应；BOUNCE 镜像位置、存相对流场的反射速度、`recover` 秒回落。`collisionReport` 8 条，基线 291/291。
 - 启动：字体非阻塞、onMount 起 boot、作品先于面板、着色器提前异步编译、GPU 路径创建不做逐槽位 CPU 工作、预设预览空闲时再画。第一张画面 1452 → 约 900 ms。`report` 加 4 条，基线 295/295。规则写进 V2-ARCHITECTURE.md §10。
 - BOUNCE 遇到 velocity stretch：镜像那一跳不再算进朝向和速度。`collisionReport` 加 1 条，基线 296/296。
+- 演示模式在桌面上改成完整显示构图（手机仍铺满）；`presentReport` 36 条，基线 299/299。
+- 编辑器 19 fps 的原因找到了：预览的后期管线按整个画布的尺寸跑（见「坑」）。`withDisplaySize` 修后 59.6 fps。量法是独立 Chrome + `scripts/cdp-eval.mjs` + `__t.perfReport()`（见「验证改动」）。`aoReport` 加 1 条，基线 300/300。
 - CPU 路径的 curl noise：`curl-noise.ts` 逐字移植 kernel 的 simplex 和 curl，`applyModifiers` 在 `noise.curl` 时走它；TRAIL 和 WebGL 回退从此和 GPU 同一个流场。jest 加 8 条。
 - TRAIL 的"线往中间连"：ribbon 收尾那个槽被省略清理跳过、留着原点，每颗新生粒子都拉一条到中心；改成每帧压在头上，jest 加两条。
 - `renderer.mesh.velocityStretch`：MESH 粒子沿真实位移方向拉伸的拖影，GPU 路径，零额外开销；面板一个滑块；`stretchReport` 9 条，基线 274/274。库里顺手修了一条过期的 jest 期望（`createComputePipeline` 自 touch wake 起有第七个参数）。

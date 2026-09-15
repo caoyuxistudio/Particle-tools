@@ -441,6 +441,34 @@ export const ensurePostPipeline = (): void => {
 /** Output nodes for each debug view, rebuilt with the pipeline. */
 let debugNodes: Record<string, any> = {};
 
+/**
+ * Runs `fn` with the renderer reporting a display of w×h CSS pixels.
+ *
+ * three's screen-space passes — PassNode, SSRNode, GTAONode, and the
+ * screen-size uniforms behind them — size their targets from the renderer's
+ * drawing buffer, never from the render target they are drawing into. Left
+ * alone, the preview's pipeline resolves every pass at the whole canvas and
+ * then samples a corner of it: measured at 6016×3018 for a 1360×2954 preview
+ * box, the editor at 19 fps against 60 with SSR off, and shrinking the preview
+ * changed nothing. For the duration of the preview the renderer says the
+ * display is the preview box; the pixel ratio stays the device's, so the
+ * passes land at exactly the preview target's size. Own properties shadow
+ * the prototype's methods and are deleted afterwards, so nothing else sees it.
+ */
+const withDisplaySize = <T>(w: number, h: number, fn: () => T): T => {
+  const r = renderer as unknown as Record<string, unknown>;
+  const ratio = renderer.getPixelRatio();
+  r.getSize = (target: THREE.Vector2): THREE.Vector2 => target.set(w, h);
+  r.getDrawingBufferSize = (target: THREE.Vector2): THREE.Vector2 =>
+    target.set(Math.round(w * ratio), Math.round(h * ratio));
+  try {
+    return fn();
+  } finally {
+    delete r.getSize;
+    delete r.getDrawingBufferSize;
+  }
+};
+
 /** Sizes the offscreen target to the preview box, in device pixels. */
 const ensurePreviewTarget = (w: number, h: number): THREE.RenderTarget => {
   const ratio = renderer.getPixelRatio();
@@ -1293,7 +1321,7 @@ const renderPreview = (): void => {
     const target = ensurePreviewTarget(w, h);
     renderer.setScissorTest(false);
     renderer.setRenderTarget(target);
-    postProcessing!.render();
+    withDisplaySize(w, h, () => postProcessing!.render());
     renderer.setRenderTarget(null);
   }
 

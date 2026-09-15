@@ -1586,6 +1586,23 @@
     check('the pipeline is compiled with the occlusion pass', !!ps.aoPass && !!ps.denoisePass && /ao/.test(ps.pipelineKey), ps.pipelineKey);
     check('and still with reflections', !!ps.ssrPass && /ssr/.test(ps.pipelineKey), ps.pipelineKey);
 
+    // The preview's pipeline runs at the preview box, not the canvas
+    // (withDisplaySize in world.ts). Before it did, every pass was the whole
+    // canvas — 6016×3018 for a 1360×2954 preview — and the editor ran at 19 fps
+    // against 60 with SSR off. Needs a frame: the sizes are set when the
+    // preview renders.
+    {
+      const link = window.__playerLink;
+      const f0 = link.frames();
+      const t0 = performance.now();
+      while (link.frames() < f0 + 2 && performance.now() - t0 < 3000) await wait(50);
+      ps = w._ssr();
+      const pt = ps.previewTarget;
+      const ssrRt = ps.ssrPass?._ssrRenderTarget;
+      const canvas = r.getDrawingBufferSize(new T.Vector2());
+      check('the preview\'s passes are the preview\'s size, not the canvas\'s (needs frames)', !!pt && !!ssrRt && ssrRt.width === pt.width && ssrRt.height === pt.height && pt.width < canvas.x, `ssr ${ssrRt?.width}x${ssrRt?.height} for a ${pt?.width}x${pt?.height} preview in a ${canvas.x}x${canvas.y} canvas`);
+    }
+
     const S = 512;
     const rt = new T.RenderTarget(S, S, { depthBuffer: false });
     const mean = async () => {
@@ -1895,7 +1912,65 @@
     return [`collision: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
   };
 
+  /**
+   * The frame budget: fps, the main thread's share of a frame by pass, the
+   * GPU's timestamp sum (open the page with ?gputime), and the sizes the
+   * preview's passes run at. A measurement, not a pass/fail list, and only
+   * honest in a real window — the automation pane starves requestAnimationFrame
+   * (see scripts/cdp-eval.mjs for running it in a separate Chrome).
+   * Works in the editor and in the player.
+   */
+  const perfReport = async (ms = 3000) => {
+    const sleep = (t) => new Promise((res) => setTimeout(res, t));
+    const w = window.__world;
+    const T = w.THREE;
+    const r = w.renderer;
+    const proto = Object.getPrototypeOf(r);
+    const oR = proto.render;
+    const oC = proto.compute;
+    let sun = null;
+    w.scene.traverse((o) => { if (o.isDirectionalLight) sun = o; });
+    const shadowCam = sun?.shadow?.camera ?? null;
+    const pipeCam = w._ssr().pipelineCamera;
+    const key = (cam) => cam === w.camera ? 'viewport' : cam === shadowCam ? 'shadow' : (cam === w.getOutputCamera() || cam === pipeCam) ? 'output' : cam?.isOrthographicCamera ? 'quad' : 'other';
+    const frames = [];
+    let cur = null;
+    const stack = [];
+    let rendered = false;
+    // Exclusive main-thread time per call, so a scene pass inside the post pipeline is not counted twice.
+    const timed = (k, fn) => { rendered = true; const t = performance.now(); stack.push(0); const v = fn(); const inner = stack.pop(); const total = performance.now() - t; if (stack.length) stack[stack.length - 1] += total; if (cur) { cur[k] = (cur[k] || 0) + (total - inner); cur['n_' + k] = (cur['n_' + k] || 0) + 1; } return v; };
+    r.render = function (scene, cam, ...rest) { return timed('r_' + key(cam), () => oR.call(this, scene, cam, ...rest)); };
+    r.compute = function (...a) { return timed('compute', () => oC.apply(this, a)); };
+    const origRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = (cb) => origRaf.call(window, (t) => { const c = {}; cur = c; rendered = false; const t0 = performance.now(); cb(t); const d = performance.now() - t0; if (rendered) { c.js = d; c.t = t; frames.push(c); } cur = null; });
+    const t0 = performance.now();
+    await sleep(ms);
+    const seconds = (performance.now() - t0) / 1000;
+    window.requestAnimationFrame = origRaf;
+    delete r.render;
+    delete r.compute;
+    const gpu = [];
+    const cmp = [];
+    for (let i = 0; i < 8; i++) { await sleep(100); try { await r.resolveTimestampsAsync('render'); await r.resolveTimestampsAsync('compute'); gpu.push(r.info.render.timestamp); cmp.push(r.info.compute.timestamp); } catch (e) { /* not tracking */ } }
+    const med = (a) => { const s = a.filter(Number.isFinite).sort((x, y) => x - y); return s.length ? +s[Math.floor(s.length / 2)].toFixed(2) : null; };
+    const p90 = (a) => { const s = a.filter(Number.isFinite).sort((x, y) => x - y); return s.length ? +s[Math.floor(s.length * 0.9)].toFixed(2) : null; };
+    const keys = [...new Set(frames.flatMap((f) => Object.keys(f)))].filter((k) => !k.startsWith('n_') && k !== 't');
+    const gaps = frames.slice(1).map((f, i) => f.t - frames[i].t);
+    const out = { fps: +(frames.length / seconds).toFixed(1), frameMs: med(gaps), frameP90: p90(gaps), framesOver50ms: gaps.filter((g) => g > 50).length, gpuSumMs: med(gpu), gpuSumP90: p90(gpu), gpuComputeMs: med(cmp), tracking: r.trackTimestamp === true };
+    for (const k of keys) out[k] = med(frames.map((f) => f[k] ?? 0));
+    out.jsP90 = p90(frames.map((f) => f.js));
+    out.rest = +((out.js || 0) - keys.filter((k) => k !== 'js').reduce((acc, k) => acc + (out[k] || 0), 0)).toFixed(2);
+    out.calls = Object.fromEntries(keys.filter((k) => k.startsWith('r_')).map((k) => [k, med(frames.map((f) => f['n_' + k] ?? 0))]));
+    const b = r.getDrawingBufferSize(new T.Vector2());
+    out.canvas = `${b.x}x${b.y} @${r.getPixelRatio()}`;
+    const ps = w._ssr();
+    const dims = (o) => (o ? `${o.width}x${o.height}` : null);
+    out.passes = { previewTarget: dims(ps.previewTarget), ssr: dims(ps.ssrPass?._ssrRenderTarget), ao: dims(ps.aoPass?._aoRenderTarget), pipeline: ps.pipelineKey };
+    return JSON.stringify(out);
+  };
+
   window.__t = {
+    perfReport,
     collisionReport,
     trailReport,
     stretchReport,
@@ -1920,5 +1995,5 @@
     cameraReport,
     errs,
   };
-  return 'harness ready: await __t.report() | __t.cameraReport() | await __t.shadowReport() | await __t.aoReport() | await __t.videoReport() | await __t.gizmoReport() | await __t.load() | __t.errs';
+  return 'harness ready: await __t.report() | __t.cameraReport() | await __t.perfReport() (real window only) | await __t.shadowReport() | await __t.aoReport() | await __t.videoReport() | await __t.gizmoReport() | await __t.load() | __t.errs';
 })();
