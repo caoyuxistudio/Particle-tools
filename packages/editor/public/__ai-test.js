@@ -1332,15 +1332,30 @@
     check('the player buttons are hidden', hidden(toggle) && hidden(present));
     check('the frame counter stays', !hidden(document.querySelector('.stats')));
 
-    // The canvas covers the window; the camera is aimed so the composed frame
-    // covers it too, cropped rather than barred.
-    check('the canvas covers the window', Math.abs(canvas.clientWidth - window.innerWidth) <= 1 && Math.abs(canvas.clientHeight - window.innerHeight) <= 1, `${canvas.clientWidth}x${canvas.clientHeight} in ${window.innerWidth}x${window.innerHeight}`);
+    // Two displays, two rules (fitPlayerCanvas). Held in the hand, the canvas
+    // is the whole window and the camera covers it, cropped rather than
+    // barred. On a desktop the whole composed frame is shown: the canvas cut
+    // to the frame's shape and centred, black at the sides, the preset lens.
+    const handheld = navigator.maxTouchPoints > 0;
     const windowAspectNow = window.innerWidth / window.innerHeight;
-    check('the camera takes the window\'s aspect while presenting', Math.abs((cam?.aspect ?? 0) - windowAspectNow) < 1e-3, `${cam?.aspect.toFixed(3)} vs ${windowAspectNow.toFixed(3)}`);
     const presetAspect = cam?.userData.presetAspect || windowAspectNow;
     const presetFov = cam?.userData.presetFov ?? cam?.fov;
-    const expectedFov = windowAspectNow < presetAspect ? presetFov : (180 / Math.PI) * 2 * Math.atan(Math.tan((presetFov * Math.PI) / 360) * (presetAspect / windowAspectNow));
-    check('the field of view covers the composed frame', Math.abs((cam?.fov ?? 0) - expectedFov) < 0.01, `${cam?.fov.toFixed(2)} vs ${expectedFov.toFixed(2)} (preset ${presetFov}, aspect ${presetAspect.toFixed(3)})`);
+    const expected = handheld
+      ? { w: window.innerWidth, h: window.innerHeight }
+      : windowAspectNow > presetAspect
+        ? { w: Math.round(window.innerHeight * presetAspect), h: window.innerHeight }
+        : { w: window.innerWidth, h: Math.round(window.innerWidth / presetAspect) };
+    check(handheld ? 'the canvas covers the window' : 'the canvas is cut to the composed frame', Math.abs(canvas.clientWidth - expected.w) <= 1 && Math.abs(canvas.clientHeight - expected.h) <= 1, `${canvas.clientWidth}x${canvas.clientHeight}, expected ${expected.w}x${expected.h} in ${window.innerWidth}x${window.innerHeight}`);
+    const canvasRect = canvas.getBoundingClientRect();
+    check('the canvas is centred in the window', Math.abs(canvasRect.left + canvasRect.width / 2 - window.innerWidth / 2) <= 1 && Math.abs(canvasRect.top + canvasRect.height / 2 - window.innerHeight / 2) <= 1, `centre ${Math.round(canvasRect.left + canvasRect.width / 2)},${Math.round(canvasRect.top + canvasRect.height / 2)} in ${window.innerWidth}x${window.innerHeight}`);
+    check('the black at the sides is the page, not the canvas', getComputedStyle(document.body).backgroundColor === 'rgb(0, 0, 0)' && getComputedStyle(canvas.parentElement).backgroundColor === 'rgb(0, 0, 0)', `${getComputedStyle(document.body).backgroundColor} / ${getComputedStyle(canvas.parentElement).backgroundColor}`);
+    const canvasAspect = canvas.clientWidth / canvas.clientHeight;
+    check('the camera takes the canvas\'s aspect while presenting', Math.abs((cam?.aspect ?? 0) - canvasAspect) < 1e-3, `${cam?.aspect.toFixed(3)} vs ${canvasAspect.toFixed(3)}`);
+    const expectedFov = handheld && windowAspectNow > presetAspect ? (180 / Math.PI) * 2 * Math.atan(Math.tan((presetFov * Math.PI) / 360) * (presetAspect / windowAspectNow)) : presetFov;
+    check(handheld ? 'the field of view covers the composed frame' : 'the lens is the composed frame\'s', Math.abs((cam?.fov ?? 0) - expectedFov) < 0.01, `${cam?.fov.toFixed(2)} vs ${expectedFov.toFixed(2)} (preset ${presetFov}, aspect ${presetAspect.toFixed(3)})`);
+    // The rendered image is the composed frame: the same lens and aspect the
+    // editor's preview draws (outputAspect), so nothing is cropped away.
+    check('nothing of the composition is cropped', handheld || (Math.abs((cam?.aspect ?? 0) - presetAspect) < 5e-3 && Math.abs((cam?.fov ?? 0) - presetFov) < 1e-6), `aspect ${cam?.aspect.toFixed(3)} vs preset ${presetAspect.toFixed(3)}`);
 
     check('the output goes through the encode once', w._ssr().postProcessing?.outputColorTransform === true);
     check('frames keep coming', await frames(3));

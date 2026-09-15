@@ -787,15 +787,6 @@ export const updateWorld = (
 };
 
 /**
- * Sizes the canvas to the output camera's frame, centred in the window.
- *
- * Letterboxing by shrinking the canvas rather than scissoring inside a
- * full-window one is not a shortcut: post processing cannot be scissored — its
- * internal scene pass obeys the same rectangle and the whole thing comes back
- * black — and a canvas that is already the shape of the frame needs no
- * rectangle at all. The bars are the page showing through.
- */
-/**
  * The output camera's aspect, honouring "fit window" (aspect 0 on the scene
  * object, flagged on the camera): then it is whatever the window is right now,
  * and the camera's projection is kept in step here, since this is read every
@@ -879,6 +870,13 @@ export const viewportHeight = (): number => viewportMetrics().height;
 export const viewportGap = (): number => viewportMetrics().bottom;
 
 /**
+ * A display that is held: a phone or a tablet, where the window is the whole
+ * screen and a bar would be a strip of the piece missing. The same test the
+ * pixel-ratio cap uses.
+ */
+const isHandheldDisplay = (): boolean => navigator.maxTouchPoints > 0;
+
+/**
  * Points the output camera at the window so that the composed frame *covers*
  * it: the window's aspect, and a field of view that keeps the composition's
  * height when the window is narrower than the frame, or its width when the
@@ -899,6 +897,14 @@ const coverOutputCamera = (windowAspect: number): void => {
   outputCamera.updateProjectionMatrix();
 };
 
+/** The camera on its preset lens, at the shape the canvas was cut to. */
+const fitOutputCamera = (canvasAspect: number): void => {
+  if (!outputCamera) return;
+  outputCamera.aspect = canvasAspect;
+  outputCamera.fov = outputCamera.userData.presetFov ?? outputCamera.fov;
+  outputCamera.updateProjectionMatrix();
+};
+
 /** The camera back to its composed frame, after presenting. */
 const restoreOutputCameraPreset = (): void => {
   if (!outputCamera) return;
@@ -910,22 +916,45 @@ const restoreOutputCameraPreset = (): void => {
 };
 
 /**
- * Sizes the canvas to the whole display and aims the camera to cover it.
+ * Sizes the canvas for the display and aims the output camera at it. The
+ * player and presentation mode both come through here.
  *
- * No letterbox: the frame the piece was composed in is a target, not a mask,
- * and a display of another shape shows the composition cropped at the edges
- * rather than bars. The player and presentation mode both come through here.
+ * Two displays, two rules. A phone is the piece's own screen: the canvas is
+ * the whole window and the camera covers it — a display of another shape
+ * shows the composition cropped at the edges, never a bar. A desktop is a
+ * window onto the piece: the whole composed frame is shown, the canvas shrunk
+ * to the frame's shape and centred, the page's black showing at the sides of
+ * a portrait piece on a wide screen (or above and below a wide piece on a
+ * tall window). The camera keeps its preset lens there, so what is on screen
+ * is exactly the editor's preview, only larger. "Fit window" frames have no
+ * shape of their own and fill either display.
+ *
+ * Letterboxing by shrinking the canvas rather than scissoring inside a
+ * full-window one is not a shortcut: post processing cannot be scissored —
+ * its internal scene pass obeys the same rectangle and the whole thing comes
+ * back black — and a canvas that is already the shape of the frame needs no
+ * rectangle at all.
  */
 export const fitPlayerCanvas = (): void => {
   if (!renderer) return;
-  const w = layoutViewport().width;
-  const { height: h, top, bottom } = viewportMetrics();
+  const windowWidth = layoutViewport().width;
+  const { height: windowHeight, top, bottom } = viewportMetrics();
   const root = document.documentElement.style;
   root.setProperty('--viewport-gap', `${bottom}px`);
   root.setProperty('--viewport-top-gap', `${top}px`);
+
+  const presetAspect: number = outputCamera?.userData.presetAspect || 0;
+  const contain = presetAspect > 0 && !isHandheldDisplay();
+  let w = windowWidth;
+  let h = windowHeight;
+  if (contain) {
+    if (windowWidth / windowHeight > presetAspect) w = Math.round(windowHeight * presetAspect);
+    else h = Math.round(windowWidth / presetAspect);
+  }
   renderer.setSize(w, h);
   depthRenderTarget?.setSize(w, h);
-  coverOutputCamera(w / h);
+  if (contain) fitOutputCamera(w / h);
+  else coverOutputCamera(w / h);
 };
 
 /**
