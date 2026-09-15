@@ -82,7 +82,8 @@
       "lit": true,
       "emissive": 0.08,
       "roughness": 0.65,
-      "metalness": 0
+      "metalness": 0,
+      "velocityStretch": 0
     }
   },
   "velocityOverLifetime": {
@@ -236,7 +237,6 @@
       "hue": -3
     },
     "luminanceMap": {
-      "black": 0,
       "white": 0.71
     },
     "sampleSize": 0
@@ -251,9 +251,9 @@
   "collisionPlanes": [
     {
       "isActive": true,
-      "mode": "KILL",
+      "mode": "BOUNCE",
       "position": {
-        "x": -5.33,
+        "x": -1.87,
         "y": 0.25,
         "z": -0.74
       },
@@ -263,15 +263,16 @@
         "z": 0
       },
       "dampen": 0.5,
-      "lifetimeLoss": 0
+      "lifetimeLoss": 0,
+      "recover": 1
     },
     {
       "isActive": true,
-      "mode": "KILL",
+      "mode": "BOUNCE",
       "position": {
-        "x": 5.4,
+        "x": 1.92,
         "y": 0,
-        "z": 0
+        "z": -0.66
       },
       "normal": {
         "x": -1,
@@ -279,15 +280,16 @@
         "z": 0
       },
       "dampen": 0.5,
-      "lifetimeLoss": 0
+      "lifetimeLoss": 0,
+      "recover": 1
     },
     {
       "isActive": true,
-      "mode": "KILL",
+      "mode": "BOUNCE",
       "position": {
         "x": 0,
         "y": 0,
-        "z": -5.4
+        "z": -4.3
       },
       "normal": {
         "x": 0,
@@ -295,15 +297,16 @@
         "z": 1
       },
       "dampen": 0.5,
-      "lifetimeLoss": 0
+      "lifetimeLoss": 0,
+      "recover": 1
     },
     {
       "isActive": true,
-      "mode": "KILL",
+      "mode": "BOUNCE",
       "position": {
         "x": 0,
         "y": 0,
-        "z": 6.4
+        "z": 4.28
       },
       "normal": {
         "x": 0,
@@ -311,16 +314,12 @@
         "z": -1
       },
       "dampen": 0.5,
-      "lifetimeLoss": 0
+      "lifetimeLoss": 0,
+      "recover": 1
     }
   ],
   "touch": {
-    "isActive": true,
-    "radius": 0.12,
-    "strength": 1,
-    "wake": 0.4,
-    "swirl": 0.3,
-    "maxSpeed": 8
+    "isActive": true
   },
   "_editorData": {
     "textureId": "VORTEX",
@@ -334,7 +333,7 @@
     "showWorldAxes": true,
     "showShape": false,
     "showForceFields": true,
-    "showCollisionPlanes": false,
+    "showCollisionPlanes": true,
     "frustumCulled": true,
     "useIndividualUpdate": false,
     "useLiveUpdate": false,
@@ -370,7 +369,7 @@
     "metadata": {
       "name": "WIP-Test-2",
       "createdAt": 1787000000000,
-      "modifiedAt": 1789376747824,
+      "modifiedAt": 1789476558989,
       "editorVersion": "2.10.0"
     },
     "embeddedVideos": {
@@ -407,8 +406,8 @@
           "blurQuality": 4,
           "resolutionScale": 1,
           "maxDistance": 1,
-          "thickness": 0.16,
-          "opacity": 0.7,
+          "thickness": 0.01,
+          "opacity": 1,
           "debug": "off"
         },
         "ao": {
@@ -456,7 +455,7 @@
         "metalness": 0,
         "emissive": "#000000",
         "emissiveIntensity": 0,
-        "edgeColor": "#453b3b",
+        "edgeColor": "#d2c19d",
         "edgeRoughness": 0,
         "edgeMetalness": 0.31,
         "edgeEmissive": "#000000",
