@@ -195,7 +195,7 @@ export const createCurveEditor = (): void => {
     canvas.height = EDITOR_SIZE.y;
     ctx = canvas.getContext('2d');
 
-    createPredefinedButtons();
+    schedulePresetButtons();
     setupModalControls();
 
     render();
@@ -319,6 +319,7 @@ export const openBezierEditorModal = (
   if (!isInitialized) {
     createCurveEditor();
   }
+  if (!presetsBuilt) createPredefinedButtons();
 
   if (target) {
     currentTarget = target;
@@ -914,9 +915,27 @@ const createPresetButton = ({
 /**
  * Creates preset curve buttons
  */
+/** Whether the preset thumbnails have been rendered yet. */
+let presetsBuilt = false;
+
+/**
+ * Builds the preset thumbnails when the browser is idle. Each is a canvas
+ * rendered to a data URL — a synchronous readback per preset, 255 ms on the
+ * boot path when measured — and nothing needs them until the modal opens,
+ * which builds them on demand if it comes first.
+ */
+const schedulePresetButtons = (): void => {
+  const build = (): void => {
+    if (!presetsBuilt) createPredefinedButtons();
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(build, { timeout: 3000 });
+  else setTimeout(build, 1500);
+};
+
 const createPredefinedButtons = (): void => {
   const presetContainer = document.querySelector('.bezier-editor-presets');
   if (!presetContainer) return;
+  presetsBuilt = true;
 
   presetContainer.innerHTML = '';
 

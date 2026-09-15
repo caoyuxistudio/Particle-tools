@@ -35,6 +35,7 @@ import { prepareParticleBackend } from './three-particles-editor/gpu-support';
 import { buildParticleSystem } from './three-particles-editor/particle-factory';
 import {
   createWorld,
+  compileWorld,
   resetCamera,
   setTerrain,
   updateWorld,
@@ -51,6 +52,7 @@ import {
   setAoSettings,
   getRendererDomElement,
   getOutputCamera,
+  getRenderer,
 } from './three-particles-editor/world';
 import { getTexture, initAssets, loadCustomAssets } from './three-particles-editor/assets';
 import {
@@ -382,6 +384,9 @@ const bootStats = {
   /** Milliseconds since navigation at each boot phase, in order. */
   marks: {} as Record<string, number>,
 };
+/** One frame later, so the browser can paint what is already there. */
+const nextFrame = (): Promise<void> => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+
 /** Stamps a boot phase: on the HUD's boot line and as a performance mark. */
 const bootMark = (name: string): void => {
   bootStats.marks[name] = Math.round(performance.now());
@@ -621,26 +626,73 @@ export const createParticleSystemEditor = async (targetQuery: string): Promise<v
           }
           // Boxes, lights and probes saved from a previous session.
           initSceneObjects();
-          isInitializing = true;
-          createPanel();
+          bootMark('scene');
           createCurveEditor();
-          recreateParticleSystem(false);
-          isInitializing = false;
-          bootMark('panel');
+          bootMark('curve-editor');
+          // Let the panels paint before the heavy work: the piece load and
+          // the first frame's shader compilation are one long block, and
+          // without a frame in between the page sits blank through it.
+          await nextFrame();
+          bootMark('painted');
           // The piece itself rather than the default emitter — the same load
-          // an Examples click does, so nothing has to be picked after a reload.
+          // an Examples click does, except that the panel is built one frame
+          // after the first picture instead of before it. The default emitter
+          // and its panel are only built when there is no piece to show.
           const example = await defaultExample;
+          let loadedPiece = false;
           if (example) {
             try {
-              window.editor.load(example);
+              resetToRoot();
+              isInitializing = true;
+              loadParticleSystem({
+                config: example,
+                particleSystemConfig,
+                recreateParticleSystem,
+                onLoad: () => {
+                  destroyPanel();
+                  configEntries.length = 0;
+                },
+              });
+              isInitializing = false;
+              configDirty = false;
               bootMark('example');
               bootStats.defaultExample = `${DEFAULT_EXAMPLE} loaded`;
+              loadedPiece = true;
             } catch (error) {
               bootStats.defaultExample = `${DEFAULT_EXAMPLE} failed (${(error as Error).message})`;
             }
           }
+          if (!loadedPiece) {
+            isInitializing = true;
+            createPanel();
+            recreateParticleSystem(false);
+            isInitializing = false;
+            bootMark('panel');
+          }
+          // Shader, pipeline and compute-kernel compilation for what the
+          // viewport will draw, done ahead and off the main thread instead of
+          // inside the first frame.
+          await compileWorld();
+          if (particleSystem?.computeNode) {
+            try {
+              await (getRenderer() as any).computeAsync(particleSystem.computeNode);
+            } catch {
+              /* the first frame compiles it */
+            }
+          }
+          bootMark('compiled');
           bootStats.loops += 1;
           animate();
+          if (loadedPiece) {
+            // The panel, once the picture is up: 170 controls take a frame's
+            // worth of time to build, and nothing needs them before then.
+            await nextFrame();
+            isInitializing = true;
+            createPanel();
+            configEntries.forEach(({ onReset }) => onReset && onReset());
+            isInitializing = false;
+            bootMark('panel');
+          }
         });
       },
     });

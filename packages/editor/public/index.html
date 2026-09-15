@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en">
+<!-- Painted before any stylesheet arrives: the first frame is black, not white. -->
+<html lang="en" style="background: #000">
   <head>
     <!-- Global site tag (gtag.js) - Google Analytics -->
     <script
@@ -49,19 +50,32 @@
     <link rel="icon" type="image/png" sizes="48x48" href="./favicon/favicon-48x48.png" />
     <link rel="apple-touch-icon" href="./favicon/apple-touch-icon.png" />
     <link rel="manifest" href="./site.webmanifest" />
+    <!--
+      The fonts come from Google and must not block the first paint: a
+      stylesheet linked plainly is render-blocking, and where Google is slow
+      or unreachable the page stayed white until the request gave up. Loaded
+      as a print sheet and switched to all media once it arrives, the page
+      paints at once and the fonts swap in when they land.
+    -->
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      media="print"
+      onload="this.media='all'"
     />
     <!-- Roboto -->
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,600,700"
+      media="print"
+      onload="this.media='all'"
     />
     <!-- Roboto Mono -->
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css?family=Roboto+Mono"
+      media="print"
+      onload="this.media='all'"
     />
     <!-- Dark only. The light theme is still compiled but never linked. -->
     <link rel="stylesheet" href="./build/static/smui-dark.css" />

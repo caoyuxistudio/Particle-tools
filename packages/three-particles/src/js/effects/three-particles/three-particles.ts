@@ -922,16 +922,21 @@ export const createParticleSystem = (
   };
   resolveModifierCurves();
 
-  const startPositions = Array.from(
-    { length: maxParticles },
-    () => new THREE.Vector3()
-  );
-  const velocities = Array.from(
-    { length: maxParticles },
-    () => new THREE.Vector3()
-  );
+  // Every slot's start position and velocity. The CPU path fills them all up
+  // front (its position attribute starts from them); the GPU path only ever
+  // touches a slot when it activates, so its vectors are made on first use —
+  // at 200k particles that is 400k objects and 200k shape samples not made
+  // at creation, which is what a slider drag pays for.
+  const startPositions: THREE.Vector3[] = new Array(maxParticles);
+  const velocities: THREE.Vector3[] = new Array(maxParticles);
+  const ensureSlotVectors = (i: number): void => {
+    if (!startPositions[i]) {
+      startPositions[i] = new THREE.Vector3();
+      velocities[i] = new THREE.Vector3();
+    }
+  };
 
-  generalData.creationTimes = Array.from({ length: maxParticles }, () => 0);
+  generalData.creationTimes = new Array(maxParticles).fill(0);
 
   // Free list for O(1) inactive particle lookup (stack, top = end of array)
   const freeList: Array<number> = Array.from(
@@ -1054,17 +1059,10 @@ export const createParticleSystem = (
     'startSize',
     'startOpacity',
   ];
+  // Activation writes a slot's start values before anything reads them, so
+  // the arrays only need to exist — not 200k calculateValue calls up front.
   startValueKeys.forEach((key) => {
-    generalData.startValues[key] = Array.from({ length: maxParticles }, () =>
-      calculateValue(
-        generalData.particleSystemId,
-        normalizedConfig[key] as
-          | Constant
-          | RandomBetweenTwoConstants
-          | LifetimeCurve,
-        0
-      )
-    );
+    generalData.startValues[key] = new Array(maxParticles).fill(0);
   });
 
   generalData.startValues.startColorR = Array.from(
@@ -1122,9 +1120,8 @@ export const createParticleSystem = (
           octaves: noise.octaves,
         })
       : undefined,
-    offsets: noise.useRandomOffset
-      ? Array.from({ length: maxParticles }, () => Math.random() * 100)
-      : undefined,
+    // Drawn afresh at every activation; the array only has to exist.
+    offsets: noise.useRandomOffset ? new Array(maxParticles).fill(0) : undefined,
   };
 
   const colorInstanceConfig = normalizedConfig.particleColorInstance;
@@ -1485,14 +1482,20 @@ export const createParticleSystem = (
     geometry = new THREE.BufferGeometry();
   }
 
-  for (let i = 0; i < maxParticles; i++)
-    calculatePositionAndVelocity(
-      generalData,
-      shape,
-      startSpeed,
-      startPositions[i],
-      velocities[i]
-    );
+  // The CPU path starts every slot on the shape (its position attribute is
+  // filled from these below); the GPU path samples the shape at activation.
+  if (!useGPUCompute) {
+    for (let i = 0; i < maxParticles; i++) {
+      ensureSlotVectors(i);
+      calculatePositionAndVelocity(
+        generalData,
+        shape,
+        startSpeed,
+        startPositions[i],
+        velocities[i]
+      );
+    }
+  }
 
   // Create interleaved buffer for all scalar per-particle attributes.
   // In GPU compute mode this is kept for CPU death detection reads only
@@ -1813,6 +1816,7 @@ export const createParticleSystem = (
           normalizedConfig.rotationOverLifetime.max!
         );
 
+    ensureSlotVectors(particleIndex);
     calculatePositionAndVelocity(
       generalData,
       normalizedConfig.shape,

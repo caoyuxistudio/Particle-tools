@@ -443,6 +443,7 @@ export const loadParticleSystem = ({
   // Restore _editorData so deepMerge can overlay the loaded config's _editorData on top
   particleSystemConfig._editorData = savedEditorData;
 
+  performance.mark('load:start');
   deepMerge(particleSystemConfig, config, {
     skippedProperties: ['map', 'geometry', 'depthTexture'],
     applyToFirstObject: true,
@@ -490,6 +491,7 @@ export const loadParticleSystem = ({
   });
 
   applyTextures();
+  performance.mark('load:textures');
 
   // The scene travels inside _editorData but is owned by scene-objects.ts, so
   // hand it over there and drop the copy — leaving one on the live config would
@@ -501,15 +503,18 @@ export const loadParticleSystem = ({
   const loadedScene = config?._editorData?.sceneObjects;
   if (Array.isArray(loadedScene)) replaceSceneObjects(loadedScene);
   delete particleSystemConfig._editorData.sceneObjects;
+  performance.mark('load:scene');
 
   setTerrain(particleSystemConfig._editorData.terrain?.textureId);
   recreateParticleSystem(false);
+  performance.mark('load:system');
   void stillDecoding;
 
   // Call onLoad callback to notify entries about the loaded config
   if (onLoad) {
     onLoad();
   }
+  performance.mark('load:panel');
 
   // Show success notification
   showSuccessSnackbar('Particle system successfully loaded');

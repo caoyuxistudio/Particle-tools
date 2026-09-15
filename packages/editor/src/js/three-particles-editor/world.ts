@@ -1440,6 +1440,25 @@ export const removeLightProbe = (): void => {
   }
 };
 
+/**
+ * Compiles the materials the viewport and the output camera will draw, ahead
+ * of the first frame and off the main thread where the platform allows
+ * (createRenderPipelineAsync). The first frame otherwise carries every
+ * shader compilation in one synchronous block.
+ */
+export const compileWorld = async (): Promise<void> => {
+  const compile = (renderer as unknown as {
+    compileAsync?: (scene: THREE.Scene, camera: THREE.Camera) => Promise<void>;
+  }).compileAsync;
+  if (!compile) return;
+  try {
+    await compile.call(renderer, scene, camera);
+    if (outputCamera) await compile.call(renderer, scene, outputCamera);
+  } catch {
+    /* the first frame compiles the rest */
+  }
+};
+
 export const getScene = (): THREE.Scene => scene;
 export const getRenderer = () => renderer;
 export const getCamera = (): THREE.PerspectiveCamera => camera;

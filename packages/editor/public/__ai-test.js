@@ -103,6 +103,15 @@
     const check = (label, ok, detail = '') => lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 
     check('boots into WIP-Test-2', bootLine.includes('default WIP-Test-2 loaded'), bootLine.replace(/^boot: /, ''));
+    // How the page comes up: fonts must not block the first paint, the
+    // page is black before any stylesheet, and the boot goes piece → first
+    // frame → panel with nothing built twice.
+    const fontLinks = performance.getEntriesByType('resource').filter((e) => /fonts\.googleapis/.test(e.name));
+    check('the font stylesheets do not block the first paint', fontLinks.length > 0 && fontLinks.every((e) => e.renderBlockingStatus === 'non-blocking'), fontLinks.map((e) => e.renderBlockingStatus).join(','));
+    check('the page is black before any stylesheet', (document.documentElement.getAttribute('style') || '').replace(/\s/g, '').includes('background:#000'));
+    const timeline = (bootLine.split('timeline ')[1] || '').split(' → ').map((s) => s.split(' ')[0]);
+    check('the boot loads the piece before it builds a panel', timeline.indexOf('example') >= 0 && timeline.indexOf('first-frame') > timeline.indexOf('example') && timeline.indexOf('panel') > timeline.indexOf('first-frame'), timeline.join(' → '));
+    check('and compiles the shaders ahead of the first frame', timeline.indexOf('compiled') > timeline.indexOf('example') && timeline.indexOf('compiled') < timeline.indexOf('first-frame'), timeline.join(' → '));
     check('new system starts at 10000 particles', freshMax === 10000, `${freshMax}`);
     check('new system starts at 1000 a second', freshRate === 1000, `${freshRate}`);
     check('scene object count', got.length === want.length, `${got.length}/${want.length}`);
