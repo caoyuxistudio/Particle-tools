@@ -1725,7 +1725,12 @@
     check('its ribbon is the GPU-built one', particles?.material.userData.gpuTrail === true, particles?.material.type);
     check('no CPU-built ribbon mesh in the scene', !cpuRibbon);
     check('the ring is bound (sample count rides in instanceVelocity)', !!particles?.geometry.attributes.instanceVelocity);
-    check('the strip has two vertices per sample', particles?.geometry.attributes.position.count === 24 * 2, `${particles?.geometry.attributes.position.count}`);
+    // With smoothing the strip has subdivisions points per raw segment.
+    check('the strip has two vertices per drawn point', particles?.geometry.attributes.position.count === ((24 - 1) * 3 + 1) * 2, `${particles?.geometry.attributes.position.count}`);
+    // The panel shows the width ×100: a 0.04 ribbon reads 4.
+    const trailFolder = [...document.querySelectorAll('.lil-gui')].find((g) => g.querySelector(':scope > .title')?.textContent.trim() === 'Trail');
+    const widthRow = trailFolder && [...trailFolder.querySelectorAll('.controller.number')].find((c) => c.querySelector('.name')?.textContent.trim().startsWith('width'));
+    check('the panel shows the width times a hundred', !!widthRow && Math.abs(parseFloat(widthRow.querySelector('input').value) - 4) < 1e-6, widthRow ? widthRow.querySelector('input').value : 'no width row');
 
     // The picture: something is drawn where the particles are (needs frames).
     const outCam = scene.children.find((o) => o.isPerspectiveCamera);

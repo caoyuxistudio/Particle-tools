@@ -1926,6 +1926,8 @@ export type GeneralData = {
   positionHistoryCount?: Uint16Array;
   /** Trail length (number of history samples per particle). */
   trailLength?: number;
+  /** Points the ribbon is drawn with: `length`, or with smoothing (length − 1) × subdivisions + 1. */
+  trailSlotCount?: number;
   /** Cached camera world position, updated each frame via onBeforeRender for billboard trails. */
   trailCameraPosition?: THREE.Vector3;
 

@@ -417,6 +417,11 @@ export function createGpuTrailRibbonTSLMaterial(
 ): MeshBasicNodeMaterial {
   const u = createTrailUniforms(trailUniforms);
   const L = Math.max(2, Math.floor(gpu.length));
+  // Points the strip is drawn with: with smoothing, `subdivisions` per raw
+  // segment, so the spline shows between the samples.
+  const slots = gpu.smoothing
+    ? (L - 1) * Math.max(1, Math.floor(gpu.smoothingSubdivisions)) + 1
+    : L;
   const sHist = storage(
     gpu.curveData,
     'float',
@@ -540,7 +545,7 @@ export function createGpuTrailRibbonTSLMaterial(
             count.greaterThanEqual(3.0),
             tslMin(
               count.sub(1.0).mul(gpu.smoothingSubdivisions).add(1.0),
-              float(L)
+              float(slots)
             ),
             count
           )

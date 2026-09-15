@@ -310,6 +310,21 @@ const tabulateCurve = (fn: CurveFunction): CurveFunction => {
   };
 };
 
+/**
+ * How many points a ribbon is drawn with. The ring holds `length` raw
+ * samples; with smoothing on, the Catmull-Rom spline through them is drawn
+ * with `subdivisions` points per raw segment, so the curve shows between the
+ * samples instead of being cut back to them.
+ */
+const trailSlotCount = (cfg: {
+  length: number;
+  smoothing: boolean;
+  smoothingSubdivisions: number;
+}): number =>
+  cfg.smoothing
+    ? (cfg.length - 1) * Math.max(1, Math.floor(cfg.smoothingSubdivisions)) + 1
+    : cfg.length;
+
 // Trail ribbon helpers (reused across frames to avoid allocations)
 const _trailDir = new THREE.Vector3();
 const _trailPerp = new THREE.Vector3();
@@ -1185,6 +1200,7 @@ export const createParticleSystem = (
   if (useTrail && trailConfig && !useGPUTrail) {
     const trailLength = trailConfig.length;
     generalData.trailLength = trailLength;
+    generalData.trailSlotCount = trailSlotCount(trailConfig);
     generalData.positionHistory = new Float32Array(
       maxParticles * trailLength * 3
     );
@@ -1424,7 +1440,7 @@ export const createParticleSystem = (
     // position = (slot, side, 0). Everything else the vertex stage reads from
     // the particle's history ring in the compute pipeline's storage buffer.
     const instancedGeometry = new THREE.InstancedBufferGeometry();
-    const slots = trailConfig.length;
+    const slots = trailSlotCount(trailConfig);
     const stripPositions = new Float32Array(slots * 2 * 3);
     for (let sIdx = 0; sIdx < slots; sIdx++) {
       stripPositions[sIdx * 6] = sIdx;
@@ -2209,12 +2225,13 @@ export const createParticleSystem = (
 
   if (useTrail && trailConfig && !useGPUTrail) {
     const trailLength = trailConfig.length;
-    // Each particle contributes (trailLength) vertices (2 per segment joint: left+right)
-    // Segments = trailLength - 1, so 2 * trailLength vertices per particle
-    const verticesPerParticle = trailLength * 2;
+    const slotCount = trailSlotCount(trailConfig);
+    // Each particle contributes (slotCount) points, drawn from `trailLength` raw samples (2 per segment joint: left+right)
+    // Segments = slotCount - 1, so 2 * slotCount vertices per particle
+    const verticesPerParticle = slotCount * 2;
     const totalVertices = maxParticles * verticesPerParticle;
     // Each segment (between 2 consecutive history points) = 2 triangles = 6 indices
-    const indicesPerParticle = (trailLength - 1) * 6;
+    const indicesPerParticle = (slotCount - 1) * 6;
     const totalIndices = maxParticles * indicesPerParticle;
 
     trailGeometry = new THREE.BufferGeometry();
@@ -2231,11 +2248,11 @@ export const createParticleSystem = (
     for (let p = 0; p < maxParticles; p++) {
       const vertBase = p * verticesPerParticle;
       const idxBase = p * indicesPerParticle;
-      for (let s = 0; s < trailLength; s++) {
+      for (let s = 0; s < slotCount; s++) {
         trailOffsets[vertBase + s * 2] = -1.0; // left
         trailOffsets[vertBase + s * 2 + 1] = 1.0; // right
       }
-      for (let s = 0; s < trailLength - 1; s++) {
+      for (let s = 0; s < slotCount - 1; s++) {
         const i = idxBase + s * 6;
         const v = vertBase + s * 2;
         trailIndices[i] = v;
@@ -3883,6 +3900,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
     return;
 
   const trailLength = trailConfig.length;
+  const slotCount = generalData.trailSlotCount ?? trailLength;
   const positionHistory = generalData.positionHistory;
   const historyIndex = generalData.positionHistoryIndex;
   const historyCount = generalData.positionHistoryCount;
@@ -3911,7 +3929,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
   const trailNextArr = trailNextAttrCached.array as Float32Array;
   const trailUVArr = trailUVAttrCached.array as Float32Array;
   const trailHalfWidthArr = trailHalfWidthAttrCached.array as Float32Array;
-  const verticesPerParticle = trailLength * 2;
+  const verticesPerParticle = slotCount * 2;
   const creationTimesLength = generalData.creationTimes.length;
   let hasUpdates = false;
   // The highest particle whose slots were written or cleared this frame.
@@ -4081,7 +4099,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
         // subdivisions down segment by segment from the head and cutting the
         // surplus, as before, showed only the first 1/subdivisions of it.)
         const segmentCount = count - 1;
-        finalCount = Math.min(segmentCount * subdivisions + 1, trailLength);
+        finalCount = Math.min(segmentCount * subdivisions + 1, slotCount);
         const neededSize = finalCount * 3;
 
         // Resize global scratch buffer if needed
@@ -4129,7 +4147,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
       }
 
       // Limit final count to the number of slots we can fill
-      if (finalCount > trailLength) finalCount = trailLength;
+      if (finalCount > slotCount) finalCount = slotCount;
 
       // Collapse degenerate segments: when two consecutive smoothed points are
       // nearly identical the shader tangent becomes zero, producing distorted
@@ -4153,9 +4171,9 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
       }
 
       // --- Build ribbon vertices ---
-      const prevFilledSlots = prevFilled ? prevFilled[index] : trailLength;
+      const prevFilledSlots = prevFilled ? prevFilled[index] : slotCount;
       if (prevFilled) prevFilled[index] = finalCount;
-      for (let s = 0; s < trailLength; s++) {
+      for (let s = 0; s < slotCount; s++) {
         const vIdx = (vertBase + s * 2) * 3;
         const cIdx = (vertBase + s * 2) * 4;
         const aIdx = vertBase + s * 2;
@@ -4366,7 +4384,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
             const normalDot = cnx * prevNx + cny * prevNy + cnz * prevNz;
             if (normalDot < 0) {
               // Flip all ribbon offsets for this particle by swapping left/right half-widths
-              for (let s = 0; s < Math.min(finalCount, trailLength); s++) {
+              for (let s = 0; s < Math.min(finalCount, slotCount); s++) {
                 const aIdx = vertBase + s * 2;
                 const hw = trailHalfWidthArr[aIdx];
                 trailHalfWidthArr[aIdx] = -hw;
@@ -4394,7 +4412,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
       highestTouched = index;
       historyCount[index] = 0;
       historyIndex[index] = 0;
-      const clearSlots = prevFilled ? prevFilled[index] : trailLength;
+      const clearSlots = prevFilled ? prevFilled[index] : slotCount;
       if (prevFilled) prevFilled[index] = 0;
       for (let s = 0; s < clearSlots; s++) {
         const vIdx = (vertBase + s * 2) * 3;
@@ -4432,7 +4450,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
     // This produces a smooth, continuous ribbon through all particle positions.
     const controlCount = _ribbonCount;
     const filledCount = Math.min(
-      trailLength,
+      slotCount,
       Math.max(controlCount * 4, controlCount)
     );
     const chainSize = filledCount * 3;
@@ -4510,9 +4528,9 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
     const leaderSize = trailScalarArr[leaderBase + S_SIZE];
     const leaderRoll = trailScalarArr[leaderBase + S_ROTATION];
 
-    const leaderPrevFilled = prevFilled ? prevFilled[leader] : trailLength;
+    const leaderPrevFilled = prevFilled ? prevFilled[leader] : slotCount;
     if (prevFilled) prevFilled[leader] = filledCount;
-    for (let s = 0; s < trailLength; s++) {
+    for (let s = 0; s < slotCount; s++) {
       const vIdx = (leaderVertBase + s * 2) * 3;
       const cIdx = (leaderVertBase + s * 2) * 4;
       const aIdx = leaderVertBase + s * 2;
@@ -4679,7 +4697,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
         if (hasPrev) {
           const normalDot = cnx * prevNx + cny * prevNy + cnz * prevNz;
           if (normalDot < 0) {
-            for (let s = 0; s < Math.min(filledCount, trailLength); s++) {
+            for (let s = 0; s < Math.min(filledCount, slotCount); s++) {
               const aIdx = leaderVertBase + s * 2;
               const hw = trailHalfWidthArr[aIdx];
               trailHalfWidthArr[aIdx] = -hw;
@@ -4701,7 +4719,7 @@ const updateTrailGeometry = (props: ParticleSystemInstance, now: number) => {
     for (let ri = 1; ri < _ribbonCount; ri++) {
       const pIdx = _ribbonIndices[ri];
       const pVertBase = pIdx * verticesPerParticle;
-      const pClearSlots = prevFilled ? prevFilled[pIdx] : trailLength;
+      const pClearSlots = prevFilled ? prevFilled[pIdx] : slotCount;
       if (prevFilled) prevFilled[pIdx] = 0;
       for (let s = 0; s < pClearSlots; s++) {
         const vIdx = (pVertBase + s * 2) * 3;

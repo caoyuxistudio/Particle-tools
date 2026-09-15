@@ -56,7 +56,8 @@ const ensureTrailConfig = (particleSystemConfig: any): void => {
 
   const trail = particleSystemConfig.renderer.trail;
   if (trail.length == null) trail.length = 20;
-  if (trail.width == null) trail.width = 1.0;
+  // World units; the panel shows it ×100, so a new trail reads 1.
+  if (trail.width == null) trail.width = 0.01;
   if (trail.minVertexDistance == null) trail.minVertexDistance = 0;
   if (trail.maxTime == null) trail.maxTime = 0;
   if (trail.smoothing == null) trail.smoothing = false;
@@ -109,11 +110,24 @@ export const createTrailEntries = ({
     const trail = particleSystemConfig.renderer.trail;
 
     controllers.push(
-      folder.add(trail, 'length', 2, 500, 1).onChange(recreateParticleSystem).listen()
+      folder
+        .add(trail, 'length', 2, 60, 1)
+        .name('length (samples)')
+        .onChange(recreateParticleSystem)
+        .listen()
     );
 
+    // The config keeps world units (a ribbon 0.01 wide is right at this
+    // scale); the panel shows the value ×100 so it reads 1, up to 10.
+    const widthDisplay = { width: trail.width * 100 };
     controllers.push(
-      folder.add(trail, 'width', 0.01, 10, 0.01).onChange(recreateParticleSystem).listen()
+      folder
+        .add(widthDisplay, 'width', 0.1, 10, 0.05)
+        .name('width (×0.01)')
+        .onChange((value: number) => {
+          trail.width = value / 100;
+          recreateParticleSystem();
+        })
     );
 
     controllers.push(
