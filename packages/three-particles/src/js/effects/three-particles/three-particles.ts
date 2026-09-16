@@ -620,6 +620,7 @@ const DEFAULT_PARTICLE_SYSTEM_CONFIG: ParticleSystemConfig = {
     area: { x: 0, y: 0, z: 0 },
     scale: { x: 1, y: 1 },
     wrap: ColorInstanceWrap.ZERO,
+    offset: { x: 0, y: 0, z: 0 },
     useAlphaForOpacity: false,
     useLuminanceForNoise: false,
     luminanceNoiseAmount: 0,

@@ -881,6 +881,12 @@ export type ParticleColorInstanceConfig = {
    * black, transparent, luminance 0. See {@link ColorInstanceWrap}.
    */
   wrap?: ColorInstanceWrap;
+  /**
+   * Where the source's centre sits, as an offset from the emitter along the
+   * world axes; only the plane's two axes are read. Default 0: centred on
+   * the emitter.
+   */
+  offset?: { x?: number; y?: number; z?: number };
   /** Multiply the image's alpha channel into startOpacity. */
   useAlphaForOpacity?: boolean;
   /**
@@ -940,6 +946,10 @@ export type ColorInstanceData = {
   scaleY: number;
   /** See {@link ParticleColorInstanceConfig.wrap}. */
   wrap: ColorInstanceWrap;
+  /** See {@link ParticleColorInstanceConfig.offset}. */
+  offsetX: number;
+  offsetY: number;
+  offsetZ: number;
   useAlphaForOpacity: boolean;
   useLuminanceForNoise: boolean;
   luminanceNoiseAmount: number;

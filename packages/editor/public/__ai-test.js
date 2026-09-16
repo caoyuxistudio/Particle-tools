@@ -1985,9 +1985,10 @@
       return { width, height, data: ctx.getImageData(0, 0, width, height).data };
     };
     // The reference: the library's conventions, restated.
-    const refUv = (plane, scale, wrap, x, y, z) => {
+    const refUv = (plane, scale, wrap, offset, x, y, z) => {
+      const dx = x - offset[0], dy = y - offset[1], dz = z - offset[2];
       let a, d;
-      if (plane === 'XY') { a = x; d = -y; } else if (plane === 'YZ') { a = -z; d = -y; } else { a = x; d = z; }
+      if (plane === 'XY') { a = dx; d = -dy; } else if (plane === 'YZ') { a = -dz; d = -dy; } else { a = dx; d = dz; }
       const u = a / RECT[0] / scale[0] + 0.5;
       const v = d / RECT[1] / scale[1] + 0.5;
       const wrapT = (t) => {
@@ -2007,8 +2008,10 @@
       return [toLinear(source.data[o] / 255), toLinear(source.data[o + 1] / 255), toLinear(source.data[o + 2] / 255)];
     };
 
-    const run = async (label, rotation, ci) => {
-      window.editor.load(piece(rotation, ci));
+    const run = async (label, rotation, ci, editorData = {}) => {
+      const c = piece(rotation, ci);
+      Object.assign(c._editorData, editorData);
+      window.editor.load(c);
       await wait(1600);
       if (!source) source = readSource();
       const g = particles()?.geometry;
@@ -2018,12 +2021,13 @@
       const plane = ci.plane || 'XZ';
       const scale = [ci.scale?.x ?? 1, ci.scale?.y ?? 1];
       const wrap = ci.wrap || 'ZERO';
+      const offset = [ci.offset?.x ?? 0, ci.offset?.y ?? 0, ci.offset?.z ?? 0];
       let alive = 0, match = 0, black = 0;
       const distinct = new Set();
       for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
         if (col[i * 4 + 3] <= 0.01) continue;
         alive++;
-        const want = expectedColour(refUv(plane, scale, wrap, pos[i * 4], pos[i * 4 + 1], pos[i * 4 + 2]));
+        const want = expectedColour(refUv(plane, scale, wrap, offset, pos[i * 4], pos[i * 4 + 1], pos[i * 4 + 2]));
         const got = [col[i * 4], col[i * 4 + 1], col[i * 4 + 2]];
         if (got.every((c, k) => Math.abs(c - want[k]) < 0.02)) match++;
         if (got.every((c) => c < 0.005)) black++;
@@ -2046,14 +2050,111 @@
     await run('scale 0.5, REPEAT: the source tiles', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'REPEAT' });
     await run('scale 0.5, MIRROR: every other tile flipped', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'MIRROR' });
     await run('scale 0.5, STRETCH: the edge texel runs on', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'STRETCH' });
+    await run('offset 1 / 0.5 moves the source off the emitter', { x: 90, y: 0, z: 0 }, { plane: 'XZ', offset: { x: 1, y: 0, z: 0.5 } });
+
+    // ── The debug plane: the source laid where it maps, and the handle ──────
+    const cameraBefore = { pos: w.camera.position.clone(), target: w.controls.target.clone() };
+    await run('with the debug plane shown the mapping is unchanged', { x: 90, y: 0, z: 0 }, { plane: 'XZ', offset: { x: 1, y: 0, z: 0.5 } }, { showColorSourceDebug: true });
+    await wait(200);
+    const debug = scene.getObjectByName('color-source-debug');
+    check('the debug plane is in the scene and shown', !!debug && debug.visible);
+    if (debug) {
+      const T = w.THREE;
+      const artwork = new T.Layers();
+      artwork.set(0);
+      const leaks = [];
+      debug.traverse((o) => { if (o.layers.test(artwork)) leaks.push(o.name || o.type); });
+      check('it is furniture: nothing of it on the artwork layer', leaks.length === 0, leaks.slice(0, 3).join(','));
+      const plane = debug.getObjectByName('color-source-debug-plane');
+      const frame = debug.getObjectByName('color-source-debug-frame');
+      const label = debug.getObjectByName('color-source-debug-label');
+      check('the image plane ignores depth and is see-through', !!plane && plane.material.depthTest === false && plane.material.transparent === true && !!plane.material.opacityNode, plane ? `depthTest ${plane.material.depthTest}` : 'no plane');
+      check('a green frame and a label mark it', !!frame && frame.isLineLoop && frame.material.color.getHex() === 0x33ff88 && !!label && label.isSprite, `${frame?.material.color.getHexString()} ${label?.type}`);
+      const box = debug.getObjectByName('color-source-debug-box');
+      check('the frame is the mapped area, 4 × 2', !!box && Math.abs(box.scale.x - 4) < 1e-3 && Math.abs(box.scale.y - 2) < 1e-3, `${box?.scale.x} × ${box?.scale.y}`);
+      check('it lies on the XZ plane at the emitter plus the offset', Math.abs(debug.rotation.x + Math.PI / 2) < 1e-6 && Math.abs(debug.position.x - 1) < 1e-6 && Math.abs(debug.position.z - 0.5) < 1e-6, `rot ${debug.rotation.x.toFixed(3)} at ${debug.position.x}, ${debug.position.z}`);
+
+      // Click it, drag its handle, and the offset follows.
+      window.editor.resetCamera();
+      await wait(300);
+      const canvas = r.domElement;
+      const fire = (type, x, y) =>
+        canvas.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, pointerType: 'mouse', pointerId: 1, button: type === 'pointermove' ? -1 : 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true, bubbles: true, cancelable: true }));
+      const clientOf = (v) => {
+        const p = v.clone().project(w.camera);
+        const b = w.canvasBounds();
+        return [b.left + ((p.x + 1) / 2) * b.width, b.top + ((1 - p.y) / 2) * b.height];
+      };
+      const [cx, cy] = clientOf(debug.getWorldPosition(new T.Vector3()));
+      fire('pointerdown', cx, cy);
+      fire('pointerup', cx, cy);
+      await wait(50);
+      const root = scene.children.find((o) => o.isTransformControlsRoot && o.controls?.object === debug);
+      const controls = root?.controls;
+      check('clicking the plane attaches a gizmo to it', !!controls && debug.userData.selected === true);
+      if (controls) {
+        check('the gizmo moves only along the plane\'s own axes (no Y on XZ)', controls.showX === true && controls.showY === false && controls.showZ === true, `x ${controls.showX} y ${controls.showY} z ${controls.showZ}`);
+        let hit = null;
+        for (let rad = 0; rad <= 80 && !hit; rad += 4) {
+          for (let a = 0; a < 360 && !hit; a += 30) {
+            const x = cx + rad * Math.cos((a * Math.PI) / 180);
+            const y = cy + rad * Math.sin((a * Math.PI) / 180);
+            fire('pointermove', x, y);
+            if (controls.axis) hit = { x, y, axis: controls.axis };
+          }
+        }
+        check('hovering finds a handle', !!hit, hit ? hit.axis : 'nothing within 80px');
+        if (hit) {
+          const before = JSON.stringify(window.editor.getCurrentParticleSystemConfig().particleColorInstance.offset);
+          fire('pointerdown', hit.x, hit.y);
+          fire('pointermove', hit.x + 40, hit.y + 25);
+          fire('pointermove', hit.x + 80, hit.y + 50);
+          fire('pointerup', hit.x + 80, hit.y + 50);
+          await wait(250);
+          const after = window.editor.getCurrentParticleSystemConfig().particleColorInstance.offset;
+          check('dragging the handle rewrites the offset', JSON.stringify(after) !== before && Math.abs(after.y) < 1e-6, `${before} → ${JSON.stringify(after)}`);
+          check('orbit controls are back after the drag', w.controls.enabled === true);
+        }
+      }
+      // It draws: the editor camera, rendered offscreen, shows more green
+      // (frame, label, tinted image) with the plane than without.
+      const S = 512;
+      const rt = new T.RenderTarget(S, S, { depthBuffer: true });
+      const greenPixels = async () => {
+        const prev = r.getRenderTarget();
+        r.setRenderTarget(rt);
+        r.render(scene, w.camera);
+        r.setRenderTarget(prev);
+        const buf = await r.readRenderTargetPixelsAsync(rt, 0, 0, S, S);
+        let green = 0;
+        for (let i = 0; i < buf.length; i += 4) if (buf[i + 1] > buf[i] + 40 && buf[i + 1] > buf[i + 2] + 40) green++;
+        return green;
+      };
+      const shownGreen = await greenPixels();
+      debug.visible = false;
+      const hiddenGreen = await greenPixels();
+      debug.visible = true;
+      rt.dispose();
+      check('the plane, frame and label are drawn (needs frames)', shownGreen > hiddenGreen + 200, `${shownGreen} green pixels shown, ${hiddenGreen} hidden`);
+
+      // Off again from the flag, as the Helper section would do it.
+      window.editor.getCurrentParticleSystemConfig()._editorData.showColorSourceDebug = false;
+      await wait(150);
+      check('clearing the flag hides it and drops the handle', debug.visible === false && debug.userData.selected === false);
+    }
+    w.camera.position.copy(cameraBefore.pos);
+    w.controls.target.copy(cameraBefore.target);
+    w.controls.update();
 
     // The levers travel in the config, and only when they leave the default.
+    window.editor.load(piece({ x: 0, y: 0, z: 0 }, { plane: 'XY', scale: { x: 0.5, y: 0.5 }, wrap: 'STRETCH', offset: { x: 1, y: 0.5, z: 0 } }));
+    await wait(400);
     const json = JSON.parse(window.editor.serialize());
     const pci = json.particleColorInstance || {};
-    check('plane, scale and wrap travel in the config', pci.scale?.x === 0.5 && pci.scale?.y === 0.5 && pci.wrap === 'STRETCH', JSON.stringify({ plane: pci.plane, scale: pci.scale, wrap: pci.wrap }));
+    check('plane, scale, wrap and offset travel in the config', pci.plane === 'XY' && pci.scale?.x === 0.5 && pci.scale?.y === 0.5 && pci.wrap === 'STRETCH' && pci.offset?.x === 1 && pci.offset?.y === 0.5, JSON.stringify({ plane: pci.plane, scale: pci.scale, wrap: pci.wrap, offset: pci.offset }));
     const gui = document.querySelector('.lil-gui.root');
     const names = [...(gui?.querySelectorAll('.name') ?? [])].map((n) => n.textContent.trim());
-    check('the panel offers plane, scale and the outside-the-source choice', ['plane', 'x (across)', 'y (down)', 'outside the source'].every((n) => names.includes(n)), names.filter((n) => /plane|across|down|outside/.test(n)).join(' | '));
+    check('the panel offers plane, scale, the outside-the-source choice, the offset and the debug toggle', ['plane', 'x (across)', 'y (down)', 'outside the source', 'show source (debug)', 'Show colour source (debug)'].every((n) => names.includes(n)), names.filter((n) => /plane|across|down|outside|debug/.test(n)).join(' | '));
 
     await load();
     check('no runtime errors', errs.length === errBefore, errs.slice(errBefore, errBefore + 3).join(' | '));

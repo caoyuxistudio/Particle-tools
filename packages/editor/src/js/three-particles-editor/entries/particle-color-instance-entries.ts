@@ -1,15 +1,27 @@
+import * as THREE from 'three';
+
 import { getTexture } from '../assets';
 import { openTextureSelectorModal } from '../texture-selector/texture-selector';
+import {
+  hideColorSourceDebug,
+  isColorSourceDebugShown,
+  showColorSourceDebug,
+  syncColorSourceDebug,
+  type ColorSourceDebugState,
+} from '../color-source-debug';
 
 type ParticleColorInstanceEntriesParams = {
   parentFolder: any;
   particleSystemConfig: any;
   recreateParticleSystem: () => void;
+  scene: THREE.Scene;
+  particleSystemContainer: THREE.Object3D;
 };
 
 type ParticleColorInstanceEntriesResult = {
   onReset: () => void;
   onAssetUpdate: () => void;
+  onUpdate: () => void;
 };
 
 /**
@@ -26,6 +38,8 @@ export const createParticleColorInstanceEntries = ({
   parentFolder,
   particleSystemConfig,
   recreateParticleSystem,
+  scene,
+  particleSystemContainer,
 }: ParticleColorInstanceEntriesParams): ParticleColorInstanceEntriesResult => {
   const folder = parentFolder.addFolder('Particle Color Instance');
   folder.close();
@@ -45,6 +59,13 @@ export const createParticleColorInstanceEntries = ({
   if (config.scale.x === undefined) config.scale.x = 1;
   if (config.scale.y === undefined) config.scale.y = 1;
   if (!config.wrap) config.wrap = 'ZERO';
+  if (!config.offset) config.offset = { x: 0, y: 0, z: 0 };
+  (['x', 'y', 'z'] as const).forEach((axis) => {
+    if (config.offset[axis] === undefined) config.offset[axis] = 0;
+  });
+  if (particleSystemConfig._editorData.showColorSourceDebug === undefined) {
+    particleSystemConfig._editorData.showColorSourceDebug = false;
+  }
   if (config.useLuminanceForNoise === undefined) config.useLuminanceForNoise = false;
   if (config.luminanceNoiseAmount === undefined) config.luminanceNoiseAmount = 0;
   if (config.sampleSize === undefined) config.sampleSize = 0;
@@ -121,6 +142,75 @@ export const createParticleColorInstanceEntries = ({
     .onChange(recreateParticleSystem)
     .listen();
 
+  // Where the source's centre sits, from the emitter along the world axes.
+  // Typed here or dragged in the viewport with the debug plane's handle.
+  const offsetFolder = folder.addFolder('offset (source centre from emitter)');
+  (['x', 'y', 'z'] as const).forEach((axis) => {
+    offsetFolder.add(config.offset, axis, -50, 50, 0.01).onChange(recreateParticleSystem).listen();
+  });
+
+  // The mapping made visible (color-source-debug.ts): the source laid on its
+  // plane over everything, 20% opaque, in a green frame with a label — and
+  // the handle that moves it. The same flag is on the Helper section.
+  folder
+    .add(particleSystemConfig._editorData, 'showColorSourceDebug')
+    .name('show source (debug)')
+    .listen();
+
+  // The state the debug plane draws from, resolved the way the library does
+  // it: the plane's two axes, the area falling back to the rectangle, the
+  // centre at the emitter plus the offset.
+  const emitterWorld = new THREE.Vector3();
+  const debugState = (): ColorSourceDebugState => {
+    const plane = config.plane || 'XZ';
+    const rect = particleSystemConfig.shape?.rectangle?.scale;
+    const rectW = rect?.x || 1;
+    const rectH = rect?.y || 1;
+    const area = config.area || {};
+    const areaAcross = plane === 'YZ' ? area.z || rectW : area.x || rectW;
+    const areaDown = plane === 'XZ' ? area.z || rectH : area.y || rectH;
+    particleSystemContainer.getWorldPosition(emitterWorld);
+    const center = emitterWorld
+      .clone()
+      .add(new THREE.Vector3(config.offset.x || 0, config.offset.y || 0, config.offset.z || 0));
+    return {
+      plane,
+      areaAcross,
+      areaDown,
+      scaleX: config.scale?.x ?? 1,
+      scaleY: config.scale?.y ?? 1,
+      wrap: config.wrap || 'ZERO',
+      center,
+      map: config.map,
+    };
+  };
+
+  // A drag reports the plane's new centre; the offset is what is left after
+  // the emitter. Rebuilt at most ten times a second while dragging, the same
+  // throttle the collision planes use.
+  let recreateTimer: ReturnType<typeof setTimeout> | null = null;
+  const onDrag = (worldCenter: THREE.Vector3): void => {
+    particleSystemContainer.getWorldPosition(emitterWorld);
+    config.offset.x = Math.round((worldCenter.x - emitterWorld.x) * 100) / 100;
+    config.offset.y = Math.round((worldCenter.y - emitterWorld.y) * 100) / 100;
+    config.offset.z = Math.round((worldCenter.z - emitterWorld.z) * 100) / 100;
+    if (!recreateTimer) {
+      recreateTimer = setTimeout(() => {
+        recreateTimer = null;
+        recreateParticleSystem();
+      }, 100);
+    }
+  };
+
+  const onUpdate = (): void => {
+    if (particleSystemConfig._editorData.showColorSourceDebug) {
+      showColorSourceDebug(scene, onDrag);
+      syncColorSourceDebug(debugState());
+    } else if (isColorSourceDebugShown()) {
+      hideColorSourceDebug();
+    }
+  };
+
   folder.add(config, 'useAlphaForOpacity').onChange(recreateParticleSystem).listen();
 
   // Drives curl-noise strength from the sampled pixel's brightness.
@@ -164,5 +254,5 @@ export const createParticleColorInstanceEntries = ({
       particleSystemConfig._editorData.colorInstanceTextureId || 'None';
   };
 
-  return { onReset, onAssetUpdate };
+  return { onReset, onAssetUpdate, onUpdate };
 };

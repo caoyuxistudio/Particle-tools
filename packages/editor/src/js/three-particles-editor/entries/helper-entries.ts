@@ -172,6 +172,16 @@ export const createHelperEntries = ({
     .onChange(updateCollisionPlaneHelpers)
     .listen();
 
+  // The colour source laid where it maps, with its handle; the Particle
+  // Color Instance section watches this flag every frame and does the work.
+  if (particleSystemConfig._editorData.showColorSourceDebug === undefined) {
+    particleSystemConfig._editorData.showColorSourceDebug = false;
+  }
+  folder
+    .add(particleSystemConfig._editorData, 'showColorSourceDebug')
+    .name('Show colour source (debug)')
+    .listen();
+
   folder
     .add(particleSystemConfig._editorData, 'useIndividualUpdate')
     .name('Individual update method')

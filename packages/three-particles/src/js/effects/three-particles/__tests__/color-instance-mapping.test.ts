@@ -18,6 +18,9 @@ const mapping = (
   scaleX: 1,
   scaleY: 1,
   wrap: ColorInstanceWrap.ZERO,
+  offsetX: 0,
+  offsetY: 0,
+  offsetZ: 0,
   ...over,
 });
 
@@ -64,6 +67,25 @@ describe('the plane picks which two spawn coordinates map to the source', () => 
     expect(
       uv(mapping({ plane: ColorInstancePlane.YZ, areaZ: 8 }), 0, 0, -2)
     ).toEqual([0.75, 0.5]);
+  });
+});
+
+describe('offset moves the source off the emitter', () => {
+  it("the source is centred on the offset, along the plane's own axes", () => {
+    expect(uv(mapping({ offsetX: 1, offsetZ: 0.5 }), 1, 0, 0.5)).toEqual([
+      0.5, 0.5,
+    ]);
+    expect(uv(mapping({ offsetX: 1 }), 3, 0, 1)).toEqual([1, 1]);
+    expect(
+      uv(mapping({ plane: ColorInstancePlane.XY, offsetY: 1 }), 0, 2, 0)
+    ).toEqual([0.5, 0]);
+    expect(
+      uv(mapping({ plane: ColorInstancePlane.YZ, offsetZ: -2 }), 0, 0, -2)
+    ).toEqual([0.5, 0.5]);
+  });
+
+  it("the plane's third axis of the offset is ignored", () => {
+    expect(uv(mapping({ offsetY: 7 }), 1, 0, 0.5)).toEqual([0.75, 0.75]);
   });
 });
 

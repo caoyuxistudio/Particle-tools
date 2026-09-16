@@ -130,6 +130,7 @@ type EditorData = {
   showShape: boolean;
   showForceFields: boolean;
   showCollisionPlanes: boolean;
+  showColorSourceDebug: boolean;
   frustumCulled: boolean;
   useIndividualUpdate: boolean;
   useLiveUpdate: boolean;
@@ -206,6 +207,7 @@ const defaultEditorData: EditorData = {
   showShape: false,
   showForceFields: false,
   showCollisionPlanes: false,
+  showColorSourceDebug: false,
   frustumCulled: true,
   useIndividualUpdate: false,
   useLiveUpdate: false,
@@ -938,6 +940,7 @@ const subEditorDefaults = {
   showShape: false,
   showForceFields: false,
   showCollisionPlanes: false,
+  showColorSourceDebug: false,
   frustumCulled: true,
   useIndividualUpdate: false,
   useLiveUpdate: false,
@@ -1249,6 +1252,8 @@ const createPanel = (config: any = particleSystemConfig): void => {
       parentFolder: panel,
       particleSystemConfig: config,
       recreateParticleSystem,
+      scene,
+      particleSystemContainer,
     })
   );
   configEntries.push(

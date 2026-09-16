@@ -21,7 +21,8 @@
  *
  * `scale` enlarges the source about its centre (2 = only the middle half of
  * the source spans the area); below 1 the source no longer covers the area,
- * and `wrap` says what the rest sees.
+ * and `wrap` says what the rest sees. `offset` moves the source's centre off
+ * the emitter, along the world axes.
  */
 import { ColorInstancePlane, ColorInstanceWrap } from './three-particles-enums';
 
@@ -35,6 +36,10 @@ export type ColorInstanceMapping = {
   scaleX: number;
   scaleY: number;
   wrap: ColorInstanceWrap;
+  /** The source's centre, as an offset from the emitter along the world axes. */
+  offsetX: number;
+  offsetY: number;
+  offsetZ: number;
 };
 
 /** Below this a scale would put the whole area inside one texel. */
@@ -73,22 +78,26 @@ export const spawnToUv = (
   let down: number;
   let areaAcross: number;
   let areaDown: number;
+  // Measured from the source's centre, which the offset moves off the emitter.
+  const dx = x - (m.offsetX || 0);
+  const dy = y - (m.offsetY || 0);
+  const dz = z - (m.offsetZ || 0);
   switch (m.plane) {
     case ColorInstancePlane.XY:
-      across = x;
-      down = -y;
+      across = dx;
+      down = -dy;
       areaAcross = m.areaX || rectWidth;
       areaDown = m.areaY || rectHeight;
       break;
     case ColorInstancePlane.YZ:
-      across = -z;
-      down = -y;
+      across = -dz;
+      down = -dy;
       areaAcross = m.areaZ || rectWidth;
       areaDown = m.areaY || rectHeight;
       break;
     default:
-      across = x;
-      down = z;
+      across = dx;
+      down = dz;
       areaAcross = m.areaX || rectWidth;
       areaDown = m.areaZ || rectHeight;
   }
