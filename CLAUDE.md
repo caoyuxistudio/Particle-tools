@@ -131,6 +131,8 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 
 **Source Image Tweak**（粒子面板，紧跟在 Particle Color Instance 下面）：色源的"样子"。两组互不影响的杠杆，都存在 `particleColorInstance` 里随 config 走：`colorTweak`（saturation / level 即对比度 / hue，SVG feColorMatrix 那套矩阵，在 sRGB 空间作用于采到的像素，再变成粒子的起始色；库里 `color-tweak.ts` 预先合成一个 3×3 矩阵，每次出生九次乘法）和 `luminanceMap`（Luminosity Noise Map：black / white 两个点，采到的像素的亮度先按这两个点拉伸再去驱动 curl noise；量的是**原始**像素，改样子不改运动）。库的 jest 里有 `color-tweak.test.ts`。
 
+**Color Instance 的平面、缩放和边界**（2026-09-16，`particleColorInstance.plane / scale / wrap`，`area.y`，`schema:` 四个新键）。采样一直是"出生位置投影到一个轴平面 → 源图的哪个像素"，以前写死 XZ（`u = x/areaX + 0.5, v = z/areaZ + 0.5`，面积默认取矩形发射器的 scale）。现在（库里 `color-instance-mapping.ts` 一个纯函数 `spawnToUv`，出生时调用，CPU 上的这一步本来就在 CPU——色源是出生那一刻查一次像素，不是 GPU 纹理）：**plane** 下拉三选一，约定都是"从该平面正法线方向正着看源图"：`XZ` 从 +Y 俯视、−Z 朝上（作品的俯视相机就是这样）：列沿 +X、行沿 +Z；`XY` 面朝 +Z 的墙：列沿 +X、行沿 −Y；`YZ` 面朝 +X 的墙：列沿 −Z、行沿 −Y。**area** 三个轴都有了，只读平面用到的两个，0 = 矩形发射器自己的尺寸（第一维横向、第二维纵向，发射器转到哪个平面都一样）。**scale**（x 横、y 纵，面板 0.01–4，默认 1）以源图中心为基准放大：2 = 只看中间一半；小于 1 源图盖不满面积，剩下的部分看 **wrap**：`ZERO`（默认）黑色、alpha 0、亮度 0（noise 亮度驱动时按黑处理）；`REPEAT` 平铺；`MIRROR` 每隔一块翻转、接缝对上；`STRETCH` 边缘那一排像素延展出去。**注意默认行为的一处变化**：以前落在面积外的粒子完全不动（保留自己的 startColor、alpha、噪声系数），现在 `ZERO` 是当成一个黑色透明像素——WIP-Test-2 的面积自动等于发射器，没有粒子在外面，不受影响。图片和视频同一条路。面板：Particle Color Instance 里 `plane` 下拉、area 的 y、`scale (1 = fit area)` 两个滑块、`outside the source` 下拉。jest `color-instance-mapping.test.ts` 13 条（三个平面的约定、area 覆盖、缩放、四种 wrap、像素定位）。harness `colorInstanceReport` 13 条：一个静止的 4×2 矩形作品、山水画色源、白色颜色曲线，把 GPU 颜色缓冲和 harness 里独立重写的参考映射逐粒子比对——三个平面各自把发射器转到那个平面上、scale 2、scale 0.5 配四种 wrap，3000/3000 一致；再查序列化和面板。
+
 **粒子面板的两处小改**：Particle Color Instance 现在紧跟在 Noise 下面（它的亮度→curl 系数本来就是 Noise 的一部分）；Mesh 一节在 lit 模式下多了 `roughness`（默认 0.65）和 `metalness`（默认 0）两个滑块，存在 `renderer.mesh` 里随 config 走。粒子的颜色本身就是它的 albedo（起始色 / 渐变 / Color Instance 采到的像素），这两个滑块决定灯光怎么落在上面；metalness > 0 的粒子会被 SSR 视为反射面。
 
 **面板量程按装置的尺度改了**（2026-09-14）：gravity 滑块 ±1（原来 ±20）；maxParticles 1000–500000、rateOverTime 1000–100000，两者不再受 Helper 里 Enable big numbers 的管（那个开关现在只放宽 rateOverDistance 和 burst 的上限）；输入框里敲的数同样被钳在量程内，低于 1000 的发射率进不去。**新建系统起步是 10000 粒、1000 /秒**，定义在胶水的 `editorDefaultConfig()`，只有新建走它；加载仍按库的默认值合并，旧 config 省略这两个键时的含义不变。库的 `getDefaultParticleSystemConfig` 没动，序列化的 diff 基准也没动，所以新建出来的这两个值会明确写进 JSON。
@@ -170,7 +172,7 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 - 测试场景是内置 example **WIP-Test**（`packages/editor/public/examples/wip-test/`），存在磁盘上，清空 localStorage 也在。它引用的是那张山水画；73MB 的那个测试视频进不了仓库
 - **WIP-Test-2** 是作品本身：画框 + 一盏投影的平行光（带 `shadow` 块）+ 俯视输出相机（iPhone 17 Pro Max 画幅、SSR 和 SSAO 都开）+ 视频 color source。它的 `preview.webp` 还是换灯前的画面，刷新确认过不是 bug，维持现状。参数是 2026-09-11 在手机上调好后用 COPY 拷出的 JSON 直接写进去的（以后也这么更新：贴 JSON，不用截图），测试用的红球已经删掉。**编辑器一启动就直接加载它**（`DEFAULT_EXAMPLE`，在 `src/examples-config.js`；boot 一开始就 fetch，场景就绪后走和点 Examples 一样的 `window.editor.load`；fetch 失败就留在默认发射器，HUD 的 `boot:` 一行会写 `default … failed`）。代价是**刷新即回到示例**：面板里没导出的改动不会保留——粒子参数本来就不跨刷新，场景以前会留，现在也不留了；要保留就 Save 或者抄回 example。视频是 `public/assets/videos/wechat-20240829.mp4`（1000²、53s、1.6Mbps、10.6MB，随站点部署），config 用 **URL** 引用它（`_editorData.embeddedVideos`），所以任何能打开站点的设备都能播，手机上也是从 Examples 一点就开。这是「资产走 URL、config 走仓库」这条路的第一个样品
 - **做一个带视频的 example 的步骤**：把视频放进 `public/assets/videos/`；Textures 面板 **Add Video by URL** 填 `./assets/videos/<文件>`（相对地址，本地和 Pages 都能解析），Use；调好后 Copy，把 JSON 存成 `public/examples/<slug>/config.json`（slug 是名字小写、非字母数字换成连字符），配一张 `preview.webp`，在 `src/examples-config.js` 里加名字。本地上传（Add Video）的视频只在本机浏览器里，带不进 config
-- 控制台 harness `public/__ai-test.js`，当前基线 **300/300**（含 `collisionReport` 9、`trailReport` 9、`stretchReport` 9、`aoReport` 8、`shadowReport` 10、`report` 30、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 36、`frameReport` 24；`perfReport` 是测量不是断言，不计入）
+- 控制台 harness `public/__ai-test.js`，当前基线 **313/313**（含 `colorInstanceReport` 13、`collisionReport` 9、`trailReport` 9、`stretchReport` 9、`aoReport` 8、`shadowReport` 10、`report` 30、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 36、`frameReport` 24；`perfReport` 是测量不是断言，不计入）
 
 ---
 
@@ -225,6 +227,7 @@ await __t.aoReport()        // SSAO：相机上的块到渲染器、管线形状
 await __t.stretchReport()   // 拖影：无键为 0、材质记账、隐含朝向、GPU 路径仍在、读回有变化、序列化往返
 await __t.trailReport()     // GPU ribbon：TRAIL 走 GPU、材质是 GPU 版、没有 CPU ribbon、环已绑定、条带顶点数、读回有画、往返、无报错
 await __t.collisionReport() // 碰撞面：GPU 路径、BOUNCE / CLAMP / KILL 出界 0%、弹开带外向速度、CLAMP 不冻住、recover 往返、无报错
+await __t.colorInstanceReport() // 色源映射：三个平面、缩放、四种 wrap，GPU 颜色缓冲逐粒子对独立的参考映射；序列化、面板
 ```
 
 `videoReport` 要能 fetch 到 `./assets-local/AnimateDiff_00013.mp4`。那是个指向仓库旁边 `assets4test/` 的软链，目录整个 gitignore，新机器上要重建：
@@ -330,6 +333,10 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 - BOUNCE 遇到 velocity stretch：镜像那一跳不再算进朝向和速度。`collisionReport` 加 1 条，基线 296/296。
 - 演示模式在桌面上改成完整显示构图（手机仍铺满）；`presentReport` 36 条，基线 299/299。
 - 编辑器 19 fps 的原因找到了：预览的后期管线按整个画布的尺寸跑（见「坑」）。`withDisplaySize` 修后 59.6 fps。量法是独立 Chrome + `scripts/cdp-eval.mjs` + `__t.perfReport()`（见「验证改动」）。`aoReport` 加 1 条，基线 300/300。
+
+### 2026-09-16 · 色源的平面、缩放、边界
+
+- `particleColorInstance` 加 `plane`（XZ / XY / YZ）、`scale`（以中心放大）、`wrap`（ZERO / REPEAT / MIRROR / STRETCH）、`area.y`；库里抽成纯函数 `spawnToUv`。默认行为一处变化：面积外的粒子从"不动"变成黑色透明像素。jest 13 条，`colorInstanceReport` 13 条，基线 313/313。
 - CPU 路径的 curl noise：`curl-noise.ts` 逐字移植 kernel 的 simplex 和 curl，`applyModifiers` 在 `noise.curl` 时走它；TRAIL 和 WebGL 回退从此和 GPU 同一个流场。jest 加 8 条。
 - TRAIL 的"线往中间连"：ribbon 收尾那个槽被省略清理跳过、留着原点，每颗新生粒子都拉一条到中心；改成每帧压在头上，jest 加两条。
 - `renderer.mesh.velocityStretch`：MESH 粒子沿真实位移方向拉伸的拖影，GPU 路径，零额外开销；面板一个滑块；`stretchReport` 9 条，基线 274/274。库里顺手修了一条过期的 jest 期望（`createComputePipeline` 自 touch wake 起有第七个参数）。

@@ -27,6 +27,7 @@
  * frame, so a video is never colourless while the worker warms up.
  */
 import { buildColorTweak } from './color-tweak';
+import { ColorInstancePlane, ColorInstanceWrap } from './three-particles-enums';
 import type { ColorInstanceData, ParticleColorInstanceConfig } from './types';
 import type * as THREE from 'three';
 
@@ -203,8 +204,13 @@ export const createColorInstanceData = (
 ): ColorInstanceData => ({
   isActive: true,
   map: config.map,
+  plane: config.plane ?? ColorInstancePlane.XZ,
   areaX: config.area?.x ?? 0,
+  areaY: config.area?.y ?? 0,
   areaZ: config.area?.z ?? 0,
+  scaleX: config.scale?.x ?? 1,
+  scaleY: config.scale?.y ?? 1,
+  wrap: config.wrap ?? ColorInstanceWrap.ZERO,
   useAlphaForOpacity: !!config.useAlphaForOpacity,
   useLuminanceForNoise: !!config.useLuminanceForNoise,
   luminanceNoiseAmount: config.luminanceNoiseAmount ?? 0,

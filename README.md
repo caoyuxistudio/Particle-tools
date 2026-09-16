@@ -24,7 +24,8 @@ are merged in and never read, so the piece silently renders wrong.
 | --- | --- |
 | Curl-noise flow field (spatially coherent motion) | `noise.curl` |
 | Per-axis damping of the noise displacement | `noise.influence.{x,y,z}` |
-| Start colour sampled from an image over the emitter's X/Z plane | `particleColorInstance` |
+| Start colour sampled from an image or video over the emitter's XZ, XY or YZ plane | `particleColorInstance`, `particleColorInstance.plane` |
+| The source scaled about its centre, and tiled, mirrored, stretched or cut where it runs out | `particleColorInstance.scale`, `particleColorInstance.wrap` |
 | Image brightness drives curl strength (signed, so dark or bright can be the moving half) | `particleColorInstance.useLuminanceForNoise`, `luminanceNoiseAmount` |
 | Per-axis mesh scale | `renderer.mesh.scale` |
 | Mesh oriented along its direction of travel | `renderer.mesh.alignToVelocity` |

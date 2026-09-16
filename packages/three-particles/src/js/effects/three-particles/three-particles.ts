@@ -1,6 +1,7 @@
 import { ObjectUtils } from '@newkrok/three-utils';
 import * as THREE from 'three';
 import { FBM } from 'three-noise/build/three-noise.module.js';
+import { spawnToUv, uvToPixelOffset } from './color-instance-mapping';
 import {
   createColorInstanceData,
   disposeColorInstanceData,
@@ -10,6 +11,8 @@ import { applyColorTweak, remapLuminance } from './color-tweak';
 
 /** Scratch for the tweaked colour of the pixel being spawned. */
 const tweakedColor: [number, number, number] = [0, 0, 0];
+/** Reused per spawn: the source coordinate the position maps to. */
+const colorInstanceUv: [number, number] = [0, 0];
 import { rgbSRGBToLinear, sRGBToLinear } from './color-utils.js';
 import InstancedParticleFragmentShader from './shaders/instanced-particle-fragment-shader.glsl.js';
 import InstancedParticleVertexShader from './shaders/instanced-particle-vertex-shader.glsl.js';
@@ -46,6 +49,8 @@ import {
   SimulationSpace,
   SubEmitterTrigger,
   TimeMode,
+  ColorInstancePlane,
+  ColorInstanceWrap,
 } from './three-particles-enums';
 import { applyForceFields } from './three-particles-forces.js';
 import { applyModifiers } from './three-particles-modifiers.js';
@@ -611,7 +616,10 @@ const DEFAULT_PARTICLE_SYSTEM_CONFIG: ParticleSystemConfig = {
   },
   particleColorInstance: {
     isActive: false,
-    area: { x: 0, z: 0 },
+    plane: ColorInstancePlane.XZ,
+    area: { x: 0, y: 0, z: 0 },
+    scale: { x: 1, y: 1 },
+    wrap: ColorInstanceWrap.ZERO,
     useAlphaForOpacity: false,
     useLuminanceForNoise: false,
     luminanceNoiseAmount: 0,
@@ -1121,7 +1129,9 @@ export const createParticleSystem = (
         })
       : undefined,
     // Drawn afresh at every activation; the array only has to exist.
-    offsets: noise.useRandomOffset ? new Array(maxParticles).fill(0) : undefined,
+    offsets: noise.useRandomOffset
+      ? new Array(maxParticles).fill(0)
+      : undefined,
   };
 
   const colorInstanceConfig = normalizedConfig.particleColorInstance;
@@ -1925,7 +1935,8 @@ export const createParticleSystem = (
     scalarArray[base + S_LIFETIME] = 0;
 
     // Particle Color Instance: replace the start color with an image pixel
-    // sampled by the spawn offset projected onto X/Z (world orientation).
+    // sampled by the spawn offset projected onto the configured plane
+    // (world orientation), scaled and wrapped as color-instance-mapping says.
     // Runs after calculatePositionAndVelocity so startPositions is final, and
     // before the GPU emit write below so the override reaches both backends.
     // Per-particle curl-noise multiplier derived from the sampled pixel's
@@ -1935,22 +1946,43 @@ export const createParticleSystem = (
     const ci = generalData.colorInstance;
     if (ci?.isActive && ensureColorInstancePixels(ci)) {
       const rectScale = normalizedConfig.shape.rectangle?.scale;
-      const areaX = ci.areaX || rectScale?.x || 1;
-      const areaZ = ci.areaZ || rectScale?.y || 1;
-      const u = startPositions[particleIndex].x / areaX + 0.5;
-      const v = startPositions[particleIndex].z / areaZ + 0.5;
-      if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
-        const w = ci.width!;
-        const px = Math.min(w - 1, (u * w) | 0);
-        const py = Math.min(ci.height! - 1, (v * ci.height!) | 0);
-        const o = (py * w + px) * 4;
+      const spawn = startPositions[particleIndex];
+      // Off the source — wrap ZERO, past the mapped area — reads as a black,
+      // transparent texel: colour 0, alpha 0, luminance 0.
+      let r8 = 0;
+      let g8 = 0;
+      let b8 = 0;
+      let a8 = 0;
+      if (
+        spawnToUv(
+          ci,
+          spawn.x,
+          spawn.y,
+          spawn.z,
+          rectScale?.x || 1,
+          rectScale?.y || 1,
+          colorInstanceUv
+        )
+      ) {
+        const o = uvToPixelOffset(
+          colorInstanceUv[0],
+          colorInstanceUv[1],
+          ci.width!,
+          ci.height!
+        );
         const pixels = ci.pixels!;
+        r8 = pixels[o];
+        g8 = pixels[o + 1];
+        b8 = pixels[o + 2];
+        a8 = pixels[o + 3];
+      }
+      {
         // The source's own look, before the pixel becomes a start colour:
         // hue, saturation and contrast in display (sRGB) space, the way an
         // image editor applies them.
-        let sr = pixels[o] / 255;
-        let sg = pixels[o + 1] / 255;
-        let sb = pixels[o + 2] / 255;
+        let sr = r8 / 255;
+        let sg = g8 / 255;
+        let sb = b8 / 255;
         if (ci.colorTweak) {
           applyColorTweak(ci.colorTweak, sr, sg, sb, tweakedColor);
           sr = tweakedColor[0];
@@ -1967,7 +1999,7 @@ export const createParticleSystem = (
         generalData.startValues.startColorB[particleIndex] =
           scalarArray[base + S_COLOR_B];
         if (ci.useAlphaForOpacity) {
-          const alpha = pixels[o + 3] / 255;
+          const alpha = a8 / 255;
           generalData.startValues.startOpacity[particleIndex] *= alpha;
           scalarArray[base + S_COLOR_A] =
             generalData.startValues.startOpacity[particleIndex];
@@ -1979,10 +2011,7 @@ export const createParticleSystem = (
           // colour tweak, so the look and the motion stay separate levers.
           // Then the luminosity noise map: black point to 0, white point to 1.
           const luma = remapLuminance(
-            (0.2126 * pixels[o] +
-              0.7152 * pixels[o + 1] +
-              0.0722 * pixels[o + 2]) /
-              255,
+            (0.2126 * r8 + 0.7152 * g8 + 0.0722 * b8) / 255,
             ci.luminanceBlack ?? 0,
             ci.luminanceWhite ?? 1
           );

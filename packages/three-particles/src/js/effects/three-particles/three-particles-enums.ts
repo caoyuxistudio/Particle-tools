@@ -301,3 +301,36 @@ export const enum SimulationBackend {
    */
   GPU = 'GPU',
 }
+
+/**
+ * Which axis plane a particle's spawn position is projected onto to address
+ * the colour source (see `particleColorInstance.plane`). Each is the source
+ * seen upright from the plane's positive normal.
+ *
+ * @enum {string}
+ */
+export const enum ColorInstancePlane {
+  /** Seen from +Y, −Z up: columns along +X, rows along +Z. The top-down piece. */
+  XZ = 'XZ',
+  /** Seen from +Z, +Y up: columns along +X, rows along −Y. A wall facing +Z. */
+  XY = 'XY',
+  /** Seen from +X, +Y up: columns along −Z, rows along −Y. A wall facing +X. */
+  YZ = 'YZ',
+}
+
+/**
+ * What the mapped area sees where the colour source runs out — once the
+ * source is scaled below the area, or the area is set larger than it.
+ *
+ * @enum {string}
+ */
+export const enum ColorInstanceWrap {
+  /** Nothing: black and transparent, luminance 0. */
+  ZERO = 'ZERO',
+  /** The source tiles. */
+  REPEAT = 'REPEAT',
+  /** The source tiles, every other tile flipped, so the seams meet. */
+  MIRROR = 'MIRROR',
+  /** The edge texel runs on to the edge of the area. */
+  STRETCH = 'STRETCH',
+}

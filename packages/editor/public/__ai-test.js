@@ -1916,6 +1916,152 @@
   };
 
   /**
+   * Particle Color Instance, end to end: the spawn position → source texel
+   * mapping through plane, scale and wrap. A motionless piece on a 4 × 2
+   * rectangle with a still image source and white colour curves, so a
+   * particle's colour in the GPU buffer is the texel it was born on. For
+   * each plane (the emitter turned to lie in it) and each wrap at half scale,
+   * the buffer is compared against a reference mapping computed here from
+   * the same image (the library's conventions, restated in one place).
+   */
+  const colorInstanceReport = async () => {
+    const lines = [];
+    const check = (label, ok, detail = '') =>
+      lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+    const w = window.__world;
+    const r = w.renderer;
+    const scene = w.scene;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const errBefore = errs.length;
+    const fix = await fixture();
+    const flat = (y) => ({ bezierPoints: [{ x: 0, y, percentage: 0 }, { x: 1, y, percentage: 1 }] });
+    const RECT = [4, 2];
+    const piece = (rotation, ci) => {
+      const c = structuredClone(fix);
+      c.transform = { position: { x: 0, y: 0, z: 0 }, rotation, scale: { x: 1, y: 1, z: 1 } };
+      c.simulationSpace = 'WORLD';
+      c.startSpeed = { min: 0, max: 0 };
+      c.startLifetime = { min: 30, max: 30 };
+      c.startColor = { min: { r: 0, g: 0, b: 0 }, max: { r: 0, g: 0, b: 0 } };
+      c.maxParticles = 3000;
+      c.emission = { rateOverTime: 3000, bursts: [] };
+      c.shape = { shape: 'RECTANGLE', rectangle: { scale: { x: RECT[0], y: RECT[1] } } };
+      c.gravity = 0;
+      c.noise = { ...(c.noise || {}), isActive: false };
+      c.forceFields = [];
+      c.collisionPlanes = [];
+      c.touch = { ...(c.touch || {}), isActive: false };
+      c.velocityOverLifetime = { linear: { x: { min: 0, max: 0 }, y: { min: 0, max: 0 }, z: { min: 0, max: 0 } }, orbital: { x: { min: 0, max: 0 }, y: { min: 0, max: 0 }, z: { min: 0, max: 0 } } };
+      c.colorOverLifetime = { r: flat(1), g: flat(1), b: flat(1) };
+      c.particleColorInstance = {
+        ...(c.particleColorInstance || {}),
+        isActive: true,
+        plane: 'XZ',
+        area: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1 },
+        wrap: 'ZERO',
+        useAlphaForOpacity: false,
+        useLuminanceForNoise: false,
+        colorTweak: { saturation: 1, contrast: 1, hue: 0 },
+        ...ci,
+      };
+      return c;
+    };
+    const particles = () => { let m = null; scene.traverse((o) => { if (o.geometry?.isInstancedBufferGeometry) m = o; }); return m; };
+    const toLinear = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+
+    // The source as the library reads a still image: native size, sRGB bytes.
+    let source = null;
+    const readSource = () => {
+      const map = window.editor.getCurrentParticleSystemConfig().particleColorInstance?.map;
+      const img = map?.image;
+      if (!img) return null;
+      const width = img.naturalWidth || img.videoWidth || img.width;
+      const height = img.naturalHeight || img.videoHeight || img.height;
+      const cv = document.createElement('canvas');
+      cv.width = width; cv.height = height;
+      const ctx = cv.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      return { width, height, data: ctx.getImageData(0, 0, width, height).data };
+    };
+    // The reference: the library's conventions, restated.
+    const refUv = (plane, scale, wrap, x, y, z) => {
+      let a, d;
+      if (plane === 'XY') { a = x; d = -y; } else if (plane === 'YZ') { a = -z; d = -y; } else { a = x; d = z; }
+      const u = a / RECT[0] / scale[0] + 0.5;
+      const v = d / RECT[1] / scale[1] + 0.5;
+      const wrapT = (t) => {
+        if (wrap === 'REPEAT') return t - Math.floor(t);
+        if (wrap === 'MIRROR') { const m = t - 2 * Math.floor(t / 2); return m > 1 ? 2 - m : m; }
+        if (wrap === 'STRETCH') return Math.min(1, Math.max(0, t));
+        return t;
+      };
+      if (wrap === 'ZERO' && (u < 0 || u > 1 || v < 0 || v > 1)) return null;
+      return [wrapT(u), wrapT(v)];
+    };
+    const expectedColour = (uv) => {
+      if (!uv) return [0, 0, 0];
+      const px = Math.min(source.width - 1, (uv[0] * source.width) | 0);
+      const py = Math.min(source.height - 1, (uv[1] * source.height) | 0);
+      const o = (py * source.width + px) * 4;
+      return [toLinear(source.data[o] / 255), toLinear(source.data[o + 1] / 255), toLinear(source.data[o + 2] / 255)];
+    };
+
+    const run = async (label, rotation, ci) => {
+      window.editor.load(piece(rotation, ci));
+      await wait(1600);
+      if (!source) source = readSource();
+      const g = particles()?.geometry;
+      if (!g || !source) { check(label, false, !g ? 'no particle mesh' : 'no source image'); return null; }
+      const pos = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceOffset));
+      const col = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceColor));
+      const plane = ci.plane || 'XZ';
+      const scale = [ci.scale?.x ?? 1, ci.scale?.y ?? 1];
+      const wrap = ci.wrap || 'ZERO';
+      let alive = 0, match = 0, black = 0;
+      const distinct = new Set();
+      for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
+        if (col[i * 4 + 3] <= 0.01) continue;
+        alive++;
+        const want = expectedColour(refUv(plane, scale, wrap, pos[i * 4], pos[i * 4 + 1], pos[i * 4 + 2]));
+        const got = [col[i * 4], col[i * 4 + 1], col[i * 4 + 2]];
+        if (got.every((c, k) => Math.abs(c - want[k]) < 0.02)) match++;
+        if (got.every((c) => c < 0.005)) black++;
+        distinct.add(got.map((c) => Math.round(c * 20)).join(','));
+      }
+      // Texel-edge births can round differently between the CPU's doubles and
+      // the buffer's floats; the mapping is right when nearly all agree.
+      const ratio = alive ? match / alive : 0;
+      check(label, alive > 500 && ratio >= 0.97, `${match}/${alive} match the reference, ${distinct.size} colours, ${black} black`);
+      return { alive, match, black, distinct: distinct.size };
+    };
+
+    const xz = await run('XZ: the texel under (x, z), the top-down piece', { x: 90, y: 0, z: 0 }, { plane: 'XZ' });
+    check('the source is not flat (colours differ across the area)', !!xz && xz.distinct > 10, `${xz?.distinct} colours`);
+    await run('XY: a wall facing +Z, columns along +X, rows along −Y', { x: 0, y: 0, z: 0 }, { plane: 'XY' });
+    await run('YZ: a wall facing +X, columns along −Z, rows along −Y', { x: 0, y: 90, z: 0 }, { plane: 'YZ' });
+    await run('scale 2 shows the middle half of the source', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 2, y: 2 } });
+    const zero = await run('scale 0.5, ZERO: off the source is black', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'ZERO' });
+    check('and three quarters of the area is off the source', !!zero && zero.black > zero.alive * 0.6 && zero.black < zero.alive * 0.9, `${zero?.black}/${zero?.alive} black`);
+    await run('scale 0.5, REPEAT: the source tiles', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'REPEAT' });
+    await run('scale 0.5, MIRROR: every other tile flipped', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'MIRROR' });
+    await run('scale 0.5, STRETCH: the edge texel runs on', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'STRETCH' });
+
+    // The levers travel in the config, and only when they leave the default.
+    const json = JSON.parse(window.editor.serialize());
+    const pci = json.particleColorInstance || {};
+    check('plane, scale and wrap travel in the config', pci.scale?.x === 0.5 && pci.scale?.y === 0.5 && pci.wrap === 'STRETCH', JSON.stringify({ plane: pci.plane, scale: pci.scale, wrap: pci.wrap }));
+    const gui = document.querySelector('.lil-gui.root');
+    const names = [...(gui?.querySelectorAll('.name') ?? [])].map((n) => n.textContent.trim());
+    check('the panel offers plane, scale and the outside-the-source choice', ['plane', 'x (across)', 'y (down)', 'outside the source'].every((n) => names.includes(n)), names.filter((n) => /plane|across|down|outside/.test(n)).join(' | '));
+
+    await load();
+    check('no runtime errors', errs.length === errBefore, errs.slice(errBefore, errBefore + 3).join(' | '));
+    const failed = lines.filter((l) => l.startsWith('FAIL')).length;
+    return [`colorInstance: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
+  };
+
+  /**
    * The frame budget: fps, the main thread's share of a frame by pass, the
    * GPU's timestamp sum (open the page with ?gputime), and the sizes the
    * preview's passes run at. A measurement, not a pass/fail list, and only
@@ -1974,6 +2120,7 @@
 
   window.__t = {
     perfReport,
+    colorInstanceReport,
     collisionReport,
     trailReport,
     stretchReport,

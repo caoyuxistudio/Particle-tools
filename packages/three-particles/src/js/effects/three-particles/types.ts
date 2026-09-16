@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { FBM } from 'three-noise/build/three-noise.module.js';
 import {
   CollisionPlaneMode,
+  ColorInstancePlane,
+  ColorInstanceWrap,
   EmitFrom,
   ForceFieldFalloff,
   ForceFieldType,
@@ -854,10 +856,31 @@ export type ParticleColorInstanceConfig = {
    */
   map?: THREE.Texture;
   /**
-   * World-space size of the mapped area along X and Z, centered on the
-   * emitter. A value of 0 (default) auto-fits the rectangle shape's scale.
+   * Which axis plane the spawn position is projected onto to address the
+   * source, and which way is up on it: `XZ` (default) is the source seen from
+   * above with −Z up, `XY` a wall facing +Z, `YZ` a wall facing +X. See
+   * {@link ColorInstancePlane}.
    */
-  area?: { x?: number; z?: number };
+  plane?: ColorInstancePlane;
+  /**
+   * World-space size of the mapped area along each axis, centered on the
+   * emitter; only the plane's two axes are read. 0 (default) fits the
+   * rectangle shape's own size — its first dimension across the source, its
+   * second down it, whichever way the emitter is turned.
+   */
+  area?: { x?: number; y?: number; z?: number };
+  /**
+   * Enlargement of the source about its centre, per source axis (x across,
+   * y down). 1 (default) fits the source to the area; 2 shows only its middle
+   * half; below 1 the source no longer covers the area and `wrap` decides
+   * what the rest sees.
+   */
+  scale?: { x?: number; y?: number };
+  /**
+   * What the area sees where the source runs out. Default `ZERO`: nothing —
+   * black, transparent, luminance 0. See {@link ColorInstanceWrap}.
+   */
+  wrap?: ColorInstanceWrap;
   /** Multiply the image's alpha channel into startOpacity. */
   useAlphaForOpacity?: boolean;
   /**
@@ -907,8 +930,16 @@ export type ParticleColorInstanceConfig = {
 export type ColorInstanceData = {
   isActive: boolean;
   map?: THREE.Texture;
+  /** See {@link ParticleColorInstanceConfig.plane}. */
+  plane: ColorInstancePlane;
   areaX: number;
+  areaY: number;
   areaZ: number;
+  /** See {@link ParticleColorInstanceConfig.scale}. */
+  scaleX: number;
+  scaleY: number;
+  /** See {@link ParticleColorInstanceConfig.wrap}. */
+  wrap: ColorInstanceWrap;
   useAlphaForOpacity: boolean;
   useLuminanceForNoise: boolean;
   luminanceNoiseAmount: number;
