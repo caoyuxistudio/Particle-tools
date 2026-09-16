@@ -40,12 +40,18 @@ export type TouchWakeConfig = {
   /** The normal of the plane the swirl turns in. @default (0, 1, 0) */
   normal?: { x: number; y: number; z: number };
   /**
-   * Input-side hints for whoever feeds the samples; the simulation does not
-   * read them. The finger's radius as a share of the view's width at the
-   * particles' plane, and the fastest finger speed taken, in world units per
-   * second.
+   * The finger's radius as a share of the view's width at the particles'
+   * plane — an input-side hint for whoever feeds the samples; the simulation
+   * does not read it.
    */
   radius?: number;
+  /**
+   * The fastest finger speed taken, in world units per second. The input
+   * side caps its samples at it, and a collision plane gives back no more
+   * than this of a finger's push: the overlapping samples under a sweeping
+   * finger add up to many times its speed, and a wall answers them as if
+   * the finger had pushed at no more than this. @default 8
+   */
   maxSpeed?: number;
 };
 
@@ -68,6 +74,8 @@ export type TouchWakeParams = {
   wake: number;
   swirl: number;
   normal: { x: number; y: number; z: number };
+  /** The finger's speed cap: also the most a collision plane gives back of a push. */
+  maxSpeed: number;
 };
 
 export const defaultTouchWakeParams = (
@@ -77,6 +85,7 @@ export const defaultTouchWakeParams = (
   wake: Math.max(0.01, config?.wake ?? 0.4),
   swirl: config?.swirl ?? 0.3,
   normal: config?.normal ?? { x: 0, y: 1, z: 0 },
+  maxSpeed: config?.maxSpeed ?? 8,
 });
 
 /** How many age constants a sample survives before it is dropped as too faint to matter. */

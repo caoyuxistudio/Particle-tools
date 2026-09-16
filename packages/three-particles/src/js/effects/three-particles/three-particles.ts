@@ -3591,6 +3591,7 @@ const updateParticleSystemInstance = (
       setUniformFloat(cp.touchWakeInfo.strengthUniform, touchParams.strength);
       setUniformFloat(cp.touchWakeInfo.wakeUniform, touchParams.wake);
       setUniformFloat(cp.touchWakeInfo.swirlUniform, touchParams.swirl);
+      setUniformFloat(cp.touchWakeInfo.maxSpeedUniform, touchParams.maxSpeed);
       (
         cp.touchWakeInfo.normalUniform as unknown as { value: THREE.Vector3 }
       ).value.set(

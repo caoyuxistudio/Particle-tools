@@ -256,6 +256,7 @@ export type ModifierComputePipeline = {
     wakeUniform: ShaderNodeObject<Node>;
     swirlUniform: ShaderNodeObject<Node>;
     normalUniform: ShaderNodeObject<Node>;
+    maxSpeedUniform: ShaderNodeObject<Node>;
   } | null;
   /** The trail's history ring (null unless the renderer is a trail on the GPU). */
   trailHistoryInfo: {
@@ -1256,10 +1257,12 @@ export function createModifierComputeUpdate(
           ? vec3(pos).toVar()
           : null;
         if (collisionPlaneNodes) {
-          // The frame's own motion, a finger's shove taken out: the shove is
-          // what the planes pin, not what they reflect — otherwise a finger
-          // sweeping particles into a wall came off it as their velocity, at
-          // hundreds of units a second, a long streak.
+          // The frame's own motion, a finger's shove taken out. The planes
+          // take the shove separately, capped at the finger's speed: a finger
+          // sweeping particles into a wall bounces them back at no more than
+          // its own pace — not at the hundreds of units a second its
+          // overlapping samples add up to, which came off the wall as a
+          // long streak.
           const shove = wakeShove ?? vec3(0);
           const effVel = pos
             .sub(posAtFrameStart!)
@@ -1271,6 +1274,8 @@ export function createModifierComputeUpdate(
             vel,
             effVel,
             shove,
+            shoveCap: touchWakeNodes ? touchWakeNodes.maxSpeedUniform : float(0),
+            delta: uDelta,
             bounce: bounce!,
             oiaVec,
             sColorNode: sColor,
@@ -1421,6 +1426,7 @@ export function createModifierComputeUpdate(
           wakeUniform: touchWakeNodes.wakeUniform,
           swirlUniform: touchWakeNodes.swirlUniform,
           normalUniform: touchWakeNodes.normalUniform,
+          maxSpeedUniform: touchWakeNodes.maxSpeedUniform,
         }
       : null,
     trailHistoryInfo: useTrailHistory

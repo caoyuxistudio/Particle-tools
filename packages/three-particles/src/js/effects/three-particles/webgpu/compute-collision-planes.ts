@@ -19,11 +19,12 @@
  *     by vel + (1 − bounce) × flow, both fading with the plane's `recover`,
  *     so a particle the field carried into a wall leaves it at the damped
  *     speed and is handed back to the flow over that many seconds — never
- *     faster than the reflection or the flow. A finger's shove is neither
- *     mirrored nor reflected: the part of the way it pushed the particle
- *     through is pinned at the wall, and only the particle's own motion
- *     bounces — a finger sweeping particles into a wall holds them against
- *     it instead of launching them off it.
+ *     faster than the reflection or the flow. A finger's shove is taken as
+ *     if the finger had pushed at no more than its speed cap (`touch.
+ *     maxSpeed`): that much of it is mirrored and reflected like the rest of
+ *     the motion, the excess is set on the wall — so a finger sweeping
+ *     particles into a wall bounces them back at its own pace, not at the
+ *     many times that its overlapping samples add up to.
  *
  * The planes are applied at the end of the frame, after every modifier that
  * moves a particle, so what they see is where the particle really ended up.
@@ -44,6 +45,9 @@ import {
   uniform,
   vec3,
   vec4,
+  length,
+  min as tslMin,
+  max as tslMax,
 } from 'three/tsl';
 
 import { CollisionPlaneMode } from '../three-particles-enums.js';
@@ -180,7 +184,12 @@ export function createCollisionPlaneTSL(
    *   frame start − shove) / dt, which includes what the field did but not a
    *   finger's push
    * @param shove - What a finger's push moved the particle this frame (vec3,
-   *   world units): pinned at the wall rather than mirrored or reflected
+   *   world units). The wall answers it as if the finger had pushed at no
+   *   more than `shoveCap`: that much of it is mirrored and reflected, the
+   *   rest is set on the wall
+   * @param shoveCap - The finger's speed cap (world units a second): the most
+   *   a wall gives back of a push
+   * @param delta - The frame's dt in seconds
    * @param bounce - The particle's bounce weight (float, modified in place):
    *   1 the frame it bounces, decaying with `recover`; the kernel takes the
    *   flow only as far as it has faded
@@ -197,6 +206,8 @@ export function createCollisionPlaneTSL(
       vel,
       effVel,
       shove,
+      shoveCap,
+      delta,
       bounce,
       oiaVec,
       sColorNode,
@@ -209,6 +220,8 @@ export function createCollisionPlaneTSL(
       vel: ShaderNodeObject<Node>;
       effVel: ShaderNodeObject<Node>;
       shove: ShaderNodeObject<Node>;
+      shoveCap: ShaderNodeObject<Node>;
+      delta: ShaderNodeObject<Node>;
       bounce: ShaderNodeObject<Node>;
       oiaVec: ShaderNodeObject<Node>;
       sColorNode: ShaderNodeObject<Node>;
@@ -271,17 +284,32 @@ export function createCollisionPlaneTSL(
             })
             // BOUNCE mode (2)
             .Else(() => {
+              // A finger's push, as the wall answers it: capped at the finger's
+              // own speed. Its overlapping samples add up to many times that
+              // under a sweeping finger, and a wall that mirrored and
+              // reflected all of it threw the particles back at hundreds of
+              // units a second; a wall that pinned it held them dead against
+              // it. In between: the particle comes back off the wall the way
+              // a thing pushed there at the finger's pace would.
+              const shoveLen = length(shove);
+              const shoveKept = shove.mul(
+                tslMin(float(1.0), shoveCap.mul(delta).div(tslMax(shoveLen, float(1e-6))))
+              );
               // Mirror the position across the plane: the particle went
               // |signedDist| through, so it comes out that far in front —
-              // except for the part of the way a finger pushed it, which is
-              // pinned at the wall: a finger sweeping particles into a wall
-              // holds them against it, it does not bounce them off it.
+              // except for the part of the push beyond the cap, which is
+              // set on the wall.
               const shoveIn = clamp(
                 dot(shove, planeNormal).negate(),
                 float(0.0),
                 signedDist.negate()
               );
-              const mirror = signedDist.negate().sub(shoveIn);
+              const keptIn = clamp(
+                dot(shoveKept, planeNormal).negate(),
+                float(0.0),
+                shoveIn
+              );
+              const mirror = signedDist.negate().sub(shoveIn).add(keptIn);
               pos.assign(
                 pos.sub(planeNormal.mul(signedDist)).add(planeNormal.mul(mirror))
               );
@@ -298,9 +326,12 @@ export function createCollisionPlaneTSL(
               // away, the stale part showed as a burst of speed off the wall.)
               // A pure-velocity particle has no flow and gets the classic
               // reflection.
-              const eDotN = dot(effVel, planeNormal);
+              const arriving = effVel
+                .add(shoveKept.div(tslMax(delta, float(1e-6))))
+                .toVar();
+              const eDotN = dot(arriving, planeNormal);
               vel.assign(
-                effVel.sub(planeNormal.mul(eDotN.mul(2.0))).mul(dampen)
+                arriving.sub(planeNormal.mul(eDotN.mul(2.0))).mul(dampen)
               );
               bounce.assign(1.0);
 

@@ -1787,11 +1787,12 @@
     // fed straight to the system: the particles under it move, and none of
     // them reports the push as speed.
     // And a wall two units along the push: the finger presses the particles
-    // against it. The wall holds — they stay inside, jittering at most a
-    // frame's shove — and it does not launch them: a bounce reflects the
-    // particle's own motion, with the shove taken out, so the finger cannot
-    // turn into speed by way of a wall either. Before this, half the finger's
-    // speed came off the wall as the particle's velocity, a long streak.
+    // against it. The wall holds — they stay inside — and it answers the push
+    // as if the finger had pushed at no more than its speed cap: the
+    // particles come back off the wall at up to dampen × that, not at the
+    // hundreds of units a second the finger's overlapping samples add up to
+    // (which came off the wall as a long streak), and not pinned dead
+    // against it either.
     const touch = window.__touch;
     if (touch && back.touch) {
       back.touch = { ...back.touch, isActive: true, strength: 1 };
@@ -1814,6 +1815,9 @@
       const aliveAfter = await readAlpha();
       const st = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceParticleState));
       touch.clear();
+      await wait(500);
+      const later = await readPositions();
+      const aliveLater = await readAlpha();
       let pushed = 0, dx = 0, alive = 0, fast = 0, maxSpeed = 0;
       for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
         if (aliveAfter[i * 4 + 3] <= 0.01) continue;
@@ -1837,8 +1841,19 @@
       }
       check('a finger\'s push moves the particles under it (needs frames)', pushed > 50 && meanDx > 1, `${pushed} particles, mean ${meanDx.toFixed(2)} along the push`);
       check('but is not read as speed by the stretch (needs frames)', alive > 1000 && fast === 0, `${fast} of ${alive} faster than 20 u/s, max ${maxSpeed.toFixed(1)} against a ${push} u/s push`);
+      let atWall = 0, moved = 0;
+      for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
+        if (aliveAfter[i * 4 + 3] <= 0.01 || aliveLater[i * 4 + 3] <= 0.01) continue;
+        const x = after[i * 4];
+        if (x < centre.x + 2 - 0.4 || Math.abs(after[i * 4 + 2] - centre.z) > 2) continue;
+        atWall++;
+        moved += later[i * 4] - x;
+      }
+      const meanBack = atWall ? moved / atWall : 0;
+      const cap = (back.touch.maxSpeed ?? 8) * 0.5;
       check('the wall holds against the finger (needs frames)', through === 0, `${through} more than a unit past it, furthest ${beyond.toFixed(2)}`);
-      check('and does not launch them off it (needs frames)', maxSpeed < 5, `max ${maxSpeed.toFixed(1)} u/s off a ${push} u/s push into it`);
+      check('and gives back no more than the finger\'s pace (needs frames)', maxSpeed < cap + 2, `max ${maxSpeed.toFixed(1)} u/s off a ${push} u/s push, cap ${cap} + flow`);
+      check('and they come back off it once the finger is gone (needs frames)', atWall > 30 && meanBack < -0.15, `${atWall} at the wall moved ${meanBack.toFixed(2)} along the push in half a second`);
     }
     check('no runtime errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 

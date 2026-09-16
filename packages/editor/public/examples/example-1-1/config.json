@@ -266,7 +266,7 @@
       "isActive": true,
       "mode": "BOUNCE",
       "position": {
-        "x": -2.12,
+        "x": -2,
         "y": 0.25,
         "z": -0.74
       },
@@ -283,7 +283,7 @@
       "isActive": true,
       "mode": "BOUNCE",
       "position": {
-        "x": 2.18,
+        "x": 2.01,
         "y": 0,
         "z": 2.55
       },

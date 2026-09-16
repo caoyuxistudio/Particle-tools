@@ -43,6 +43,9 @@ export function createTouchWakeTSL(
   const uWake = uniform(float(0.4));
   const uSwirl = uniform(float(0));
   const uNormal = uniform(new Vector3(0, 1, 0));
+  // The finger's speed cap, in world units a second: what a wall may give
+  // back of a finger's push (see compute-collision-planes.ts).
+  const uMaxSpeed = uniform(float(8));
 
   const applyTouchWakeTSL = Fn(
     ({
@@ -115,6 +118,7 @@ export function createTouchWakeTSL(
     wakeUniform: uWake,
     swirlUniform: uSwirl,
     normalUniform: uNormal,
+    maxSpeedUniform: uMaxSpeed,
     /** TSL function to call in the compute kernel: apply({ pos, delta }) */
     apply: applyTouchWakeTSL,
   };

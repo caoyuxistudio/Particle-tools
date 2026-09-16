@@ -188,6 +188,7 @@ describe('touch wake state', () => {
       wake: 0.4,
       swirl: 0.3,
       normal: { x: 0, y: 1, z: 0 },
+      maxSpeed: 8,
     });
     expect(defaultTouchWakeParams({ wake: 0 }).wake).toBe(0.01);
   });
