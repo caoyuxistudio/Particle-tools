@@ -50,7 +50,8 @@ export type TouchWakeConfig = {
    * side caps its samples at it, and a collision plane gives back no more
    * than this of a finger's push: the overlapping samples under a sweeping
    * finger add up to many times its speed, and a wall answers them as if
-   * the finger had pushed at no more than this. @default 8
+   * the finger had pushed at no more than this — unless the plane sets its
+   * own `touchCap`. @default 8
    */
   maxSpeed?: number;
 };
@@ -74,7 +75,7 @@ export type TouchWakeParams = {
   wake: number;
   swirl: number;
   normal: { x: number; y: number; z: number };
-  /** The finger's speed cap: also the most a collision plane gives back of a push. */
+  /** The finger's speed cap: also the most a collision plane without its own `touchCap` gives back of a push. */
   maxSpeed: number;
 };
 

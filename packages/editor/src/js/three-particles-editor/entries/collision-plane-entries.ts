@@ -38,6 +38,11 @@ const ensureCollisionPlaneDefaults = (cp: any): void => {
   if (cp.lifetimeLoss === undefined) cp.lifetimeLoss = 0;
   // How long a bounce takes to hand the particle back to the flow.
   if (cp.recover === undefined) cp.recover = 1;
+  // The most this wall gives back of a finger's push (u/s); the touch
+  // module's own cap is 8.
+  if (cp.touchCap === undefined) cp.touchCap = 8;
+  // A ceiling on the speed a particle leaves this wall with (u/s); 0 = none.
+  if (cp.maxSpeed === undefined) cp.maxSpeed = 0;
 };
 
 const recreateAndUpdateHelpers = (): void => {
@@ -148,6 +153,24 @@ const createCollisionPlaneFolder = (
     folder
       .add(cp, 'dampen', 0, 1, 0.01)
       .name('Dampen')
+      .onChange(() => recreateAndUpdateHelpers())
+      .listen()
+  );
+
+  // Max speed: the most a particle leaves this wall with, 0 = no ceiling
+  controllers.push(
+    folder
+      .add(cp, 'maxSpeed', 0, 20, 0.1)
+      .name('Max speed (u/s, bounce, 0 = off)')
+      .onChange(() => recreateAndUpdateHelpers())
+      .listen()
+  );
+
+  // Touch cap: the most this wall gives back of a finger's push
+  controllers.push(
+    folder
+      .add(cp, 'touchCap', 0, 20, 0.1)
+      .name('Touch cap (u/s, bounce)')
       .onChange(() => recreateAndUpdateHelpers())
       .listen()
   );
@@ -273,6 +296,8 @@ export const createCollisionPlaneEntries = ({
         dampen: 0.5,
         lifetimeLoss: 0,
         recover: 1,
+        touchCap: 8,
+        maxSpeed: 0,
       };
       particleSystemConfig.collisionPlanes.push(newCP);
       rebuildCollisionPlaneFolders(particleSystemConfig, recreateParticleSystem);

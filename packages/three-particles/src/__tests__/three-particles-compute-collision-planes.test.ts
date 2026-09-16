@@ -12,7 +12,7 @@ import type { NormalizedCollisionPlaneConfig } from '../js/effects/three-particl
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-const PLANE_STRIDE = 12;
+const PLANE_STRIDE = 16;
 
 function createPlane(
   overrides: Partial<NormalizedCollisionPlaneConfig> = {}
@@ -24,6 +24,9 @@ function createPlane(
     mode: CollisionPlaneMode.KILL,
     dampen: 0.5,
     lifetimeLoss: 0,
+    recover: 0,
+    touchCap: -1,
+    maxSpeed: 0,
     ...overrides,
   };
 }
@@ -36,7 +39,7 @@ function makeMockCurveData(size: number) {
 // ─── encodeCollisionPlanesForGPU ────────────────────────────────────────────
 
 describe('encodeCollisionPlanesForGPU', () => {
-  it('returns Float32Array of correct size (MAX_COLLISION_PLANES * 12)', () => {
+  it('returns Float32Array of correct size (MAX_COLLISION_PLANES * 16)', () => {
     const data = encodeCollisionPlanesForGPU([]);
     expect(data).toBeInstanceOf(Float32Array);
     expect(data.length).toBe(MAX_COLLISION_PLANES * PLANE_STRIDE);
@@ -70,8 +73,10 @@ describe('encodeCollisionPlanesForGPU', () => {
     expect(data[7]).toBe(0); // normal.z
     expect(data[8]).toBeCloseTo(0.7, 5); // dampen
     expect(data[9]).toBeCloseTo(0.1, 5); // lifetimeLoss
-    expect(data[10]).toBe(0); // padding
-    expect(data[11]).toBe(0); // padding
+    expect(data[10]).toBe(0); // recover
+    expect(data[11]).toBe(-1); // touchCap: follow the touch module
+    expect(data[12]).toBe(0); // maxSpeed: no ceiling
+    expect(data[13]).toBe(0); // padding
   });
 
   it('encodes a CLAMP plane with mode=1', () => {
@@ -132,7 +137,7 @@ describe('encodeCollisionPlanesForGPU', () => {
     expect(data[2]).toBe(1); // position.x
     expect(data[8]).toBeCloseTo(0.3, 5); // dampen
 
-    // Second plane at offset PLANE_STRIDE (12)
+    // Second plane at offset PLANE_STRIDE (16)
     const b1 = PLANE_STRIDE;
     expect(data[b1]).toBe(1); // isActive
     expect(data[b1 + 1]).toBe(2); // BOUNCE
@@ -145,7 +150,7 @@ describe('encodeCollisionPlanesForGPU', () => {
     expect(data[b1 + 8]).toBeCloseTo(0.9, 5); // dampen
     expect(data[b1 + 9]).toBeCloseTo(0.5, 5); // lifetimeLoss
 
-    // Third plane at offset 2 * PLANE_STRIDE (24)
+    // Third plane at offset 2 * PLANE_STRIDE (32)
     const b2 = 2 * PLANE_STRIDE;
     expect(data[b2]).toBe(0); // isActive = false
     expect(data[b2 + 1]).toBe(1); // CLAMP

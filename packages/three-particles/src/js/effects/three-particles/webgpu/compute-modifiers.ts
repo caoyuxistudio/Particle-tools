@@ -76,9 +76,10 @@ import type { BakedCurveMap } from './curve-bake.js';
  *   4:   velocity.x
  *   5:   velocity.y
  *   6:   velocity.z
- *   7:   bounce weight — GPU-owned: 1 the frame a particle bounces off a
- *        collision plane, fading with the plane's `recover`; 0 from the CPU
- *        at emission (see compute-collision-planes.ts)
+ *   7:   bounce state — GPU-owned: the bounce weight (1 the frame a particle
+ *        bounces off a collision plane, fading to 0) packed with the
+ *        `recover` of the plane it bounced off; 0 from the CPU at emission
+ *        (see compute-collision-planes.ts)
  *   8:   color.R
  *   9:   color.G
  *   10:  color.B
@@ -243,8 +244,6 @@ export type ModifierComputePipeline = {
     offset: number;
     /** Uniform for the active collision plane count. */
     countUniform: ShaderNodeObject<Node>;
-    /** Uniform: the longest bounce recover time among the planes, seconds. */
-    recoverUniform: ShaderNodeObject<Node>;
   } | null;
   /** Touch wake metadata for per-frame updates (null when fingers cannot move the particles). */
   touchWakeInfo: {
@@ -909,13 +908,20 @@ export function createModifierComputeUpdate(
         pos.assign(pos.add(vel.mul(uDelta)));
 
         // A bounce: `vel` holds the reflected velocity and the slot's weight
-        // is 1; both fade with the plane's `recover`, and the flow below is
+        // is 1; both fade with the `recover` of the plane it bounced off —
+        // stored with the weight in the same float — and the flow below is
         // taken only as far as the weight has faded.
-        const bounce = collisionPlaneNodes
-          ? sCurveData.element(initBase.add(7)).toVar()
+        const bounceState = collisionPlaneNodes
+          ? collisionPlaneNodes.readBounce(sCurveData.element(initBase.add(7)))
           : null;
+        const bounce = bounceState ? bounceState.bounce : null;
         if (collisionPlaneNodes) {
-          collisionPlaneNodes.recover({ vel, delta: uDelta, bounce: bounce! });
+          collisionPlaneNodes.recover({
+            vel,
+            delta: uDelta,
+            bounce: bounce!,
+            bounceRecover: bounceState!.recover,
+          });
         }
         const posAfterVel = collisionPlaneNodes ? vec3(pos).toVar() : null;
 
@@ -1277,6 +1283,7 @@ export function createModifierComputeUpdate(
             shoveCap: touchWakeNodes ? touchWakeNodes.maxSpeedUniform : float(0),
             delta: uDelta,
             bounce: bounce!,
+            bounceRecover: bounceState!.recover,
             oiaVec,
             sColorNode: sColor,
             ps,
@@ -1289,7 +1296,11 @@ export function createModifierComputeUpdate(
         // === WRITE BACK ===
 
         if (collisionPlaneNodes) {
-          sCurveData.element(initBase.add(7)).assign(bounce!);
+          sCurveData
+            .element(initBase.add(7))
+            .assign(
+              collisionPlaneNodes.writeBounce(bounce!, bounceState!.recover)
+            );
         }
 
         if (flags.trackTravelDirection) {
@@ -1414,7 +1425,6 @@ export function createModifierComputeUpdate(
       ? {
           offset: collisionPlaneOffset,
           countUniform: collisionPlaneNodes.countUniform,
-          recoverUniform: collisionPlaneNodes.recoverUniform,
         }
       : null,
     touchWakeInfo: touchWakeNodes

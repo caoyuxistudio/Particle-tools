@@ -1280,12 +1280,33 @@ export type CollisionPlaneConfig = {
    * and, while it fades with this time constant, the field (curl noise,
    * fingers, forces) moves it only as far as the bounce has faded — so it
    * leaves the wall at the damped speed and is never faster than the
-   * reflection or the flow. 0 keeps the bounce velocity for good.
+   * reflection or the flow. 0 keeps the bounce velocity for good. Each
+   * plane fades its own bounces at its own pace: a particle remembers the
+   * recover time of the plane it last bounced off.
    *
    * GPU (WebGPU compute) backend only.
    * @default 0
    */
   recover?: number;
+  /**
+   * BOUNCE only: the most this plane gives back of a finger's push, in world
+   * units a second. A sweeping finger's overlapping samples add up to many
+   * times its speed; the wall answers them as if the finger had pushed at
+   * no more than this, and sets the rest on the wall. Leave it unset (or
+   * negative) to follow the touch module's own `maxSpeed`.
+   *
+   * GPU (WebGPU compute) backend only.
+   * @default -1 (follow `touch.maxSpeed`)
+   */
+  touchCap?: number;
+  /**
+   * BOUNCE only: a ceiling on the speed a particle leaves this plane with,
+   * in world units a second, applied after `dampen`. 0 = no ceiling.
+   *
+   * GPU (WebGPU compute) backend only.
+   * @default 0
+   */
+  maxSpeed?: number;
 };
 
 /**
@@ -1300,6 +1321,10 @@ export type NormalizedCollisionPlaneConfig = {
   dampen: number;
   lifetimeLoss: number;
   recover: number;
+  /** < 0 = follow the touch module's `maxSpeed`. */
+  touchCap: number;
+  /** 0 = no ceiling. */
+  maxSpeed: number;
 };
 
 /**

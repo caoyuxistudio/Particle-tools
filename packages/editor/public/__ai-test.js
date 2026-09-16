@@ -1797,63 +1797,92 @@
     if (touch && back.touch) {
       back.touch = { ...back.touch, isActive: true, strength: 1 };
       const centre = touch.screenToWorld(0, 0);
-      back.collisionPlanes = [{ isActive: true, mode: 'BOUNCE', position: { x: centre.x + 2, y: centre.y, z: centre.z }, normal: { x: -1, y: 0, z: 0 }, dampen: 0.5, lifetimeLoss: 0, recover: 1 }];
-      window.editor.reset();
-      await wait(2500);
-      const g = particles().geometry;
-      const readPositions = async () => new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceOffset));
-      const readAlpha = async () => new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceColor));
-      const before = await readPositions();
-      const aliveBefore = await readAlpha();
-      const push = 40;
-      const t0 = performance.now();
-      while (performance.now() - t0 < 1200) {
-        touch.feed({ x: centre.x, y: centre.y, z: centre.z, radius: 4, vx: push, vy: 0, vz: 0 });
-        await wait(40);
-      }
-      const after = await readPositions();
-      const aliveAfter = await readAlpha();
-      const st = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceParticleState));
-      touch.clear();
-      await wait(500);
-      const later = await readPositions();
-      const aliveLater = await readAlpha();
-      let pushed = 0, dx = 0, alive = 0, fast = 0, maxSpeed = 0;
-      for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
-        if (aliveAfter[i * 4 + 3] <= 0.01) continue;
-        alive++;
-        const speed = st[i * 4 + 3];
-        if (speed > maxSpeed) maxSpeed = speed;
-        if (speed > 20) fast++;
-        if (aliveBefore[i * 4 + 3] <= 0.01) continue;
-        const ox = before[i * 4] - centre.x, oz = before[i * 4 + 2] - centre.z;
-        if (ox * ox + oz * oz > 4) continue;
-        pushed++;
-        dx += after[i * 4] - before[i * 4];
-      }
-      const meanDx = pushed ? dx / pushed : 0;
-      let through = 0, beyond = 0;
-      for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
-        if (aliveAfter[i * 4 + 3] <= 0.01) continue;
-        const over = after[i * 4] - (centre.x + 2);
-        if (over > 1) through++;
-        if (over > beyond) beyond = over;
-      }
-      check('a finger\'s push moves the particles under it (needs frames)', pushed > 50 && meanDx > 1, `${pushed} particles, mean ${meanDx.toFixed(2)} along the push`);
-      check('but is not read as speed by the stretch (needs frames)', alive > 1000 && fast === 0, `${fast} of ${alive} faster than 20 u/s, max ${maxSpeed.toFixed(1)} against a ${push} u/s push`);
-      let atWall = 0, moved = 0;
-      for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
-        if (aliveAfter[i * 4 + 3] <= 0.01 || aliveLater[i * 4 + 3] <= 0.01) continue;
-        const x = after[i * 4];
-        if (x < centre.x + 2 - 0.4 || Math.abs(after[i * 4 + 2] - centre.z) > 2) continue;
-        atWall++;
-        moved += later[i * 4] - x;
-      }
-      const meanBack = atWall ? moved / atWall : 0;
+      const wallX = centre.x + 2;
+      const wall = (over = {}) => ({ isActive: true, mode: 'BOUNCE', position: { x: wallX, y: centre.y, z: centre.z }, normal: { x: -1, y: 0, z: 0 }, dampen: 0.5, lifetimeLoss: 0, recover: 1, ...over });
+      // Feed a 40 u/s finger at the centre for 1.2 s against the given walls,
+      // read the particles before, right after, and half a second later.
+      const pushIntoWall = async (planes) => {
+        const cfg = window.editor.getCurrentParticleSystemConfig();
+        cfg.collisionPlanes = planes;
+        window.editor.reset();
+        await wait(2500);
+        const g = particles().geometry;
+        const readPositions = async () => new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceOffset));
+        const readAlpha = async () => new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceColor));
+        const before = await readPositions();
+        const aliveBefore = await readAlpha();
+        const push = 40;
+        const t0 = performance.now();
+        while (performance.now() - t0 < 1200) {
+          touch.feed({ x: centre.x, y: centre.y, z: centre.z, radius: 4, vx: push, vy: 0, vz: 0 });
+          await wait(40);
+        }
+        const after = await readPositions();
+        const aliveAfter = await readAlpha();
+        const st = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceParticleState));
+        touch.clear();
+        await wait(500);
+        const later = await readPositions();
+        const aliveLater = await readAlpha();
+        let pushed = 0, dx = 0, alive = 0, fast = 0, maxSpeed = 0;
+        for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
+          if (aliveAfter[i * 4 + 3] <= 0.01) continue;
+          alive++;
+          const speed = st[i * 4 + 3];
+          if (speed > maxSpeed) maxSpeed = speed;
+          if (speed > 20) fast++;
+          if (aliveBefore[i * 4 + 3] <= 0.01) continue;
+          const ox = before[i * 4] - centre.x, oz = before[i * 4 + 2] - centre.z;
+          if (ox * ox + oz * oz > 4) continue;
+          pushed++;
+          dx += after[i * 4] - before[i * 4];
+        }
+        const meanDx = pushed ? dx / pushed : 0;
+        let through = 0, beyond = 0;
+        for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
+          if (aliveAfter[i * 4 + 3] <= 0.01) continue;
+          const over = after[i * 4] - wallX;
+          if (over > 1) through++;
+          if (over > beyond) beyond = over;
+        }
+        let atWall = 0, moved = 0;
+        for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
+          if (aliveAfter[i * 4 + 3] <= 0.01 || aliveLater[i * 4 + 3] <= 0.01) continue;
+          const x = after[i * 4];
+          if (x < wallX - 0.4 || Math.abs(after[i * 4 + 2] - centre.z) > 2) continue;
+          atWall++;
+          moved += later[i * 4] - x;
+        }
+        return { push, pushed, meanDx, alive, fast, maxSpeed, through, beyond, atWall, meanBack: atWall ? moved / atWall : 0 };
+      };
+
+      const a = await pushIntoWall([wall()]);
       const cap = (back.touch.maxSpeed ?? 8) * 0.5;
-      check('the wall holds against the finger (needs frames)', through === 0, `${through} more than a unit past it, furthest ${beyond.toFixed(2)}`);
-      check('and gives back no more than the finger\'s pace (needs frames)', maxSpeed < cap + 2, `max ${maxSpeed.toFixed(1)} u/s off a ${push} u/s push, cap ${cap} + flow`);
-      check('and they come back off it once the finger is gone (needs frames)', atWall > 30 && meanBack < -0.15, `${atWall} at the wall moved ${meanBack.toFixed(2)} along the push in half a second`);
+      check('a finger\'s push moves the particles under it (needs frames)', a.pushed > 50 && a.meanDx > 1, `${a.pushed} particles, mean ${a.meanDx.toFixed(2)} along the push`);
+      check('but is not read as speed by the stretch (needs frames)', a.alive > 1000 && a.fast === 0, `${a.fast} of ${a.alive} faster than 20 u/s, max ${a.maxSpeed.toFixed(1)} against a ${a.push} u/s push`);
+      check('the wall holds against the finger (needs frames)', a.through === 0, `${a.through} more than a unit past it, furthest ${a.beyond.toFixed(2)}`);
+      check('and gives back no more than the finger\'s pace (needs frames)', a.maxSpeed < cap + 2, `max ${a.maxSpeed.toFixed(1)} u/s off a ${a.push} u/s push, cap ${cap} + flow`);
+      check('and they come back off it once the finger is gone (needs frames)', a.atWall > 30 && a.meanBack < -0.15, `${a.atWall} at the wall moved ${a.meanBack.toFixed(2)} along the push in half a second`);
+
+      // Each wall answers with its own settings. `touchCap` is the most this
+      // wall gives back of a finger's push: at 1 u/s (× dampen 0.5) the
+      // particles come back at a walking pace against the same 40 u/s push.
+      const b = await pushIntoWall([wall({ touchCap: 1 })]);
+      check('a wall\'s own touchCap holds the finger\'s push down (needs frames)', b.through === 0 && b.maxSpeed < 0.5 + 2, `max ${b.maxSpeed.toFixed(1)} u/s off a ${b.push} u/s push, cap 0.5 + flow`);
+      // `maxSpeed` is a ceiling on the speed anything leaves this wall with,
+      // whatever pushed it there: 2 u/s where the default cap gave back 4.
+      const c = await pushIntoWall([wall({ maxSpeed: 2 })]);
+      check('a wall\'s own maxSpeed caps the speed off it (needs frames)', c.through === 0 && c.maxSpeed < 2.5, `max ${c.maxSpeed.toFixed(1)} u/s off a ${c.push} u/s push, ceiling 2`);
+      // `recover` is the wall's own: a bounce off a 0.05 s wall is over
+      // before the half second is up, so the particles hardly come back —
+      // even with another bounce wall in the piece set to a whole second
+      // (the recover used to be one system-wide maximum).
+      const d = await pushIntoWall([wall({ recover: 0.05 }), wall({ position: { x: centre.x - 40, y: centre.y, z: centre.z }, normal: { x: 1, y: 0, z: 0 }, recover: 1 })]);
+      check('a wall\'s own recover ends its bounces at its own pace (needs frames)', d.atWall > 30 && d.meanBack > -0.6 && d.through === 0, `${d.atWall} at the 0.05 s wall moved ${d.meanBack.toFixed(2)} along the push in half a second (a 1 s wall: ${a.meanBack.toFixed(2)})`);
+
+      // The walls' own settings travel in the config and reach the panel.
+      const json2 = JSON.parse(window.editor.serialize());
+      check('the wall\'s own settings travel in the config', json2.collisionPlanes?.[0]?.recover === 0.05 && json2.collisionPlanes?.[1]?.recover === 1, JSON.stringify(json2.collisionPlanes?.map((cp) => [cp.recover, cp.touchCap, cp.maxSpeed])));
     }
     check('no runtime errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 

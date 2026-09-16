@@ -48,6 +48,8 @@ import {
   length,
   min as tslMin,
   max as tslMax,
+  floor,
+  select,
 } from 'three/tsl';
 
 import { CollisionPlaneMode } from '../three-particles-enums.js';
@@ -58,7 +60,7 @@ import type { NormalizedCollisionPlaneConfig } from '../types.js';
 /**
  * Per-plane stride in the packed Float32Array.
  *
- * Layout per collision plane (12 floats):
+ * Layout per collision plane (16 floats):
  *   [0]    isActive (0 or 1)
  *   [1]    mode (0 = KILL, 1 = CLAMP, 2 = BOUNCE)
  *   [2-4]  position (x, y, z)
@@ -66,9 +68,30 @@ import type { NormalizedCollisionPlaneConfig } from '../types.js';
  *   [8]    dampen (0–1)
  *   [9]    lifetimeLoss (0–1)
  *   [10]   recover (seconds; BOUNCE only)
- *   [11]   padding (reserved)
+ *   [11]   touchCap (world units a second; BOUNCE only; < 0 = the touch
+ *          module's own maxSpeed)
+ *   [12]   maxSpeed (world units a second; BOUNCE only; 0 = no cap)
+ *   [13-15] padding (reserved)
  */
-const PLANE_STRIDE = 12;
+const PLANE_STRIDE = 16;
+
+// ─── The bounce state a particle carries ─────────────────────────────────────
+//
+// A bounced particle remembers two things in one float of its init slot: how
+// much of its motion is still the bounce (the weight, 1 the frame it bounces,
+// fading to 0) and the `recover` of the plane it bounced off, so every plane
+// fades its own bounces at its own pace. Both fit one float exactly: the
+// weight in 12 bits (0–4095) and the recover time in hundredths of a second
+// in 11 bits (0–20.47 s), together below 2^23, an integer float32 holds.
+// The weight is floored on write, so it reaches 0 in finite frames instead of
+// the endless tail of an exponential; when it does the slot goes back to 0.
+
+/** The weight's quantum: 12 bits. */
+const BOUNCE_WEIGHT_STEPS = 4095;
+/** The recover time's quantum: hundredths of a second, 11 bits. */
+const BOUNCE_RECOVER_SCALE = 100;
+const BOUNCE_RECOVER_MAX = 20.47;
+const BOUNCE_RECOVER_SHIFT = 4096;
 
 /** Maximum collision planes supported per particle system. */
 export const MAX_COLLISION_PLANES = 16;
@@ -117,7 +140,9 @@ export function encodeCollisionPlanesForGPU(
     data[base + 8] = cp.dampen;
     data[base + 9] = cp.lifetimeLoss;
     data[base + 10] = cp.recover ?? 0;
-    data[base + 11] = 0; // padding
+    data[base + 11] = cp.touchCap ?? -1;
+    data[base + 12] = cp.maxSpeed ?? 0;
+    // 13–15 padding
   }
 
   return data;
@@ -145,31 +170,59 @@ export function createCollisionPlaneTSL(
   const count = Math.min(collisionPlaneCount, MAX_COLLISION_PLANES);
   const uCollisionPlaneCount = uniform(float(count));
   const cpBase = collisionPlaneOffset;
+
   /**
-   * The longest `recover` among the bounce planes, seconds. While it is
-   * above zero, the stored velocity — which after a bounce is the particle's
-   * motion relative to the flow — decays toward zero at that time constant,
-   * so a bounced particle settles back into the field.
+   * Unpacks a particle's stored bounce state into two variables: the bounce
+   * weight (0–1) and the recover time (seconds) of the plane it bounced off.
    */
-  const uBounceRecover = uniform(float(0));
+  const readBounce = (packed: ShaderNodeObject<Node>) => {
+    const steps = floor(packed.div(BOUNCE_RECOVER_SHIFT));
+    const bounce = packed
+      .sub(steps.mul(BOUNCE_RECOVER_SHIFT))
+      .div(BOUNCE_WEIGHT_STEPS)
+      .toVar();
+    const recover = steps.div(BOUNCE_RECOVER_SCALE).toVar();
+    return { bounce, recover };
+  };
+
+  /** Packs the bounce weight and recover time back into the slot's float. */
+  const writeBounce = (
+    bounce: ShaderNodeObject<Node>,
+    recover: ShaderNodeObject<Node>
+  ) =>
+    floor(
+      tslMin(recover, float(BOUNCE_RECOVER_MAX))
+        .mul(BOUNCE_RECOVER_SCALE)
+        .add(0.5)
+    )
+      .mul(BOUNCE_RECOVER_SHIFT)
+      .add(floor(clamp(bounce, float(0.0), float(1.0)).mul(BOUNCE_WEIGHT_STEPS)));
 
   const applyBounceRecovery = Fn(
     ({
       vel,
       delta,
       bounce,
+      bounceRecover,
     }: {
       vel: ShaderNodeObject<Node>;
       delta: ShaderNodeObject<Node>;
       bounce: ShaderNodeObject<Node>;
+      bounceRecover: ShaderNodeObject<Node>;
     }) => {
-      // The bounce velocity and its weight fade together, so a bounced
-      // particle's motion is vel + (1 − bounce) × flow: a blend from the
-      // reflection back to the field, never faster than either.
-      If(uBounceRecover.greaterThan(0.0), () => {
-        const keep = exp(delta.negate().div(uBounceRecover));
+      // The bounce velocity and its weight fade together at the time
+      // constant of the plane the particle bounced off, so its motion is
+      // vel + (1 − bounce) × flow: a blend from the reflection back to the
+      // field, never faster than either. Once the weight has floored to
+      // zero the bounce is over and the state is cleared.
+      If(bounceRecover.greaterThan(0.0), () => {
+        const keep = exp(delta.negate().div(bounceRecover));
         vel.assign(vel.mul(keep));
         bounce.assign(bounce.mul(keep));
+        If(bounce.lessThan(float(0.5 / BOUNCE_WEIGHT_STEPS)), () => {
+          bounce.assign(0.0);
+          bounceRecover.assign(0.0);
+        });
       });
     },
     'void'
@@ -188,11 +241,13 @@ export function createCollisionPlaneTSL(
    *   more than `shoveCap`: that much of it is mirrored and reflected, the
    *   rest is set on the wall
    * @param shoveCap - The finger's speed cap (world units a second): the most
-   *   a wall gives back of a push
+   *   a wall gives back of a push, unless the plane sets its own `touchCap`
    * @param delta - The frame's dt in seconds
    * @param bounce - The particle's bounce weight (float, modified in place):
-   *   1 the frame it bounces, decaying with `recover`; the kernel takes the
-   *   flow only as far as it has faded
+   *   1 the frame it bounces, decaying with the plane's `recover`; the
+   *   kernel takes the flow only as far as it has faded
+   * @param bounceRecover - The recover time the particle carries (float,
+   *   modified in place): set to the plane's own on a bounce
    * @param oiaVec - orbitalIsActive vec4 (w = isActive, modified for KILL)
    * @param sColor - Color storage node (modified for KILL)
    * @param ps - particleState vec4 (x = lifetime, modified for lifetime loss)
@@ -209,6 +264,7 @@ export function createCollisionPlaneTSL(
       shoveCap,
       delta,
       bounce,
+      bounceRecover,
       oiaVec,
       sColorNode,
       ps,
@@ -223,6 +279,7 @@ export function createCollisionPlaneTSL(
       shoveCap: ShaderNodeObject<Node>;
       delta: ShaderNodeObject<Node>;
       bounce: ShaderNodeObject<Node>;
+      bounceRecover: ShaderNodeObject<Node>;
       oiaVec: ShaderNodeObject<Node>;
       sColorNode: ShaderNodeObject<Node>;
       ps: ShaderNodeObject<Node>;
@@ -251,6 +308,9 @@ export function createCollisionPlaneTSL(
         );
         const dampen = sCurveData.element(base.add(8));
         const lifetimeLoss = sCurveData.element(base.add(9));
+        const recover = sCurveData.element(base.add(10));
+        const touchCap = sCurveData.element(base.add(11));
+        const maxSpeed = sCurveData.element(base.add(12));
 
         // Signed distance from particle to plane
         const toParticle = pos.sub(planePos);
@@ -284,16 +344,18 @@ export function createCollisionPlaneTSL(
             })
             // BOUNCE mode (2)
             .Else(() => {
-              // A finger's push, as the wall answers it: capped at the finger's
-              // own speed. Its overlapping samples add up to many times that
-              // under a sweeping finger, and a wall that mirrored and
-              // reflected all of it threw the particles back at hundreds of
-              // units a second; a wall that pinned it held them dead against
-              // it. In between: the particle comes back off the wall the way
-              // a thing pushed there at the finger's pace would.
+              // A finger's push, as the wall answers it: capped at the plane's
+              // own `touchCap`, or the finger's speed cap where the plane
+              // sets none. The finger's overlapping samples add up to many
+              // times its speed under a sweeping finger, and a wall that
+              // mirrored and reflected all of it threw the particles back at
+              // hundreds of units a second; a wall that pinned it held them
+              // dead against it. In between: the particle comes back off the
+              // wall the way a thing pushed there at that pace would.
+              const cap = select(touchCap.lessThan(0.0), shoveCap, touchCap);
               const shoveLen = length(shove);
               const shoveKept = shove.mul(
-                tslMin(float(1.0), shoveCap.mul(delta).div(tslMax(shoveLen, float(1e-6))))
+                tslMin(float(1.0), cap.mul(delta).div(tslMax(shoveLen, float(1e-6))))
               );
               // Mirror the position across the plane: the particle went
               // |signedDist| through, so it comes out that far in front —
@@ -333,7 +395,15 @@ export function createCollisionPlaneTSL(
               vel.assign(
                 arriving.sub(planeNormal.mul(eDotN.mul(2.0))).mul(dampen)
               );
+              // The plane's own ceiling on the speed a particle leaves it with.
+              If(maxSpeed.greaterThan(0.0), () => {
+                const speed = length(vel);
+                If(speed.greaterThan(maxSpeed), () => {
+                  vel.assign(vel.mul(maxSpeed.div(speed)));
+                });
+              });
               bounce.assign(1.0);
+              bounceRecover.assign(recover);
 
               // Apply lifetime loss
               If(lifetimeLoss.greaterThan(0.0), () => {
@@ -349,11 +419,13 @@ export function createCollisionPlaneTSL(
   return {
     /** Uniform for the active collision plane count. */
     countUniform: uCollisionPlaneCount,
-    /** Uniform: the longest bounce `recover` time among the planes, seconds (0 = none). */
-    recoverUniform: uBounceRecover,
-    /** TSL function to call in the compute kernel: apply({ pos, vel, effVel, shove, bounce, ... }) */
+    /** Unpacks a particle's stored bounce state: { bounce, recover } variables. */
+    readBounce,
+    /** Packs the bounce state back into the slot's float. */
+    writeBounce,
+    /** TSL function to call in the compute kernel: apply({ pos, vel, effVel, shove, bounce, bounceRecover, ... }) */
     apply: applyCollisionPlanesTSL,
-    /** TSL function to call once per frame after the velocity step: recover({ vel, delta, bounce }) */
+    /** TSL function to call once per frame after the velocity step: recover({ vel, delta, bounce, bounceRecover }) */
     recover: applyBounceRecovery,
   };
 }
