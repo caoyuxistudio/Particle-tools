@@ -6,6 +6,7 @@ import {
   createColorInstanceData,
   disposeColorInstanceData,
   ensureColorInstancePixels,
+  refreshColorInstanceData,
 } from './color-instance-sampler';
 import { applyColorTweak, remapLuminance } from './color-tweak';
 
@@ -13,6 +14,112 @@ import { applyColorTweak, remapLuminance } from './color-tweak';
 const tweakedColor: [number, number, number] = [0, 0, 0];
 /** Reused per spawn: the source coordinate the position maps to. */
 const colorInstanceUv: [number, number] = [0, 0];
+
+/**
+ * A copy of a config block in which every plain nested object is its own —
+ * class instances (a texture, a vector) stay by reference. deepMerge keeps a
+ * reference to the default config's nested object wherever a config left one
+ * out, and updateConfig merges in place; without this, a live tweak would be
+ * written into the library's defaults and leak into every system created
+ * after it.
+ */
+const detachPlainObjects = <T>(value: T): T => {
+  if (Array.isArray(value)) return value.map(detachPlainObjects) as T;
+  if (value && typeof value === 'object' && value.constructor === Object) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = detachPlainObjects(v);
+    return out as T;
+  }
+  return value;
+};
+
+type ColorInstanceSample = {
+  /** Linear start colour. */
+  r: number;
+  g: number;
+  b: number;
+  /** The texel's alpha, 0..1. */
+  alpha: number;
+  /** The curl-noise multiplier the texel's luminance gives, 1 = untouched. */
+  noiseMul: number;
+};
+const colorInstanceSample: ColorInstanceSample = {
+  r: 0,
+  g: 0,
+  b: 0,
+  alpha: 1,
+  noiseMul: 1,
+};
+
+/**
+ * What the colour source gives a particle at a spawn position: the texel
+ * under it through the mapping (plane, area, scale, wrap, offset), the
+ * source's own look applied in display space, then linear; its alpha; and
+ * the curl-noise multiplier from its luminance and the luminosity noise map.
+ * Off the source (wrap ZERO) is a black, transparent texel. The sampler's
+ * pixels must be present (ensureColorInstancePixels). Used at birth and by
+ * the live recolour, so the two can never disagree.
+ */
+const sampleColorInstance = (
+  ci: ColorInstanceData,
+  x: number,
+  y: number,
+  z: number,
+  rectWidth: number,
+  rectHeight: number,
+  out: ColorInstanceSample
+): void => {
+  let r8 = 0;
+  let g8 = 0;
+  let b8 = 0;
+  let a8 = 0;
+  if (spawnToUv(ci, x, y, z, rectWidth, rectHeight, colorInstanceUv)) {
+    const o = uvToPixelOffset(
+      colorInstanceUv[0],
+      colorInstanceUv[1],
+      ci.width!,
+      ci.height!
+    );
+    const pixels = ci.pixels!;
+    r8 = pixels[o];
+    g8 = pixels[o + 1];
+    b8 = pixels[o + 2];
+    a8 = pixels[o + 3];
+  }
+  // The source's own look, before the pixel becomes a start colour: hue,
+  // saturation and contrast in display (sRGB) space, the way an image
+  // editor applies them.
+  let sr = r8 / 255;
+  let sg = g8 / 255;
+  let sb = b8 / 255;
+  if (ci.colorTweak) {
+    applyColorTweak(ci.colorTweak, sr, sg, sb, tweakedColor);
+    sr = tweakedColor[0];
+    sg = tweakedColor[1];
+    sb = tweakedColor[2];
+  }
+  out.r = sRGBToLinear(sr);
+  out.g = sRGBToLinear(sg);
+  out.b = sRGBToLinear(sb);
+  out.alpha = a8 / 255;
+  out.noiseMul = 1;
+  if (ci.useLuminanceForNoise) {
+    // Rec.709 luma of the sRGB pixel as sampled — perceived brightness,
+    // which is what "grayscale value" means to the eye — before any colour
+    // tweak, so the look and the motion stay separate levers. Then the
+    // luminosity noise map: black point to 0, white point to 1.
+    const luma = remapLuminance(
+      (0.2126 * r8 + 0.7152 * g8 + 0.0722 * b8) / 255,
+      ci.luminanceBlack ?? 0,
+      ci.luminanceWhite ?? 1
+    );
+    const amount = ci.luminanceNoiseAmount;
+    // Positive amount drives motion with brightness, negative inverts it.
+    // At |amount| = 1 the damped end reaches a full stop.
+    const t = amount >= 0 ? luma : 1 - luma;
+    out.noiseMul = 1 - Math.abs(amount) * (1 - t);
+  }
+};
 import { rgbSRGBToLinear, sRGBToLinear } from './color-utils.js';
 import InstancedParticleFragmentShader from './shaders/instanced-particle-fragment-shader.glsl.js';
 import InstancedParticleVertexShader from './shaders/instanced-particle-vertex-shader.glsl.js';
@@ -1948,81 +2055,31 @@ export const createParticleSystem = (
     if (ci?.isActive && ensureColorInstancePixels(ci)) {
       const rectScale = normalizedConfig.shape.rectangle?.scale;
       const spawn = startPositions[particleIndex];
-      // Off the source — wrap ZERO, past the mapped area — reads as a black,
-      // transparent texel: colour 0, alpha 0, luminance 0.
-      let r8 = 0;
-      let g8 = 0;
-      let b8 = 0;
-      let a8 = 0;
-      if (
-        spawnToUv(
-          ci,
-          spawn.x,
-          spawn.y,
-          spawn.z,
-          rectScale?.x || 1,
-          rectScale?.y || 1,
-          colorInstanceUv
-        )
-      ) {
-        const o = uvToPixelOffset(
-          colorInstanceUv[0],
-          colorInstanceUv[1],
-          ci.width!,
-          ci.height!
-        );
-        const pixels = ci.pixels!;
-        r8 = pixels[o];
-        g8 = pixels[o + 1];
-        b8 = pixels[o + 2];
-        a8 = pixels[o + 3];
+      sampleColorInstance(
+        ci,
+        spawn.x,
+        spawn.y,
+        spawn.z,
+        rectScale?.x || 1,
+        rectScale?.y || 1,
+        colorInstanceSample
+      );
+      scalarArray[base + S_COLOR_R] = colorInstanceSample.r;
+      scalarArray[base + S_COLOR_G] = colorInstanceSample.g;
+      scalarArray[base + S_COLOR_B] = colorInstanceSample.b;
+      generalData.startValues.startColorR[particleIndex] =
+        colorInstanceSample.r;
+      generalData.startValues.startColorG[particleIndex] =
+        colorInstanceSample.g;
+      generalData.startValues.startColorB[particleIndex] =
+        colorInstanceSample.b;
+      if (ci.useAlphaForOpacity) {
+        generalData.startValues.startOpacity[particleIndex] *=
+          colorInstanceSample.alpha;
+        scalarArray[base + S_COLOR_A] =
+          generalData.startValues.startOpacity[particleIndex];
       }
-      {
-        // The source's own look, before the pixel becomes a start colour:
-        // hue, saturation and contrast in display (sRGB) space, the way an
-        // image editor applies them.
-        let sr = r8 / 255;
-        let sg = g8 / 255;
-        let sb = b8 / 255;
-        if (ci.colorTweak) {
-          applyColorTweak(ci.colorTweak, sr, sg, sb, tweakedColor);
-          sr = tweakedColor[0];
-          sg = tweakedColor[1];
-          sb = tweakedColor[2];
-        }
-        scalarArray[base + S_COLOR_R] = sRGBToLinear(sr);
-        scalarArray[base + S_COLOR_G] = sRGBToLinear(sg);
-        scalarArray[base + S_COLOR_B] = sRGBToLinear(sb);
-        generalData.startValues.startColorR[particleIndex] =
-          scalarArray[base + S_COLOR_R];
-        generalData.startValues.startColorG[particleIndex] =
-          scalarArray[base + S_COLOR_G];
-        generalData.startValues.startColorB[particleIndex] =
-          scalarArray[base + S_COLOR_B];
-        if (ci.useAlphaForOpacity) {
-          const alpha = a8 / 255;
-          generalData.startValues.startOpacity[particleIndex] *= alpha;
-          scalarArray[base + S_COLOR_A] =
-            generalData.startValues.startOpacity[particleIndex];
-        }
-
-        if (ci.useLuminanceForNoise) {
-          // Rec.709 luma of the sRGB pixel as sampled — perceived brightness,
-          // which is what "grayscale value" means to the eye — before any
-          // colour tweak, so the look and the motion stay separate levers.
-          // Then the luminosity noise map: black point to 0, white point to 1.
-          const luma = remapLuminance(
-            (0.2126 * r8 + 0.7152 * g8 + 0.0722 * b8) / 255,
-            ci.luminanceBlack ?? 0,
-            ci.luminanceWhite ?? 1
-          );
-          const amount = ci.luminanceNoiseAmount;
-          // Positive amount drives motion with brightness, negative inverts it.
-          // At |amount| = 1 the damped end reaches a full stop.
-          const t = amount >= 0 ? luma : 1 - luma;
-          colorInstanceNoiseMul = 1 - Math.abs(amount) * (1 - t);
-        }
-      }
+      colorInstanceNoiseMul = colorInstanceSample.noiseMul;
     }
 
     // In curl mode the noiseOffset slot is unused (the field is sampled from
@@ -2677,7 +2734,93 @@ export const createParticleSystem = (
     }
   };
 
+  /**
+   * Gives every live particle the colour the source would give it now — the
+   * mapping, the look and the luminance map as they stand — from the position
+   * it was born at. What `updateConfig({ particleColorInstance })` does, so a
+   * lever on the source shows on the particles already out and not only on
+   * the next births. A pass over the slots on the CPU, once per change and
+   * never per frame; on the GPU path only the two start-value buffers are
+   * re-uploaded, and the kernel takes its colour from them every frame. The
+   * texel's alpha is not re-applied: it was folded into startOpacity at
+   * birth and cannot be unfolded. Returns how many particles were recoloured.
+   */
+  const recolorLiveParticles = (): number => {
+    const ci = generalData.colorInstance;
+    if (!ci?.isActive || !ensureColorInstancePixels(ci)) return 0;
+    const rectScale = normalizedConfig.shape.rectangle?.scale;
+    const rectWidth = rectScale?.x || 1;
+    const rectHeight = rectScale?.y || 1;
+    const useLuma = !!(generalData.noise.curl && ci.useLuminanceForNoise);
+    const sv = generalData.startValues;
+    const gpuBuffers =
+      useGPUCompute && gpuPipeline ? gpuPipeline.buffers : null;
+    const svArr = gpuBuffers
+      ? (gpuBuffers.startValues.array as Float32Array)
+      : null;
+    const sceArr = gpuBuffers
+      ? (gpuBuffers.startColorsExt.array as Float32Array)
+      : null;
+    let count = 0;
+    for (let i = 0; i < maxParticles; i++) {
+      const base = i * SCALAR_STRIDE;
+      if (!scalarArray[base + S_IS_ACTIVE]) continue;
+      const spawn = startPositions[i];
+      if (!spawn) continue;
+      sampleColorInstance(
+        ci,
+        spawn.x,
+        spawn.y,
+        spawn.z,
+        rectWidth,
+        rectHeight,
+        colorInstanceSample
+      );
+      const { r, g, b, noiseMul } = colorInstanceSample;
+      sv.startColorR[i] = r;
+      sv.startColorG[i] = g;
+      sv.startColorB[i] = b;
+      scalarArray[base + S_COLOR_R] = r;
+      scalarArray[base + S_COLOR_G] = g;
+      scalarArray[base + S_COLOR_B] = b;
+      if (svArr && sceArr) {
+        const i4 = i * 4;
+        svArr[i4 + 3] = r;
+        sceArr[i4] = g;
+        sceArr[i4 + 1] = b;
+        // .w carries the luminance multiplier only in curl mode; otherwise
+        // it is the legacy noise offset and stays.
+        if (useLuma) sceArr[i4 + 3] = noiseMul;
+      } else if (useLuma && generalData.noise.lumaMul) {
+        generalData.noise.lumaMul[i] = noiseMul;
+      }
+      count++;
+    }
+    if (count === 0) return 0;
+    if (gpuBuffers) {
+      // Whole-buffer uploads: the CPU mirrors are exact for every slot that
+      // was ever born (writeParticleToModifierBuffers keeps them), and the
+      // GPU never writes these two.
+      gpuBuffers.startValues.needsUpdate = true;
+      gpuBuffers.startColorsExt.needsUpdate = true;
+    } else {
+      generalData.cpuDirtyParticleWatermark = maxParticles - 1;
+      scalarInterleavedBuffer.needsUpdate = true;
+    }
+    return count;
+  };
+
   const updateConfig = (partialConfig: Partial<ParticleSystemConfig>) => {
+    // The blocks about to be merged into must be this system's own, not the
+    // defaults' (see detachPlainObjects).
+    const live = instanceData.normalizedConfig as unknown as Record<
+      string,
+      unknown
+    >;
+    for (const key of Object.keys(partialConfig)) {
+      if (live[key] && typeof live[key] === 'object')
+        live[key] = detachPlainObjects(live[key]);
+    }
     // Deep-merge partial config into the live normalizedConfig
     ObjectUtils.deepMerge(instanceData.normalizedConfig, partialConfig, {
       applyToFirstObject: true,
@@ -2774,12 +2917,13 @@ export const createParticleSystem = (
 
     // Re-initialize the color-instance sampler when changed
     if (partialConfig.particleColorInstance !== undefined) {
-      const ciCfg = cfg.particleColorInstance;
-      // A video source keeps a frame watcher alive; let the old one go first.
-      disposeColorInstanceData(instanceData.generalData.colorInstance);
-      instanceData.generalData.colorInstance = ciCfg?.isActive
-        ? createColorInstanceData(ciCfg)
-        : undefined;
+      // The same source keeps its pixels and its frame watcher; only the
+      // settings move. Then the particles already out take the new colours.
+      instanceData.generalData.colorInstance = refreshColorInstanceData(
+        instanceData.generalData.colorInstance,
+        cfg.particleColorInstance
+      );
+      recolorLiveParticles();
     }
 
     // Re-resolve pre-baked modifier curve functions — the CPU update loop
@@ -2858,6 +3002,7 @@ export const createParticleSystem = (
     dispose,
     update,
     updateConfig,
+    recolorParticles: recolorLiveParticles,
     getActiveParticleCount: () => maxParticles - freeList.length,
     computeNode: gpuPipeline?.computeNode ?? null,
     feedTouch: (sample) => touchWake?.push(sample),

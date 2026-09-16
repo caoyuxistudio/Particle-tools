@@ -13,7 +13,10 @@ import {
 type ParticleColorInstanceEntriesParams = {
   parentFolder: any;
   particleSystemConfig: any;
+  /** The live path: the sampler takes the change, live particles are recoloured. */
   recreateParticleSystem: () => void;
+  /** A real rebuild, for the two toggles the kernel bakes in. */
+  forceRecreateParticleSystem: () => void;
   scene: THREE.Scene;
   particleSystemContainer: THREE.Object3D;
 };
@@ -38,6 +41,7 @@ export const createParticleColorInstanceEntries = ({
   parentFolder,
   particleSystemConfig,
   recreateParticleSystem,
+  forceRecreateParticleSystem,
   scene,
   particleSystemContainer,
 }: ParticleColorInstanceEntriesParams): ParticleColorInstanceEntriesResult => {
@@ -79,7 +83,8 @@ export const createParticleColorInstanceEntries = ({
     selectedTexture: particleSystemConfig._editorData.colorInstanceTextureId || 'None',
   };
 
-  folder.add(config, 'isActive').onChange(recreateParticleSystem).listen();
+  // Baked into the compute kernel (with luminance → curl noise below): a real rebuild.
+  folder.add(config, 'isActive').onChange(forceRecreateParticleSystem).listen();
 
   folder.add(displayConfig, 'selectedTexture').name('Selected Source').listen().disable();
 
@@ -217,7 +222,7 @@ export const createParticleColorInstanceEntries = ({
   folder
     .add(config, 'useLuminanceForNoise')
     .name('luminance -> curl noise')
-    .onChange(recreateParticleSystem)
+    .onChange(forceRecreateParticleSystem)
     .listen();
 
   folder

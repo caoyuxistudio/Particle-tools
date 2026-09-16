@@ -282,6 +282,27 @@ const configEntries: ConfigEntry[] = [];
 // Throttle timer for full recreate when live update is enabled.
 // Avoids excessive dispose+create cycles while dragging sliders/color pickers.
 let liveRecreateTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Keys that go live whatever the Helper's toggle says: they reach only the
+ * CPU-side colour sampler and the particles' start colours
+ * (recolorLiveParticles in the library), never the kernel or a material, so
+ * there is nothing to rebuild. The recolour walks every live slot, so while a
+ * slider drags it is applied at most ten times a second — the first change at
+ * once, the rest trailing.
+ */
+const ALWAYS_LIVE_KEYS = ['particleColorInstance'];
+let liveUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+let liveUpdatePending = false;
+
+const applyLiveUpdate = (activeConfig: any, keys: string[]): void => {
+  if (!particleSystem) return;
+  const partial: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (activeConfig[key] !== undefined) partial[key] = activeConfig[key];
+  }
+  particleSystem.updateConfig(partial);
+};
 const LIVE_RECREATE_THROTTLE_MS = 100;
 
 let currentPanel: GUI | null = null;
@@ -387,7 +408,8 @@ const bootStats = {
   marks: {} as Record<string, number>,
 };
 /** One frame later, so the browser can paint what is already there. */
-const nextFrame = (): Promise<void> => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+const nextFrame = (): Promise<void> =>
+  new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
 /** Stamps a boot phase: on the HUD's boot line and as a performance mark. */
 const bootMark = (name: string): void => {
@@ -818,7 +840,13 @@ const recreateParticleSystem = (markAsDirty = true, liveUpdateKeys?: string[]): 
   //  2. The update touches curve-based keys whose data is baked into a GPU texture at
   //     creation time (colorOverLifetime, opacityOverLifetime, sizeOverLifetime,
   //     rotationOverLifetime). The engine's updateConfig does not re-bake these.
-  if (markAsDirty && liveUpdateKeys && particleSystem && activeConfig._editorData?.useLiveUpdate) {
+  const alwaysLive = !!liveUpdateKeys && liveUpdateKeys.every((k) => ALWAYS_LIVE_KEYS.includes(k));
+  if (
+    markAsDirty &&
+    liveUpdateKeys &&
+    particleSystem &&
+    (activeConfig._editorData?.useLiveUpdate || alwaysLive)
+  ) {
     // Keys whose bezier/curve data is baked into a GPU texture at creation time.
     // Changing their data (not just isActive) requires a full recreate on GPU.
     const GPU_BAKED_CURVE_KEYS = [
@@ -848,13 +876,25 @@ const recreateParticleSystem = (markAsDirty = true, liveUpdateKeys?: string[]): 
     }
 
     if (!structuralChange && !touchesBakedCurves) {
-      const partial: Record<string, unknown> = {};
-      for (const key of liveUpdateKeys) {
-        if (activeConfig[key] !== undefined) {
-          partial[key] = activeConfig[key];
+      if (alwaysLive && !isInitializing) {
+        // Leading edge now, trailing edge after the throttle if anything
+        // moved meanwhile — the last value of a drag always lands.
+        if (liveUpdateTimer) {
+          liveUpdatePending = true;
+        } else {
+          applyLiveUpdate(activeConfig, liveUpdateKeys);
+          const keys = liveUpdateKeys;
+          liveUpdateTimer = setTimeout(() => {
+            liveUpdateTimer = null;
+            if (liveUpdatePending) {
+              liveUpdatePending = false;
+              applyLiveUpdate(getActiveConfig(), keys);
+            }
+          }, LIVE_RECREATE_THROTTLE_MS);
         }
+      } else {
+        applyLiveUpdate(activeConfig, liveUpdateKeys);
       }
-      particleSystem.updateConfig(partial);
       if (!isInitializing) {
         configDirty = true;
       }
@@ -1251,7 +1291,11 @@ const createPanel = (config: any = particleSystemConfig): void => {
     createParticleColorInstanceEntries({
       parentFolder: panel,
       particleSystemConfig: config,
-      recreateParticleSystem,
+      // The source's levers are live: the sampler takes them and the
+      // particles already out are recoloured, no rebuild. Only the two
+      // toggles baked into the kernel (isActive, luminance → noise) rebuild.
+      recreateParticleSystem: () => recreateParticleSystem(true, ['particleColorInstance']),
+      forceRecreateParticleSystem: recreateParticleSystem,
       scene,
       particleSystemContainer,
     })
@@ -1260,7 +1304,7 @@ const createPanel = (config: any = particleSystemConfig): void => {
     createSourceImageTweakEntries({
       parentFolder: panel,
       particleSystemConfig: config,
-      recreateParticleSystem,
+      recreateParticleSystem: () => recreateParticleSystem(true, ['particleColorInstance']),
     })
   );
   configEntries.push(

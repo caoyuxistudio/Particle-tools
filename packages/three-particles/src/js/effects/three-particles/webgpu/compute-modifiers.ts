@@ -1060,6 +1060,18 @@ export function createModifierComputeUpdate(
             col.z.assign(sce.y.mul(bMul));
           }
           sColor.element(i).assign(col);
+        } else {
+          // No colour curve: the colour is the start colour — taken from the
+          // start-value buffers every frame rather than once at init, so a
+          // recolour written into those buffers from the CPU (the colour
+          // source's levers moving under live particles) reaches the
+          // particles already out. One extra storage read per particle.
+          const col = sColor.element(i).toVar();
+          const sce = sStartColorsExt.element(i);
+          col.x.assign(sv.w);
+          col.y.assign(sce.x);
+          col.z.assign(sce.y);
+          sColor.element(i).assign(col);
         }
 
         // 6. Rotation Over Lifetime (startColorsExt.z = rotationSpeed, ps.z = rotation)

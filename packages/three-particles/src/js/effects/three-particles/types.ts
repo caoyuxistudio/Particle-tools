@@ -2258,6 +2258,14 @@ export type ParticleSystem = {
    * ```
    */
   updateConfig: (config: Partial<ParticleSystemConfig>) => void;
+  /**
+   * Re-samples the colour source for every live particle from its birth
+   * position with the settings as they stand now, and writes the colours
+   * through — what `updateConfig({ particleColorInstance })` does. Returns
+   * the number of particles recoloured; 0 when the source is off or has no
+   * pixels yet.
+   */
+  recolorParticles?: () => number;
 };
 
 /**

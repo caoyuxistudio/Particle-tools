@@ -9,6 +9,7 @@ import {
   createColorInstanceData,
   disposeColorInstanceData,
   ensureColorInstancePixels,
+  refreshColorInstanceData,
 } from '../color-instance-sampler';
 
 type Draw = { width: number; height: number };
@@ -312,5 +313,45 @@ describe('the worker path', () => {
     expect(ensureColorInstancePixels(ci)).toBe(true);
     expect(draws).toHaveLength(3);
     disposeColorInstanceData(ci);
+  });
+});
+
+describe('refreshing a sampler for a changed config', () => {
+  it('the same source keeps its pixels: settings move, no readback', () => {
+    const map = texture({ naturalWidth: 8, naturalHeight: 4 });
+    const ci = createColorInstanceData({ isActive: true, map: map as any });
+    expect(ensureColorInstancePixels(ci)).toBe(true);
+    expect(draws.length).toBe(1);
+    const next = refreshColorInstanceData(ci, {
+      isActive: true,
+      map: map as any,
+      scale: { x: 0.5, y: 2 },
+      wrap: 'MIRROR' as any,
+      offset: { x: 1, y: 0, z: -1 },
+      colorTweak: { saturation: 2, contrast: 1, hue: 0 },
+    });
+    expect(next).toBe(ci);
+    expect(ci.scaleX).toBe(0.5);
+    expect(ci.scaleY).toBe(2);
+    expect(ci.wrap).toBe('MIRROR');
+    expect(ci.offsetX).toBe(1);
+    expect(ci.offsetZ).toBe(-1);
+    expect(ci.colorTweak).not.toBeNull();
+    expect(ci.pixels).toBeDefined();
+    expect(ensureColorInstancePixels(ci)).toBe(true);
+    expect(draws.length).toBe(1);
+  });
+
+  it('a new source is a new sampler, and off is none', () => {
+    const a = texture({ naturalWidth: 8, naturalHeight: 4 });
+    const b = texture({ naturalWidth: 8, naturalHeight: 4 });
+    const ci = createColorInstanceData({ isActive: true, map: a as any });
+    const next = refreshColorInstanceData(ci, {
+      isActive: true,
+      map: b as any,
+    });
+    expect(next).not.toBe(ci);
+    expect(next?.map).toBe(b);
+    expect(refreshColorInstanceData(next, { isActive: false })).toBeUndefined();
   });
 });

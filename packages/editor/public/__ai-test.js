@@ -2052,6 +2052,71 @@
     await run('scale 0.5, STRETCH: the edge texel runs on', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'STRETCH' });
     await run('offset 1 / 0.5 moves the source off the emitter', { x: 90, y: 0, z: 0 }, { plane: 'XZ', offset: { x: 1, y: 0, z: 0.5 } });
 
+    // ── Live: a lever moved in the panel recolours the particles already out, no rebuild ──
+    // The XZ piece again, then the panel's own controls (the same path a hand
+    // takes): scale down and mirror. The mesh must be the same object, the
+    // particles must stay where they are, and their colours must follow the
+    // new mapping — read back straight from the GPU buffers.
+    {
+      window.editor.load(piece({ x: 90, y: 0, z: 0 }, { plane: 'XZ' }));
+      await wait(1600);
+      const meshBefore = particles();
+      const g = meshBefore?.geometry;
+      const posBefore = g ? new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceOffset)) : null;
+      const colBefore = g ? new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceColor)) : null;
+      const gui = document.querySelector('.lil-gui.root');
+      const controlOf = (name) => [...(gui?.querySelectorAll('.controller') ?? [])].find((c) => c.querySelector('.name')?.textContent.trim() === name);
+      // lil-gui: a number controller takes its input's value; an option
+      // controller reads selectedIndex, its options labelled by display name.
+      const setControl = (name, value) => {
+        const c = controlOf(name);
+        const select = c?.querySelector('select');
+        if (select) {
+          const index = [...select.options].findIndex((o) => o.textContent.trim().toLowerCase().startsWith(String(value).toLowerCase()));
+          if (index < 0) return false;
+          select.selectedIndex = index;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        }
+        const el = c?.querySelector('input');
+        if (!el) return false;
+        el.value = String(value);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      };
+      const tasks = [];
+      const obs = new PerformanceObserver((list) => { for (const e of list.getEntries()) tasks.push(Math.round(e.duration)); });
+      obs.observe({ entryTypes: ['longtask'] });
+      const set1 = setControl('x (across)', 0.5);
+      const set2 = setControl('y (down)', 0.5);
+      const set3 = setControl('outside the source', 'mirror');
+      await wait(400);
+      obs.disconnect();
+      check('the panel controls were reached', set1 && set2 && set3);
+      const live = window.editor.getCurrentParticleSystemConfig().particleColorInstance;
+      check('the config took the levers', live.scale?.x === 0.5 && live.scale?.y === 0.5 && live.wrap === 'MIRROR', JSON.stringify({ scale: live.scale, wrap: live.wrap }));
+      const meshAfter = particles();
+      check('no rebuild: the particle mesh is the same object', !!meshBefore && meshAfter === meshBefore);
+      if (g && posBefore && colBefore && meshAfter === meshBefore) {
+        const posAfter = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceOffset));
+        const colAfter = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceColor));
+        let alive = 0, stayed = 0, recoloured = 0, match = 0;
+        for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
+          if (colBefore[i * 4 + 3] <= 0.01 || colAfter[i * 4 + 3] <= 0.01) continue;
+          alive++;
+          if (Math.abs(posAfter[i * 4] - posBefore[i * 4]) < 1e-4 && Math.abs(posAfter[i * 4 + 2] - posBefore[i * 4 + 2]) < 1e-4) stayed++;
+          const want = expectedColour(refUv('XZ', [0.5, 0.5], 'MIRROR', [0, 0, 0], posAfter[i * 4], posAfter[i * 4 + 1], posAfter[i * 4 + 2]));
+          const got = [colAfter[i * 4], colAfter[i * 4 + 1], colAfter[i * 4 + 2]];
+          if (got.every((c, k) => Math.abs(c - want[k]) < 0.02)) match++;
+          if (got.some((c, k) => Math.abs(c - colBefore[i * 4 + k]) > 0.02)) recoloured++;
+        }
+        check('the particles stayed where they were', alive > 500 && stayed >= alive * 0.99, `${stayed}/${alive}`);
+        check('and took the new mapping in place', alive > 500 && match >= alive * 0.97 && recoloured > alive * 0.3, `${match}/${alive} match the new reference, ${recoloured} changed colour`);
+      }
+      check('no long task from the change (needs a real window)', tasks.every((t) => t < 120), tasks.join(',') || 'none');
+    }
+
     // ── The debug plane: the source laid where it maps, and the handle ──────
     const cameraBefore = { pos: w.camera.position.clone(), target: w.controls.target.clone() };
     await run('with the debug plane shown the mapping is unchanged', { x: 90, y: 0, z: 0 }, { plane: 'XZ', offset: { x: 1, y: 0, z: 0.5 } }, { showColorSourceDebug: true });

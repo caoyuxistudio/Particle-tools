@@ -199,29 +199,80 @@ const offloadFrame = (ci: ColorInstanceData, video: VideoLike): boolean => {
   return true;
 };
 
+/**
+ * Copies everything but the source itself from the config onto the sampler:
+ * the mapping, the look, the luminance map. Nothing here touches the pixels,
+ * so it can be applied to a live sampler without a readback.
+ */
+export const applyColorInstanceSettings = (
+  ci: ColorInstanceData,
+  config: ParticleColorInstanceConfig
+): ColorInstanceData => {
+  ci.plane = config.plane ?? ColorInstancePlane.XZ;
+  ci.areaX = config.area?.x ?? 0;
+  ci.areaY = config.area?.y ?? 0;
+  ci.areaZ = config.area?.z ?? 0;
+  ci.scaleX = config.scale?.x ?? 1;
+  ci.scaleY = config.scale?.y ?? 1;
+  ci.wrap = config.wrap ?? ColorInstanceWrap.ZERO;
+  ci.offsetX = config.offset?.x ?? 0;
+  ci.offsetY = config.offset?.y ?? 0;
+  ci.offsetZ = config.offset?.z ?? 0;
+  ci.useAlphaForOpacity = !!config.useAlphaForOpacity;
+  ci.useLuminanceForNoise = !!config.useLuminanceForNoise;
+  ci.luminanceNoiseAmount = config.luminanceNoiseAmount ?? 0;
+  ci.sampleSize = config.sampleSize ?? 0;
+  ci.colorTweak = buildColorTweak(config.colorTweak);
+  ci.luminanceBlack = config.luminanceMap?.black ?? 0;
+  ci.luminanceWhite = config.luminanceMap?.white ?? 1;
+  return ci;
+};
+
 export const createColorInstanceData = (
   config: ParticleColorInstanceConfig
-): ColorInstanceData => ({
-  isActive: true,
-  map: config.map,
-  plane: config.plane ?? ColorInstancePlane.XZ,
-  areaX: config.area?.x ?? 0,
-  areaY: config.area?.y ?? 0,
-  areaZ: config.area?.z ?? 0,
-  scaleX: config.scale?.x ?? 1,
-  scaleY: config.scale?.y ?? 1,
-  wrap: config.wrap ?? ColorInstanceWrap.ZERO,
-  offsetX: config.offset?.x ?? 0,
-  offsetY: config.offset?.y ?? 0,
-  offsetZ: config.offset?.z ?? 0,
-  useAlphaForOpacity: !!config.useAlphaForOpacity,
-  useLuminanceForNoise: !!config.useLuminanceForNoise,
-  luminanceNoiseAmount: config.luminanceNoiseAmount ?? 0,
-  sampleSize: config.sampleSize ?? 0,
-  colorTweak: buildColorTweak(config.colorTweak),
-  luminanceBlack: config.luminanceMap?.black ?? 0,
-  luminanceWhite: config.luminanceMap?.white ?? 1,
-});
+): ColorInstanceData =>
+  applyColorInstanceSettings(
+    {
+      isActive: true,
+      map: config.map,
+      plane: ColorInstancePlane.XZ,
+      areaX: 0,
+      areaY: 0,
+      areaZ: 0,
+      scaleX: 1,
+      scaleY: 1,
+      wrap: ColorInstanceWrap.ZERO,
+      offsetX: 0,
+      offsetY: 0,
+      offsetZ: 0,
+      useAlphaForOpacity: false,
+      useLuminanceForNoise: false,
+      luminanceNoiseAmount: 0,
+      sampleSize: 0,
+    },
+    config
+  );
+
+/**
+ * The sampler for a changed config. The same source keeps its pixels, its
+ * canvas and, for a video, its frame watcher — only the settings move, so a
+ * slider on the mapping or the look costs no readback. A new source, or the
+ * feature switched off, disposes the old sampler.
+ */
+export const refreshColorInstanceData = (
+  current: ColorInstanceData | undefined,
+  config: ParticleColorInstanceConfig | undefined
+): ColorInstanceData | undefined => {
+  if (!config?.isActive) {
+    disposeColorInstanceData(current);
+    return undefined;
+  }
+  if (current && current.map === config.map) {
+    return applyColorInstanceSettings(current, config);
+  }
+  disposeColorInstanceData(current);
+  return createColorInstanceData(config);
+};
 
 /** Stops watching a video's frames. Safe to call on a still image, or twice. */
 export const disposeColorInstanceData = (
