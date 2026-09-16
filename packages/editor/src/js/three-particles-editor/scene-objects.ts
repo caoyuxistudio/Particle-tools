@@ -182,6 +182,14 @@ export type SceneObject = {
   edgeEmissive?: string;
   edgeEmissiveIntensity?: number;
   /**
+   * FRAME only: the inner edge lit by the picture. With `fromParticles` on,
+   * the mean colour of the particles out right now — the colour source as
+   * it painted them — is added to `edgeColor` ("lighter": the sum, clamped)
+   * every frame, scaled by `amount`. The picture's colour bleeding onto the
+   * surround, the way a light probe or an occlusion pass would carry it.
+   */
+  edgeTint?: { fromParticles: boolean; amount: number };
+  /**
    * FRAME only: rounded corners on the opening, one radius per corner in
    * world units (0 = square). The corner is not cut out of the frame — the
    * opening keeps its rectangle and the four fillets are filled in, so what
@@ -415,6 +423,7 @@ const DEFAULTS: Record<SceneObjectType, () => Omit<SceneObject, 'id' | 'name'>> 
     edgeMetalness: 0.9,
     edgeEmissive: '#000000',
     edgeEmissiveIntensity: 0,
+    edgeTint: { fromParticles: false, amount: 1 },
     // A new frame is a phone's screen until told otherwise: the iPhone 17 Pro
     // Max's corners for its width, and the edges brought in as the piece has
     // them in an app that hides the status bar.
@@ -1071,6 +1080,37 @@ export const watchScene = (watcher: () => void): (() => void) => {
 };
 
 export const getSceneObjects = (): SceneObject[] => objects;
+
+const edgeBase = new THREE.Color();
+
+/**
+ * The frames' inner edges take the picture's colour, once a frame: for every
+ * visible FRAME with `edgeTint.fromParticles`, the edge material's colour is
+ * `edgeColor` plus the particles' mean colour times `amount`, per channel,
+ * clamped — "lighter". Both in linear light: the material's colour is, and
+ * the mean comes from the particle system that way. `mean` null (no
+ * particles out) leaves the edges at their own colour. The editor and the
+ * player both call this before rendering.
+ */
+export const tintFrameEdges = (mean: { r: number; g: number; b: number } | null): void => {
+  for (const obj of objects) {
+    if (obj.type !== 'FRAME' || !obj.visible || !obj.edgeTint?.fromParticles) continue;
+    const mesh = live.get(obj.id) as THREE.Mesh | undefined;
+    if (!mesh || !Array.isArray(mesh.material)) continue;
+    const edge = mesh.material[1] as THREE.MeshStandardMaterial;
+    edgeBase.set(obj.edgeColor ?? '#ffffff');
+    if (!mean) {
+      edge.color.copy(edgeBase);
+      continue;
+    }
+    const amount = obj.edgeTint.amount ?? 1;
+    edge.color.setRGB(
+      Math.min(1, edgeBase.r + mean.r * amount),
+      Math.min(1, edgeBase.g + mean.g * amount),
+      Math.min(1, edgeBase.b + mean.b * amount)
+    );
+  }
+};
 
 export const addSceneObject = (type: SceneObjectType): SceneObject => {
   const count = objects.filter((o) => o.type === type).length + 1;

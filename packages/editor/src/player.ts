@@ -74,6 +74,7 @@ import {
   readStoredSceneObjects,
   replaceSceneObjects,
   updateSceneObject,
+  tintFrameEdges,
 } from './js/three-particles-editor/scene-objects';
 import { applySimulation, resetSimulation } from './js/three-particles-editor/simulation';
 import { TextureId } from './js/three-particles-editor/texture-config';
@@ -687,6 +688,9 @@ const installPresentationControls = (): void => {
 
 // ─── Frame ───────────────────────────────────────────────────────────────────
 
+/** Scratch for the particles' mean colour, read once a frame. */
+const meanColor = { r: 0, g: 0, b: 0 };
+
 const animate = (): void => {
   const rawDelta = clock.getDelta();
   cycleData.now = Date.now() - cycleData.totalPauseTime;
@@ -716,6 +720,8 @@ const animate = (): void => {
   }
 
   const softParticlesEnabled = !!particleSystemConfig.renderer?.softParticles?.enabled;
+  // The frames' inner edges take the picture's colour, if they are set to.
+  tintFrameEdges(particleSystem?.getMeanColor?.(meanColor) ? meanColor : null);
   renderPlayer(softParticlesEnabled, particleSystemContainer, particleSystem?.computeNode ?? null);
 
   requestAnimationFrame(animate);

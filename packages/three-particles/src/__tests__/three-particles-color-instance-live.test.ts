@@ -300,3 +300,31 @@ describe('births land only where the source is', () => {
     ps.dispose();
   });
 });
+
+describe('the mean colour of the picture', () => {
+  it("is the average of the live particles' start colours, in linear light", () => {
+    const { ps, step } = createSystem(64, 4000, { spawnOnSource: true });
+    step(100);
+    const idx = live(ps);
+    let reds = 0;
+    for (const i of idx) if (isRed(rgb(ps, i))) reds++;
+    const out = { r: 0, g: 0, b: 0 };
+    expect(ps.getMeanColor!(out)).toBe(idx.length);
+    expect(out.r).toBeCloseTo(reds / idx.length, 6);
+    expect(out.g).toBeCloseTo(0, 6);
+    expect(out.b).toBeCloseTo(1 - reds / idx.length, 6);
+    ps.dispose();
+  });
+
+  it('counts nothing where nothing is visible', () => {
+    const { ps, step } = createSystem(64, 4000, {
+      offset: { x: 5, y: 0, z: 0 },
+      spawnOnSource: false,
+    });
+    step(100);
+    const out = { r: 9, g: 9, b: 9 };
+    expect(ps.getMeanColor!(out)).toBe(0);
+    expect(out).toEqual({ r: 9, g: 9, b: 9 });
+    ps.dispose();
+  });
+});

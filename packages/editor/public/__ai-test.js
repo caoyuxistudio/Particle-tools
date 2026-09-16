@@ -389,8 +389,9 @@
     const check = (label, ok, detail = '') =>
       lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 
-    const build = async (patch) => {
+    const build = async (patch, mutatePiece = null) => {
       const cfg = await fixture();
+      if (mutatePiece) mutatePiece(cfg);
       // The fixture has a frame of its own now, and scene order would hand back
       // that one instead of the probe. Measure a scene with exactly one frame.
       cfg._editorData.sceneObjects = cfg._editorData.sceneObjects.filter((o) => o.type !== 'FRAME');
@@ -417,6 +418,35 @@
     check('outer size is opening plus surround', Math.abs(base.size.x - 7.2) < 0.01 && Math.abs(base.size.y - 4.7) < 0.01, `${base.size.x.toFixed(2)}x${base.size.y.toFixed(2)}`);
     check('depth is honoured', Math.abs(base.size.z - 0.5) < 0.01, base.size.z.toFixed(2));
     check('face and edge materials are distinct', base.mesh.material[0].roughness !== base.mesh.material[1].roughness);
+
+    // The inner edge lit by the picture: the particles' mean colour added to
+    // the edge colour ("lighter"), every frame, scaled by amount. Every
+    // particle the same known colour (no colour source, one start colour),
+    // so the mean — and the sum — is exact; a dark base so it has room to
+    // show. Needs frames: the tint is applied in the frame loop.
+    const settleTint = () => new Promise((r) => setTimeout(r, 1800));
+    const onePaint = (cfg) => {
+      cfg.startColor = { min: { r: 0.5, g: 0.25, b: 0.125 }, max: { r: 0.5, g: 0.25, b: 0.125 } };
+      cfg.particleColorInstance = { ...(cfg.particleColorInstance || {}), isActive: false };
+    };
+    const paint = new T.Color().setRGB(0.5, 0.25, 0.125, T.SRGBColorSpace); // linear
+    const darkBase = new T.Color('#202020');
+    const near = (c, want) => !!c && Math.abs(c.r - want.r) < 0.02 && Math.abs(c.g - want.g) < 0.02 && Math.abs(c.b - want.b) < 0.02;
+    const tinted = await build({ edgeColor: '#202020', edgeTint: { fromParticles: true, amount: 1 } }, onePaint);
+    await settleTint();
+    const lit = tinted.mesh?.material[1].color;
+    const wantFull = { r: Math.min(1, darkBase.r + paint.r), g: Math.min(1, darkBase.g + paint.g), b: Math.min(1, darkBase.b + paint.b) };
+    check('the edge is its own colour plus the particles\' (lighter)', near(lit, wantFull), lit ? `edge ${lit.r.toFixed(3)},${lit.g.toFixed(3)},${lit.b.toFixed(3)} vs ${wantFull.r.toFixed(3)},${wantFull.g.toFixed(3)},${wantFull.b.toFixed(3)}` : 'no edge material');
+    const half = await build({ edgeColor: '#202020', edgeTint: { fromParticles: true, amount: 0.5 } }, onePaint);
+    await settleTint();
+    const litHalf = half.mesh?.material[1].color;
+    const wantHalf = { r: darkBase.r + paint.r * 0.5, g: darkBase.g + paint.g * 0.5, b: darkBase.b + paint.b * 0.5 };
+    check('amount scales what is added', near(litHalf, wantHalf), litHalf ? `edge ${litHalf.r.toFixed(3)},${litHalf.g.toFixed(3)},${litHalf.b.toFixed(3)} vs ${wantHalf.r.toFixed(3)},${wantHalf.g.toFixed(3)},${wantHalf.b.toFixed(3)}` : 'no edge material');
+    const plain = await build({ edgeColor: '#202020', edgeTint: { fromParticles: false, amount: 1 } }, onePaint);
+    await settleTint();
+    const unlit = plain.mesh?.material[1].color;
+    check('off, the edge is its own colour', !!unlit && Math.abs(unlit.r - darkBase.r) < 1e-4 && Math.abs(unlit.g - darkBase.g) < 1e-4 && Math.abs(unlit.b - darkBase.b) < 1e-4, unlit ? `${unlit.r.toFixed(4)}` : 'no edge material');
+    check('the tint travels in the config', JSON.parse(window.editor.serialize())._editorData.sceneObjects.find((o) => o.id === 'obj-frame-probe')?.edgeTint?.fromParticles === false);
 
     const wider = await build({ innerWidth: 12 });
     check('opening drives the geometry', Math.abs(wider.size.x - 13.2) < 0.01, wider.size.x.toFixed(2));

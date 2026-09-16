@@ -2889,6 +2889,36 @@ export const createParticleSystem = (
     return count;
   };
 
+  /**
+   * The mean start colour of the particles out right now — the picture's
+   * colour, as the source painted it — in linear light. Sampled at a stride
+   * so a 200k system costs a fraction of a millisecond; only live, visible
+   * particles count. Writes into `out` and returns how many were sampled;
+   * 0 leaves `out` untouched.
+   */
+  const meanColorStride = Math.max(1, Math.floor(maxParticles / 16384));
+  const getMeanColor = (out: { r: number; g: number; b: number }): number => {
+    const sv = generalData.startValues;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let n = 0;
+    for (let i = 0; i < maxParticles; i += meanColorStride) {
+      const base = i * SCALAR_STRIDE;
+      if (!scalarArray[base + S_IS_ACTIVE]) continue;
+      if (!(sv.startOpacity[i] > 0)) continue;
+      r += sv.startColorR[i];
+      g += sv.startColorG[i];
+      b += sv.startColorB[i];
+      n++;
+    }
+    if (n === 0) return 0;
+    out.r = r / n;
+    out.g = g / n;
+    out.b = b / n;
+    return n;
+  };
+
   const updateConfig = (partialConfig: Partial<ParticleSystemConfig>) => {
     // The blocks about to be merged into must be this system's own, not the
     // defaults' (see detachPlainObjects).
@@ -3082,6 +3112,7 @@ export const createParticleSystem = (
     update,
     updateConfig,
     recolorParticles: recolorLiveParticles,
+    getMeanColor,
     getActiveParticleCount: () => maxParticles - freeList.length,
     computeNode: gpuPipeline?.computeNode ?? null,
     feedTouch: (sample) => touchWake?.push(sample),

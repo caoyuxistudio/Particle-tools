@@ -68,6 +68,7 @@ import {
   getSceneObjects,
   getOutputCameraId,
   updateSceneObject,
+  tintFrameEdges,
 } from './three-particles-editor/scene-objects';
 
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
@@ -770,6 +771,9 @@ const applyPlayerSuspension = (): boolean => {
   return suspend;
 };
 
+/** Scratch for the particles' mean colour, read once a frame. */
+const meanColor = { r: 0, g: 0, b: 0 };
+
 const animate = (): void => {
   // Ahead of the gate: the overlay is how a suspended editor explains itself,
   // and the button is how the display gets closed from one.
@@ -798,6 +802,8 @@ const animate = (): void => {
   const activeConfig = getActiveConfig();
   const softParticlesEnabled = !!activeConfig?.renderer?.softParticles?.enabled;
   const computeNode = particleSystem?.computeNode ?? null;
+  // The frames' inner edges take the picture's colour, if they are set to.
+  tintFrameEdges(particleSystem?.getMeanColor?.(meanColor) ? meanColor : null);
   // Presenting: the player's frame — output camera straight to the canvas —
   // and none of the editor's (no viewport, no corner preview, no depth pass
   // for either).

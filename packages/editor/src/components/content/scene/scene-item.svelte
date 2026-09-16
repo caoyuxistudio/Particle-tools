@@ -410,6 +410,46 @@
             oninput={(e) => set({ edgeColor: e.target.value })}
           />
         </label>
+        <label class="row check">
+          <span>+ particles' colour (lighter)</span>
+          <input
+            type="checkbox"
+            checked={obj.edgeTint?.fromParticles ?? false}
+            onchange={(e) =>
+              set({
+                edgeTint: { amount: obj.edgeTint?.amount ?? 1, fromParticles: e.target.checked },
+              })}
+          />
+        </label>
+        <label class="row">
+          <span>amount</span>
+          <input
+            type="range"
+            min="0"
+            max="2"
+            step="0.01"
+            value={obj.edgeTint?.amount ?? 1}
+            oninput={(e) =>
+              set({
+                edgeTint: {
+                  fromParticles: obj.edgeTint?.fromParticles ?? false,
+                  amount: +e.target.value,
+                },
+              })}
+          />
+          <input
+            type="number"
+            step="0.01"
+            value={obj.edgeTint?.amount ?? 1}
+            oninput={(e) =>
+              set({
+                edgeTint: {
+                  fromParticles: obj.edgeTint?.fromParticles ?? false,
+                  amount: +e.target.value,
+                },
+              })}
+          />
+        </label>
         {#each MATERIAL_ROWS as m}
           <label class="row">
             <span>{m.label}</span>
@@ -963,9 +1003,10 @@
               </select>
             </label>
             <p class="hint">
-              Softness is the filter radius in shadow-map texels, so the same value reads sharper on a
-              bigger map. If flat faces show a stepped moiré, raise the normal bias before touching the
-              depth bias. Only directional lights cast; particles take part only as MESH.
+              Softness is the filter radius in shadow-map texels, so the same value reads sharper on
+              a bigger map. If flat faces show a stepped moiré, raise the normal bias before
+              touching the depth bias. Only directional lights cast; particles take part only as
+              MESH.
             </p>
           {/if}
         {/if}

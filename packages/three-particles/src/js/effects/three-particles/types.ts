@@ -2276,6 +2276,13 @@ export type ParticleSystem = {
    * pixels yet.
    */
   recolorParticles?: () => number;
+  /**
+   * The mean start colour of the live, visible particles, in linear light —
+   * the picture's colour as the source painted it. Sampled at a stride, so
+   * cheap enough to call every frame. Writes into `out`; returns how many
+   * particles were sampled, 0 leaving `out` untouched.
+   */
+  getMeanColor?: (out: { r: number; g: number; b: number }) => number;
 };
 
 /**
