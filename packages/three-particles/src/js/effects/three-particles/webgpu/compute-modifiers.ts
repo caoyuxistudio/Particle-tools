@@ -912,8 +912,18 @@ export function createModifierComputeUpdate(
         }
 
         // The finger trail — moves the position directly, like curl noise.
+        // A finger's push is a shove, not travel: it moves the particle but
+        // must not turn or stretch it. On a phone a quick finger is tens of
+        // units a second, and read as speed it drew every box under it into a
+        // long twitching streak. The shove is measured here and taken back
+        // out of the heading and speed below; the collision planes still see
+        // it, since a finger can push a particle into a wall.
+        const wakeShove =
+          touchWakeNodes && flags.trackTravelDirection ? vec3(0).toVar() : null;
         if (touchWakeNodes) {
+          const posBeforeWake = wakeShove ? vec3(pos).toVar() : null;
           touchWakeNodes.apply({ pos, delta: uDelta });
+          if (wakeShove) wakeShove.assign(pos.sub(posBeforeWake!));
         }
 
         // Lifetime percentage for modifiers (computed before lifetime update
@@ -1243,8 +1253,11 @@ export function createModifierComputeUpdate(
         // === WRITE BACK ===
 
         if (flags.trackTravelDirection) {
+          // The frame's own motion: without the collision mirror and without
+          // the finger's shove.
           const travel = (posBeforeCollision ?? pos)
             .sub(posAtFrameStart!)
+            .sub(wakeShove ?? vec3(0))
             .toVar();
           const dist = length(travel).toVar();
           // Below the threshold the particle has effectively not moved; keep

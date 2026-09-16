@@ -1779,6 +1779,51 @@
       back.renderer.mesh.velocityStretch === 0.15 && particles()?.material.userData.velocityStretch === 0.15,
       `${back.renderer.mesh.velocityStretch} / ${particles()?.material.userData.velocityStretch}`
     );
+
+    // A finger's push moves the particles but is not travel: the streak reads
+    // the frame's own motion, with the shove taken out. On a phone a quick
+    // finger is tens of units a second, and before this every box under it
+    // was drawn as a long twitching streak. Stretch on, touch on, a hard push
+    // fed straight to the system: the particles under it move, and none of
+    // them reports the push as speed.
+    const touch = window.__touch;
+    if (touch && back.touch) {
+      back.touch = { ...back.touch, isActive: true, strength: 1 };
+      window.editor.reset();
+      await wait(2500);
+      const g = particles().geometry;
+      const centre = touch.screenToWorld(0, 0);
+      const readPositions = async () => new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceOffset));
+      const readAlpha = async () => new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceColor));
+      const before = await readPositions();
+      const aliveBefore = await readAlpha();
+      const push = 40;
+      const t0 = performance.now();
+      while (performance.now() - t0 < 1200) {
+        touch.feed({ x: centre.x, y: centre.y, z: centre.z, radius: 4, vx: push, vy: 0, vz: 0 });
+        await wait(40);
+      }
+      const after = await readPositions();
+      const aliveAfter = await readAlpha();
+      const st = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceParticleState));
+      touch.clear();
+      let pushed = 0, dx = 0, alive = 0, fast = 0, maxSpeed = 0;
+      for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
+        if (aliveAfter[i * 4 + 3] <= 0.01) continue;
+        alive++;
+        const speed = st[i * 4 + 3];
+        if (speed > maxSpeed) maxSpeed = speed;
+        if (speed > 20) fast++;
+        if (aliveBefore[i * 4 + 3] <= 0.01) continue;
+        const ox = before[i * 4] - centre.x, oz = before[i * 4 + 2] - centre.z;
+        if (ox * ox + oz * oz > 4) continue;
+        pushed++;
+        dx += after[i * 4] - before[i * 4];
+      }
+      const meanDx = pushed ? dx / pushed : 0;
+      check('a finger\'s push moves the particles under it (needs frames)', pushed > 50 && meanDx > 2, `${pushed} particles, mean ${meanDx.toFixed(2)} along the push`);
+      check('but is not read as speed by the stretch (needs frames)', alive > 1000 && fast === 0, `${fast} of ${alive} faster than 20 u/s, max ${maxSpeed.toFixed(1)} against a ${push} u/s push`);
+    }
     check('no runtime errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 
     const failed = lines.filter((s) => s.startsWith('FAIL')).length;
