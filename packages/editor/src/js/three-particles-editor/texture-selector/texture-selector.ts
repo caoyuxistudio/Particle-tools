@@ -229,6 +229,7 @@ const renderTextureGrid = (): void => {
     TextureId.VORTEX,
     TextureId.BUBBLES,
     TextureId.SHANSHUI,
+    TextureId.DEFAULT_TEXTURE,
   ]
     .map((id) => ({
       id,

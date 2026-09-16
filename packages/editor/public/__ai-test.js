@@ -92,6 +92,7 @@
     const fresh = window.editor.getCurrentParticleSystemConfig();
     const freshMax = fresh.maxParticles;
     const freshRate = fresh.emission?.rateOverTime;
+    const freshTex = fresh._editorData?.colorInstanceTextureId;
     const cfg = await load();
     const want = cfg._editorData.sceneObjects;
     const got = storedScene();
@@ -117,6 +118,7 @@
     check('and compiles the shaders ahead of the first frame', timeline.indexOf('compiled') > timeline.indexOf('example') && timeline.indexOf('compiled') < timeline.indexOf('first-frame'), timeline.join(' → '));
     check('new system starts at 10000 particles', freshMax === 10000, `${freshMax}`);
     check('new system starts at 1000 a second', freshRate === 1000, `${freshRate}`);
+    check('new system colours from the built-in picture', freshTex === 'DEFAULT_TEXTURE', `${freshTex}`);
     check('scene object count', got.length === want.length, `${got.length}/${want.length}`);
     check('scene data identical', diff(want, got).length === 0, diff(want, got).slice(0, 4).join(' | '));
     check('live boxes', l.box === want.filter((o) => o.type === 'BOX').length, `${l.box}`);
@@ -195,6 +197,28 @@
     const maxLow = cfgLive.maxParticles;
     typeInto('maxParticles', String(maxBefore));
     check('max particles never drops below 1000', maxLow === 1000 && cfgLive.maxParticles === maxBefore, `${maxLow}`);
+
+    // The first real example (2026-09-16): served from disk, its colour source
+    // the built-in DEFAULT_TEXTURE picture — nothing embedded, so the config is
+    // small and every device gets the same file — and the Examples panel lists
+    // it with the two WIP tests and nothing else.
+    const ex = await (await fetch('./examples/example-1-1/config.json')).json();
+    check('example-1-1 names the built-in picture and embeds none', ex._editorData?.colorInstanceTextureId === 'DEFAULT_TEXTURE' && !ex._editorData?.embeddedTextures && ex._editorData?.metadata?.name === 'example-1-1', `${ex._editorData?.colorInstanceTextureId}`);
+    const picture = await createImageBitmap(await (await fetch('./assets/textures/default-texture.webp')).blob());
+    check('default-texture.webp is the picture at full size', picture.width === 816 && picture.height === 1456, `${picture.width}×${picture.height}`);
+    picture.close();
+    window.editor.load(ex);
+    const exLive = window.editor.getCurrentParticleSystemConfig();
+    const exImage = exLive.particleColorInstance?.map?.image;
+    check('loading it binds the built-in, not an upload', exLive._editorData?.colorInstanceTextureId === 'DEFAULT_TEXTURE' && exImage?.width === 816 && exImage?.height === 1456, `${exLive._editorData?.colorInstanceTextureId} ${exImage?.width}×${exImage?.height}`);
+    const tabs = [...document.querySelectorAll('[role=tab]')];
+    const previousTab = tabs.find((t) => t.getAttribute('aria-selected') === 'true');
+    tabs.find((t) => /examples/i.test(t.textContent))?.click();
+    await new Promise((res) => setTimeout(res, 300));
+    const savedNames = new Set(JSON.parse(localStorage.getItem(KEY_SAVED) || '[]').map((e) => e.name));
+    const listed = [...document.querySelectorAll('.mdc-card h4')].map((h) => h.textContent.trim()).filter((n) => !savedNames.has(n));
+    previousTab?.click();
+    check('the examples panel lists the three and nothing else', JSON.stringify(listed) === JSON.stringify(['example-1-1', 'WIP-Test-2', 'WIP-Test']), listed.join(', '));
     check('no runtime errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 
     const failed = lines.filter((s) => s.startsWith('FAIL')).length;

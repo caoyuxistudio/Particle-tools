@@ -62,19 +62,14 @@ const SMOKE =
   '{"transform":{"rotation":{"x":-90}},"startLifetime":{"min":4.23,"max":7.25},"startSpeed":{"min":0.31,"max":0.58},"startSize":{"min":28.71,"max":36.02},"startOpacity":{"min":0.141,"max":0.296},"startRotation":{"min":-360,"max":360},"shape":{"shape":"CONE","sphere":{"radius":0.4687},"cone":{"angle":0,"radius":0.3813}},"renderer":{"blending":"THREE.NormalBlending"},"sizeOverLifetime":{"isActive":true,"lifetimeCurve":{"bezierPoints":[{"x":0,"y":0.625,"percentage":0},{"x":0.2666,"y":0.845},{"x":0.3596,"y":0.4551},{"x":0.5066,"y":0.49,"percentage":0.5066},{"x":0.6966,"y":0.5349},{"x":0.6366,"y":0.99},{"x":1,"y":1,"percentage":1}]}},"colorOverLifetime":{"r":{"bezierPoints":[{"x":0,"y":1,"percentage":0},{"x":1,"y":1,"percentage":1}]},"g":{"bezierPoints":[{"x":0,"y":1,"percentage":0},{"x":1,"y":1,"percentage":1}]},"b":{"bezierPoints":[{"x":0,"y":1,"percentage":0},{"x":1,"y":1,"percentage":1}]}},"opacityOverLifetime":{"isActive":true,"lifetimeCurve":{"bezierPoints":[{"x":0,"y":0.0799,"percentage":0},{"x":0.0666,"y":0.85},{"x":0.1674,"y":1.0337},{"x":0.5,"y":1,"percentage":0.5},{"x":0.9933,"y":0.95},{"x":0.9966,"y":0.96},{"x":1,"y":0,"percentage":1}]}},"rotationOverLifetime":{"isActive":true,"min":-22.4,"max":24.3},"noise":{"isActive":true,"useRandomOffset":true,"strength":0.09,"positionAmount":0.191,"rotationAmount":1.677},"_editorData":{"textureId":"CLOUD","simulation":{"movements":"DISABLED","movementSpeed":1,"rotation":"DISABLED","rotationSpeed":1},"showLocalAxes":false,"showWorldAxes":false,"frustumCulled":true,"terrain":{"textureId":"WIREFRAME","movements":"DISABLED","movementSpeed":1,"rotation":"DISABLED","rotationSpeed":1},"gradientStops":[{"position":0,"color":{"r":255,"g":255,"b":255,"a":255}},{"position":1,"color":{"r":255,"g":255,"b":255,"a":0}}],"metadata":{"name":"Untitled-2","createdAt":1769121491665,"modifiedAt":1769121491665,"editorVersion":"2.1.0"}}}';
 
 export const particleExamples = [
-  // Trail-based examples disabled until trail renderer performance is fixed
-  // {
-  //   name: 'Smooth Serpent',
-  // },
-  // {
-  //   name: 'Laser Ribbon',
-  // },
-  // {
-  //   name: 'Ink Strokes',
-  // },
-  // {
-  //   name: 'Ethereal Wisps',
-  // },
+  {
+    // The first real example (2026-09-16): the piece with the built-in
+    // DEFAULT_TEXTURE picture as its colour source — no embedded image, so the
+    // config is small and the same file serves it on every device. Frame, a
+    // shadowing directional light, the iPhone 17 Pro Max output camera with
+    // SSR and SSAO, four BOUNCE walls, touch on.
+    name: 'example-1-1',
+  },
   {
     // The piece: a frame, a point light and a top-down output camera with
     // reflections on, a video as the colour source. The video is served from
@@ -89,6 +84,28 @@ export const particleExamples = [
     // localStorage so it survives a restart and is one click from loaded.
     name: 'WIP-Test',
   },
+];
+
+/**
+ * Examples kept but not shown (2026-09-16): the upstream game effects and the
+ * early tests. They will not carry over to V2, so the panel lists only the
+ * three above; the configs and their folders under public/examples stay on
+ * disk so any of them is one move back into `particleExamples`.
+ */
+export const hiddenExamples = [
+  // Trail-based examples disabled until trail renderer performance is fixed
+  // {
+  //   name: 'Smooth Serpent',
+  // },
+  // {
+  //   name: 'Laser Ribbon',
+  // },
+  // {
+  //   name: 'Ink Strokes',
+  // },
+  // {
+  //   name: 'Ethereal Wisps',
+  // },
   {
     name: 'shanshui',
   },

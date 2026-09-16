@@ -216,7 +216,7 @@ const defaultEditorData: EditorData = {
   terrain: {
     textureId: TextureId.WIREFRAME,
   },
-  colorInstanceTextureId: TextureId.SHANSHUI,
+  colorInstanceTextureId: TextureId.DEFAULT_TEXTURE,
   gradientStops: [
     { position: 0, color: { r: 255, g: 255, b: 255, a: 255 } },
     { position: 1, color: { r: 255, g: 255, b: 255, a: 0 } },

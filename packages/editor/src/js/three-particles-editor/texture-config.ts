@@ -37,6 +37,7 @@ export const TextureId = {
   VORTEX: 'VORTEX',
   BUBBLES: 'BUBBLES',
   SHANSHUI: 'SHANSHUI',
+  DEFAULT_TEXTURE: 'DEFAULT_TEXTURE',
 };
 
 type TextureConfig = {
@@ -233,5 +234,13 @@ export const textureConfigs: TextureConfig[] = [
     // here, so it is deliberately not marked `isParticleTexture`.
     id: TextureId.SHANSHUI,
     url: './assets/textures/shanshui.jpg',
+  },
+  {
+    // The piece's own picture (816 × 1456, a portrait): the colour source of
+    // example-1-1 and the default for a new system. It ships with the site so
+    // the example needs no embedded image and the same file is there on every
+    // device. A photograph like SHANSHUI, so not a particle sprite either.
+    id: TextureId.DEFAULT_TEXTURE,
+    url: './assets/textures/default-texture.webp',
   },
 ];
