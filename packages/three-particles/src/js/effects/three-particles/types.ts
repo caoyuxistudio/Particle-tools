@@ -8,6 +8,7 @@ import {
   ForceFieldFalloff,
   ForceFieldType,
   LifeTimeCurve,
+  NoiseType,
   RendererType,
   Shape,
   SimulationBackend,
@@ -841,6 +842,10 @@ export type Noise = {
    * Allocated on the first emission that needs it; 1 everywhere else.
    */
   lumaMul?: Float32Array;
+  /** See {@link NoiseConfig.type}. */
+  type?: NoiseType;
+  /** See {@link NoiseConfig.drift}. */
+  drift?: { x: number; y: number; z: number };
 };
 
 /**
@@ -1030,6 +1035,18 @@ export type NoiseConfig = {
   curl?: boolean;
   /** Per-axis multiplier (0–1) applied to the position noise displacement. */
   influence?: { x?: number; y?: number; z?: number };
+  /**
+   * The noise the curl field is built from: `SIMPLEX` (default) or classic
+   * `PERLIN`. Baked into the GPU kernel — changing it rebuilds the system.
+   */
+  type?: NoiseType;
+  /**
+   * How fast the curl field scrolls along each world axis, in field units
+   * per second: the field is sampled at `position × frequency + time ×
+   * drift`. Default (0.15, 0.11, 0.13), the motion the field has always
+   * had; (0, 0, 0) is a still field the particles flow through.
+   */
+  drift?: { x?: number; y?: number; z?: number };
 };
 
 /**

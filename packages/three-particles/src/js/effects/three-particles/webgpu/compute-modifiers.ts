@@ -48,6 +48,7 @@ import {
   StorageInstancedBufferAttribute,
 } from 'three/webgpu';
 
+import { PERLIN_GAIN } from '../curl-noise.js';
 import { TOUCH_WAKE_DATA_SIZE } from '../touch-wake.js';
 import {
   createCollisionPlaneTSL,
@@ -59,7 +60,7 @@ import {
 } from './compute-force-fields.js';
 import { createTouchWakeTSL } from './compute-touch-wake.js';
 import { CURVE_RESOLUTION } from './curve-bake.js';
-import { snoise3D } from './tsl-noise.js';
+import { cnoise3D, snoise3D } from './tsl-noise.js';
 import type { BakedCurveMap } from './curve-bake.js';
 
 // ─── Per-Particle Init Data Constants ────────────────────────────────────────
@@ -127,6 +128,8 @@ export type ModifierFlags = {
    * into the (curl-mode-unused) noiseOffset slot of startColorsExt.w.
    */
   noiseLuminance: boolean;
+  /** The curl field built from classic Perlin instead of simplex noise. */
+  noisePerlin: boolean;
   /**
    * Track each particle's direction of travel so the MESH renderer can orient
    * itself along it. Encoded as two spherical angles into the otherwise unused
@@ -174,6 +177,8 @@ export type ModifierUniforms = {
   noiseTime: ShaderNodeObject<Node>;
   /** Per-axis (x, y, z) multiplier on the position noise displacement. */
   noiseInfluence: ShaderNodeObject<Node>;
+  /** How fast the curl field scrolls along each axis, field units per second. */
+  noiseDrift: ShaderNodeObject<Node>;
 };
 
 /**
@@ -666,6 +671,7 @@ export function createModifierComputeUpdate(
   const uNoiseRotAmount = uniform(float(0));
   const uNoiseSizeAmount = uniform(float(0));
   const uNoiseTime = uniform(float(0));
+  const uNoiseDrift = uniform(vec3(0.15, 0.11, 0.13));
   const uNoiseInfluence = uniform(new Vector3(1, 1, 1));
   // Trail history: sampling threshold and the clock stamped on each sample.
   const uTrailMinDist = uniform(float(0));
@@ -1098,16 +1104,18 @@ export function createModifierComputeUpdate(
           // Semantics: frequency = spatial scale, strength = flow speed,
           // positionAmount * influence.xyz = per-axis amount. Displacement is
           // delta-scaled (a true velocity field), unlike legacy noise.
+          // The field scrolls along uNoiseDrift over time; (0, 0, 0) holds it still.
           const p = vec3(pos)
             .mul(uNoiseFrequency)
-            .add(
-              vec3(
-                uNoiseTime.mul(0.15),
-                uNoiseTime.mul(0.11),
-                uNoiseTime.mul(0.13)
-              )
-            )
+            .add(uNoiseDrift.mul(uNoiseTime))
             .toVar();
+          // Simplex, or classic Perlin scaled to the same flow speed.
+          const fieldNoise = (
+            v: ShaderNodeObject<Node>
+          ): ShaderNodeObject<Node> =>
+            flags.noisePerlin
+              ? cnoise3D({ v }).mul(float(PERLIN_GAIN))
+              : snoise3D({ v });
 
           const eps = float(0.35);
           const dx = vec3(eps, 0, 0);
@@ -1116,24 +1124,20 @@ export function createModifierComputeUpdate(
           const oY = vec3(31.341, -43.23, 12.34);
           const oZ = vec3(-231.341, 124.23, -54.34);
 
-          const dpzDy = snoise3D({ v: p.add(dy).add(oZ) }).sub(
-            snoise3D({ v: p.sub(dy).add(oZ) })
+          const dpzDy = fieldNoise(p.add(dy).add(oZ)).sub(
+            fieldNoise(p.sub(dy).add(oZ))
           );
-          const dpyDz = snoise3D({ v: p.add(dz).add(oY) }).sub(
-            snoise3D({ v: p.sub(dz).add(oY) })
+          const dpyDz = fieldNoise(p.add(dz).add(oY)).sub(
+            fieldNoise(p.sub(dz).add(oY))
           );
-          const dpxDz = snoise3D({ v: p.add(dz) }).sub(
-            snoise3D({ v: p.sub(dz) })
+          const dpxDz = fieldNoise(p.add(dz)).sub(fieldNoise(p.sub(dz)));
+          const dpzDx = fieldNoise(p.add(dx).add(oZ)).sub(
+            fieldNoise(p.sub(dx).add(oZ))
           );
-          const dpzDx = snoise3D({ v: p.add(dx).add(oZ) }).sub(
-            snoise3D({ v: p.sub(dx).add(oZ) })
+          const dpyDx = fieldNoise(p.add(dx).add(oY)).sub(
+            fieldNoise(p.sub(dx).add(oY))
           );
-          const dpyDx = snoise3D({ v: p.add(dx).add(oY) }).sub(
-            snoise3D({ v: p.sub(dx).add(oY) })
-          );
-          const dpxDy = snoise3D({ v: p.add(dy) }).sub(
-            snoise3D({ v: p.sub(dy) })
-          );
+          const dpxDy = fieldNoise(p.add(dy)).sub(fieldNoise(p.sub(dy)));
 
           const curl = vec3(
             dpzDy.sub(dpyDz),
@@ -1339,6 +1343,7 @@ export function createModifierComputeUpdate(
       noisePositionAmount: uNoisePosAmount,
       noiseTime: uNoiseTime,
       noiseInfluence: uNoiseInfluence,
+      noiseDrift: uNoiseDrift,
       noiseRotationAmount: uNoiseRotAmount,
       noiseSizeAmount: uNoiseSizeAmount,
     },

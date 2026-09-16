@@ -334,3 +334,17 @@ export const enum ColorInstanceWrap {
   /** The edge texel runs on to the edge of the area. */
   STRETCH = 'STRETCH',
 }
+
+/**
+ * The noise the curl flow field is built from (see `noise.type`). Both are
+ * gradient noises over a lattice; simplex on a tetrahedral one, classic
+ * Perlin on the cubic grid, and they read differently — Perlin's features
+ * line up with the axes more. Perlin's output is scaled so the same
+ * `strength` gives about the same flow speed.
+ *
+ * @enum {string}
+ */
+export const enum NoiseType {
+  SIMPLEX = 'SIMPLEX',
+  PERLIN = 'PERLIN',
+}

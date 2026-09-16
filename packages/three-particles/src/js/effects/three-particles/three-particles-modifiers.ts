@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { curlNoise } from './curl-noise.js';
+import { curlNoise, DEFAULT_DRIFT } from './curl-noise';
 
 import {
   SCALAR_STRIDE,
@@ -263,7 +263,11 @@ export const applyModifiers = ({
       positionArr[positionIndex + 1],
       positionArr[positionIndex + 2],
       noise.frequency,
-      elapsed
+      elapsed,
+      noise.drift?.x ?? DEFAULT_DRIFT.x,
+      noise.drift?.y ?? DEFAULT_DRIFT.y,
+      noise.drift?.z ?? DEFAULT_DRIFT.z,
+      noise.type === 'PERLIN'
     );
     const lumaMul = noise.lumaMul ? noise.lumaMul[particleIndex] : 1;
     const amount = strength * positionAmount * lumaMul * delta;

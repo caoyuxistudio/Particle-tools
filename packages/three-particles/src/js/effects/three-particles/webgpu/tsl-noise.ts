@@ -17,6 +17,8 @@ import {
   vec4,
   float,
   floor,
+  fract,
+  mix,
   dot,
   step,
   abs,
@@ -268,4 +270,99 @@ export const particleNoise3: ReturnType<typeof Fn> = Fn(
 );
 
 // Re-export TSL types for callers that need them
+/**
+ * Classic Perlin noise in 3D — Stefan Gustavson's `cnoise` (webgl-noise,
+ * MIT) in TSL, with this file's permute, so it agrees with the CPU port
+ * `cnoise3` to float precision. Zero at every lattice point; the 2.2 scale
+ * of the original, so roughly ±1.
+ */
+export const cnoise3D: ReturnType<typeof Fn> = Fn(
+  ({ v }: Record<string, ShaderNodeObject<Node>>) => {
+    const Pi0 = mod(floor(v), float(289.0)).toVar();
+    const Pi1 = mod(Pi0.add(1.0), float(289.0)).toVar();
+    const Pf0 = fract(v).toVar();
+    const Pf1 = Pf0.sub(1.0).toVar();
+    const ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
+    const iy = vec4(Pi0.y, Pi0.y, Pi1.y, Pi1.y);
+    const iz0 = vec4(Pi0.z);
+    const iz1 = vec4(Pi1.z);
+
+    const ixy = permute({ x: permute({ x: ix }).add(iy) });
+    const ixy0 = permute({ x: ixy.add(iz0) });
+    const ixy1 = permute({ x: ixy.add(iz1) });
+
+    const gx0 = ixy0.div(7.0).toVar();
+    const gy0 = fract(floor(gx0).div(7.0)).sub(0.5).toVar();
+    gx0.assign(fract(gx0));
+    const gz0 = vec4(0.5).sub(abs(gx0)).sub(abs(gy0)).toVar();
+    const sz0 = step(gz0, vec4(0.0));
+    gx0.assign(gx0.sub(sz0.mul(step(vec4(0.0), gx0).sub(0.5))));
+    gy0.assign(gy0.sub(sz0.mul(step(vec4(0.0), gy0).sub(0.5))));
+
+    const gx1 = ixy1.div(7.0).toVar();
+    const gy1 = fract(floor(gx1).div(7.0)).sub(0.5).toVar();
+    gx1.assign(fract(gx1));
+    const gz1 = vec4(0.5).sub(abs(gx1)).sub(abs(gy1)).toVar();
+    const sz1 = step(gz1, vec4(0.0));
+    gx1.assign(gx1.sub(sz1.mul(step(vec4(0.0), gx1).sub(0.5))));
+    gy1.assign(gy1.sub(sz1.mul(step(vec4(0.0), gy1).sub(0.5))));
+
+    const g000 = vec3(gx0.x, gy0.x, gz0.x).toVar();
+    const g100 = vec3(gx0.y, gy0.y, gz0.y).toVar();
+    const g010 = vec3(gx0.z, gy0.z, gz0.z).toVar();
+    const g110 = vec3(gx0.w, gy0.w, gz0.w).toVar();
+    const g001 = vec3(gx1.x, gy1.x, gz1.x).toVar();
+    const g101 = vec3(gx1.y, gy1.y, gz1.y).toVar();
+    const g011 = vec3(gx1.z, gy1.z, gz1.z).toVar();
+    const g111 = vec3(gx1.w, gy1.w, gz1.w).toVar();
+
+    const norm0 = taylorInvSqrt({
+      r: vec4(
+        dot(g000, g000),
+        dot(g010, g010),
+        dot(g100, g100),
+        dot(g110, g110)
+      ),
+    });
+    g000.assign(g000.mul(norm0.x));
+    g010.assign(g010.mul(norm0.y));
+    g100.assign(g100.mul(norm0.z));
+    g110.assign(g110.mul(norm0.w));
+    const norm1 = taylorInvSqrt({
+      r: vec4(
+        dot(g001, g001),
+        dot(g011, g011),
+        dot(g101, g101),
+        dot(g111, g111)
+      ),
+    });
+    g001.assign(g001.mul(norm1.x));
+    g011.assign(g011.mul(norm1.y));
+    g101.assign(g101.mul(norm1.z));
+    g111.assign(g111.mul(norm1.w));
+
+    const n000 = dot(g000, Pf0);
+    const n100 = dot(g100, vec3(Pf1.x, Pf0.y, Pf0.z));
+    const n010 = dot(g010, vec3(Pf0.x, Pf1.y, Pf0.z));
+    const n110 = dot(g110, vec3(Pf1.x, Pf1.y, Pf0.z));
+    const n001 = dot(g001, vec3(Pf0.x, Pf0.y, Pf1.z));
+    const n101 = dot(g101, vec3(Pf1.x, Pf0.y, Pf1.z));
+    const n011 = dot(g011, vec3(Pf0.x, Pf1.y, Pf1.z));
+    const n111 = dot(g111, Pf1);
+
+    // fade(t) = t³ (t (6t − 15) + 10)
+    const fadeXYZ = Pf0.mul(Pf0)
+      .mul(Pf0)
+      .mul(Pf0.mul(Pf0.mul(6.0).sub(15.0)).add(10.0));
+    const nz = mix(
+      vec4(n000, n100, n010, n110),
+      vec4(n001, n101, n011, n111),
+      fadeXYZ.z
+    );
+    const nyz = mix(nz.xy, nz.zw, fadeXYZ.y);
+    const nxyz = mix(nyz.x, nyz.y, fadeXYZ.x);
+    return nxyz.mul(2.2);
+  }
+);
+
 export type { ShaderNodeObject, Node };

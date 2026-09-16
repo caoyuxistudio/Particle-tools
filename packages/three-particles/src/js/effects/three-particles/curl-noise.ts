@@ -127,14 +127,125 @@ export const CURL_EPS = 0.35;
 const OY = [31.341, -43.23, 12.34];
 const OZ = [-231.341, 124.23, -54.34];
 
+/** The field's own motion, in field units per second, when the config says nothing. */
+export const DEFAULT_DRIFT = { x: 0.15, y: 0.11, z: 0.13 };
+
+/**
+ * Classic Perlin's curl is stronger than this simplex port's (whose gradients
+ * peak near ±0.37); Perlin's output is scaled by this so the same `strength`
+ * gives about the same flow speed — measured as the ratio of the two fields'
+ * root-mean-square speeds over random points.
+ */
+export const PERLIN_GAIN = 0.49;
+
+const fade = (t: number): number => t * t * t * (t * (t * 6 - 15) + 10);
+const fract = (x: number): number => x - Math.floor(x);
+const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+const gx0s = new Float64Array(4);
+const gy0s = new Float64Array(4);
+const gz0s = new Float64Array(4);
+const gx1s = new Float64Array(4);
+const gy1s = new Float64Array(4);
+const gz1s = new Float64Array(4);
+
+/**
+ * One lane of the gradient set: the hash to a gradient, as the GLSL does it
+ * (step(gz, 0) folds the gradient back into the octahedron; step(0, g) is
+ * the sign), then normalised the approximate way.
+ */
+const gradientLane = (
+  h: number,
+  gx: Float64Array,
+  gy: Float64Array,
+  gz: Float64Array,
+  k: number
+): void => {
+  let x = h / 7;
+  let y = fract(Math.floor(x) / 7) - 0.5;
+  x = fract(x);
+  const z = 0.5 - Math.abs(x) - Math.abs(y);
+  const sz = z <= 0 ? 1 : 0;
+  x -= sz * ((x >= 0 ? 1 : 0) - 0.5);
+  y -= sz * ((y >= 0 ? 1 : 0) - 0.5);
+  const n = taylorInvSqrt(x * x + y * y + z * z);
+  gx[k] = x * n;
+  gy[k] = y * n;
+  gz[k] = z * n;
+};
+
+/**
+ * Classic Perlin noise in 3D — a scalar port of Stefan Gustavson's
+ * `cnoise` (webgl-noise, MIT), with this project's permute (the +10 fold),
+ * so it agrees with the TSL `cnoise3D` to float precision. Zero at every
+ * lattice point; output scaled by 2.2 as the original is, so roughly ±1.
+ */
+export const cnoise3 = (x: number, y: number, z: number): number => {
+  const Pi0x = mod(Math.floor(x), 289);
+  const Pi0y = mod(Math.floor(y), 289);
+  const Pi0z = mod(Math.floor(z), 289);
+  const Pi1x = mod(Pi0x + 1, 289);
+  const Pi1y = mod(Pi0y + 1, 289);
+  const Pi1z = mod(Pi0z + 1, 289);
+  const Pf0x = fract(x);
+  const Pf0y = fract(y);
+  const Pf0z = fract(z);
+  const Pf1x = Pf0x - 1;
+  const Pf1y = Pf0y - 1;
+  const Pf1z = Pf0z - 1;
+
+  // Lanes: (x0,y0) (x1,y0) (x0,y1) (x1,y1), each at z0 and at z1.
+  const ix0 = permute(Pi0x);
+  const ix1 = permute(Pi1x);
+  const ixy = [
+    permute(ix0 + Pi0y),
+    permute(ix1 + Pi0y),
+    permute(ix0 + Pi1y),
+    permute(ix1 + Pi1y),
+  ];
+  for (let k = 0; k < 4; k++) {
+    gradientLane(permute(ixy[k] + Pi0z), gx0s, gy0s, gz0s, k);
+    gradientLane(permute(ixy[k] + Pi1z), gx1s, gy1s, gz1s, k);
+  }
+
+  const n000 = gx0s[0] * Pf0x + gy0s[0] * Pf0y + gz0s[0] * Pf0z;
+  const n100 = gx0s[1] * Pf1x + gy0s[1] * Pf0y + gz0s[1] * Pf0z;
+  const n010 = gx0s[2] * Pf0x + gy0s[2] * Pf1y + gz0s[2] * Pf0z;
+  const n110 = gx0s[3] * Pf1x + gy0s[3] * Pf1y + gz0s[3] * Pf0z;
+  const n001 = gx1s[0] * Pf0x + gy1s[0] * Pf0y + gz1s[0] * Pf1z;
+  const n101 = gx1s[1] * Pf1x + gy1s[1] * Pf0y + gz1s[1] * Pf1z;
+  const n011 = gx1s[2] * Pf0x + gy1s[2] * Pf1y + gz1s[2] * Pf1z;
+  const n111 = gx1s[3] * Pf1x + gy1s[3] * Pf1y + gz1s[3] * Pf1z;
+
+  const fx = fade(Pf0x);
+  const fy = fade(Pf0y);
+  const fz = fade(Pf0z);
+  const nz0 = lerp(n000, n001, fz);
+  const nz1 = lerp(n100, n101, fz);
+  const nz2 = lerp(n010, n011, fz);
+  const nz3 = lerp(n110, n111, fz);
+  const ny0 = lerp(nz0, nz2, fy);
+  const ny1 = lerp(nz1, nz3, fy);
+  return 2.2 * lerp(ny0, ny1, fx);
+};
+
+/** The field's noise: simplex, or classic Perlin scaled to match it. */
+const fieldNoise = (
+  perlin: boolean,
+  x: number,
+  y: number,
+  z: number
+): number => (perlin ? cnoise3(x, y, z) * PERLIN_GAIN : snoise3(x, y, z));
+
 /**
  * The curl-noise flow velocity at a world point, written into `out`.
  *
  * `frequency` is the spatial scale and `time` the animation clock in seconds,
- * combined exactly as the kernel does: p = pos · frequency + time · (0.15,
- * 0.11, 0.13). The result is a velocity in field units per second; the
- * caller scales it by strength, amount, influence and delta, as the kernel
- * does.
+ * combined exactly as the kernel does: p = pos · frequency + time · drift,
+ * the drift defaulting to (0.15, 0.11, 0.13) and (0, 0, 0) being a still
+ * field. `perlin` swaps the simplex base for classic Perlin. The result is a
+ * velocity in field units per second; the caller scales it by strength,
+ * amount, influence and delta, as the kernel does.
  */
 export const curlNoise = (
   out: { x: number; y: number; z: number },
@@ -142,27 +253,33 @@ export const curlNoise = (
   y: number,
   z: number,
   frequency: number,
-  time: number
+  time: number,
+  driftX: number = DEFAULT_DRIFT.x,
+  driftY: number = DEFAULT_DRIFT.y,
+  driftZ: number = DEFAULT_DRIFT.z,
+  perlin = false
 ): { x: number; y: number; z: number } => {
-  const px = x * frequency + time * 0.15;
-  const py = y * frequency + time * 0.11;
-  const pz = z * frequency + time * 0.13;
+  const px = x * frequency + time * driftX;
+  const py = y * frequency + time * driftY;
+  const pz = z * frequency + time * driftZ;
   const e = CURL_EPS;
+  const n = (a: number, b: number, c: number): number =>
+    fieldNoise(perlin, a, b, c);
 
   const dpzDy =
-    snoise3(px + OZ[0], py + e + OZ[1], pz + OZ[2]) -
-    snoise3(px + OZ[0], py - e + OZ[1], pz + OZ[2]);
+    n(px + OZ[0], py + e + OZ[1], pz + OZ[2]) -
+    n(px + OZ[0], py - e + OZ[1], pz + OZ[2]);
   const dpyDz =
-    snoise3(px + OY[0], py + OY[1], pz + e + OY[2]) -
-    snoise3(px + OY[0], py + OY[1], pz - e + OY[2]);
-  const dpxDz = snoise3(px, py, pz + e) - snoise3(px, py, pz - e);
+    n(px + OY[0], py + OY[1], pz + e + OY[2]) -
+    n(px + OY[0], py + OY[1], pz - e + OY[2]);
+  const dpxDz = n(px, py, pz + e) - n(px, py, pz - e);
   const dpzDx =
-    snoise3(px + e + OZ[0], py + OZ[1], pz + OZ[2]) -
-    snoise3(px - e + OZ[0], py + OZ[1], pz + OZ[2]);
+    n(px + e + OZ[0], py + OZ[1], pz + OZ[2]) -
+    n(px - e + OZ[0], py + OZ[1], pz + OZ[2]);
   const dpyDx =
-    snoise3(px + e + OY[0], py + OY[1], pz + OY[2]) -
-    snoise3(px - e + OY[0], py + OY[1], pz + OY[2]);
-  const dpxDy = snoise3(px, py + e, pz) - snoise3(px, py - e, pz);
+    n(px + e + OY[0], py + OY[1], pz + OY[2]) -
+    n(px - e + OY[0], py + OY[1], pz + OY[2]);
+  const dpxDy = n(px, py + e, pz) - n(px, py - e, pz);
 
   const inv = 1 / (2 * e);
   out.x = (dpzDy - dpyDz) * inv;

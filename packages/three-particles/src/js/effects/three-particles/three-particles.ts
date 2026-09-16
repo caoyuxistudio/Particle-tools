@@ -143,6 +143,7 @@ const sampleColorInstance = (
   }
 };
 import { rgbSRGBToLinear, sRGBToLinear } from './color-utils.js';
+import { DEFAULT_DRIFT } from './curl-noise';
 import InstancedParticleFragmentShader from './shaders/instanced-particle-fragment-shader.glsl.js';
 import InstancedParticleVertexShader from './shaders/instanced-particle-vertex-shader.glsl.js';
 import MeshParticleFragmentShader from './shaders/mesh-particle-fragment-shader.glsl.js';
@@ -180,6 +181,7 @@ import {
   TimeMode,
   ColorInstancePlane,
   ColorInstanceWrap,
+  NoiseType,
 } from './three-particles-enums';
 import { applyForceFields } from './three-particles-forces.js';
 import { applyModifiers } from './three-particles-modifiers.js';
@@ -742,6 +744,8 @@ const DEFAULT_PARTICLE_SYSTEM_CONFIG: ParticleSystemConfig = {
     sizeAmount: 0.0,
     curl: false,
     influence: { x: 1.0, y: 1.0, z: 1.0 },
+    type: NoiseType.SIMPLEX,
+    drift: { x: 0.15, y: 0.11, z: 0.13 },
   },
   particleColorInstance: {
     isActive: false,
@@ -1256,6 +1260,12 @@ export const createParticleSystem = (
       x: noise.influence?.x ?? 1,
       y: noise.influence?.y ?? 1,
       z: noise.influence?.z ?? 1,
+    },
+    type: noise.type ?? NoiseType.SIMPLEX,
+    drift: {
+      x: noise.drift?.x ?? DEFAULT_DRIFT.x,
+      y: noise.drift?.y ?? DEFAULT_DRIFT.y,
+      z: noise.drift?.z ?? DEFAULT_DRIFT.z,
     },
     fbmMax,
     sampler: noise.isActive
@@ -3009,6 +3019,12 @@ export const createParticleSystem = (
           y: n.influence?.y ?? 1,
           z: n.influence?.z ?? 1,
         },
+        type: n.type ?? NoiseType.SIMPLEX,
+        drift: {
+          x: n.drift?.x ?? DEFAULT_DRIFT.x,
+          y: n.drift?.y ?? DEFAULT_DRIFT.y,
+          z: n.drift?.z ?? DEFAULT_DRIFT.z,
+        },
         fbmMax: 2 - Math.pow(2, -n.octaves),
         sampler: n.isActive
           ? new FBM({
@@ -3462,6 +3478,14 @@ const updateParticleSystemInstance = (
     setUniformFloat(cp.uniforms.noiseRotationAmount, noiseData.rotationAmount);
     setUniformFloat(cp.uniforms.noiseSizeAmount, noiseData.sizeAmount);
     setUniformFloat(cp.uniforms.noiseTime, elapsed);
+    // A pipeline from an older factory (or a test's mock) may not carry it.
+    if (cp.uniforms.noiseDrift)
+      setUniformVec3(
+        cp.uniforms.noiseDrift,
+        noiseData.drift?.x ?? DEFAULT_DRIFT.x,
+        noiseData.drift?.y ?? DEFAULT_DRIFT.y,
+        noiseData.drift?.z ?? DEFAULT_DRIFT.z
+      );
     if (cp.trailHistoryInfo) {
       // The kernel stamps this on every sample; the ribbon fades by it.
       setUniformFloat(cp.trailHistoryInfo.nowUniform, elapsed);

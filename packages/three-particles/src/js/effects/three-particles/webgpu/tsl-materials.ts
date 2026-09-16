@@ -185,6 +185,7 @@ export function createComputePipeline(
         velocityOverLifetime.orbital.z !== 0),
     noise: normalizedConfig.noise.isActive,
     noiseCurl: normalizedConfig.noise.isActive && !!normalizedConfig.noise.curl,
+    noisePerlin: normalizedConfig.noise.type === 'PERLIN',
     noiseLuminance:
       normalizedConfig.noise.isActive &&
       !!normalizedConfig.noise.curl &&

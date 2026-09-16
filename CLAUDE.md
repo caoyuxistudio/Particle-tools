@@ -139,6 +139,8 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 
 **画框内壁被画面照亮**（2026-09-16，FRAME 的 `edgeTint: { fromParticles, amount }`，默认关、amount 1）。库多了 `particleSystem.getMeanColor(out)`：活着且可见的粒子的起始色平均值（线性光，按步长抽样，200k 系统每帧零点几毫秒；返回抽到的个数，0 表示没粒子、不改 out）——就是"色源此刻画出来的那张图的平均色"，随出生自然平滑。编辑器和播放页的帧循环每帧调 `tintFrameEdges(mean)`（scene-objects.ts，两边共用）：每个开了 `fromParticles` 的可见 FRAME，内壁材质的 color = `edgeColor` + mean × amount，逐通道相加、夹到 1（"lighter"），都在线性空间；没粒子时回到自己的颜色；关掉就由 `applyToThree` 恢复。Scene 面板 inner edge material 下面多了 `+ particles' colour (lighter)` 勾选和 `amount` 滑块（0–2）。效果是粒子的颜色间接"照"到边框上，像光照探针 / AO 那种带色。没做的：按相机投影把整张图逐像素映到内壁（camera mapping），目前是一个均值、四面墙同色；要那个得把色源做成 GPU 纹理、给内壁材质写 TSL，和"色源上 GPU"是同一件事。`frameReport` 加 4 条（深色底加了亮、amount 减半加一半、关掉回底色、随 config 走）。jest 加 2 条。
 
+**Curl noise 的漂移和底噪**（2026-09-16，`noise.drift`、`noise.type`，`schema:`）。以前 curl 场的采样点是 `pos × frequency + time × (0.15, 0.11, 0.13)`——三个常数写死在 kernel 和 CPU 移植里，所以场一直朝一个固定方向匀速滚动、调不了。现在 **drift** 是 config 里的三个数（面板 Noise 里 `drift (field motion per axis)` 三个滑块，−1 到 1），含义就是场本身沿世界各轴滚动的速度（场单位每秒），默认还是 (0.15, 0.11, 0.13)——旧作品一动不动；全 0 就是**静止的场**，粒子只是在里面流。GPU 上是一个 vec3 uniform，改了即生效；CPU 移植同一个式子。**type** 二选一：`SIMPLEX`（默认，就是原来那个 Ashima 移植）和 `PERLIN`（Stefan Gustavson 的 classic `cnoise`，TSL 版 `cnoise3D` 和标量移植 `cnoise3` 用同一个 permute，两边到 float 精度一致，整数格点上恰为 0）。Perlin 的 curl 比这套 simplex 强一倍（4000 个随机点上 RMS 流速 1.34 对 0.66），乘了 `PERLIN_GAIN = 0.49` 让同样的 strength 出差不多的流速，两种能直接对比看质感（Perlin 的结构更贴坐标轴）。type 烤进 kernel（`flags.noisePerlin`），改了要重建；glue 的结构性检查现在也看 `noise.curl / type / octaves`，所以 **Noise 一节整个走 live**（`ALWAYS_LIVE_KEYS` 加了 `noise`）：strength、frequency、drift、influence 之类拖了即变、不重建，只有 isActive、curl、type、octaves 四个会重建。注意 live 改 noise 会给老式（非 curl）noise 重新随机一个 FBM 种子，那条路是上游的、作品不用。jest `curl-noise.test.ts` 加 6 条（Perlin 格点为零、有界、连续、同一模板下散度为零、增益、drift 0 时不随时间变、drift 就是平移、默认值不变）。harness `noiseReport` 11 条（真实窗口里跑；面板的 rAF 饿着时读不到缓冲）：慢速作品在 simplex 场里流（邻居同向）；drift 0 时把位移按 1×1 的格子分箱、两次读回的场形状一致（相似度 > 0.7）；面板有 drift 滑块、改了不重建、config 接到；drift (3,3,3) 时两次读回的形状明显不同；type 下拉切 Perlin 会重建、Perlin 场同样连贯、流速和 simplex 同一量级；序列化；无报错。
+
 **粒子面板的两处小改**：Particle Color Instance 现在紧跟在 Noise 下面（它的亮度→curl 系数本来就是 Noise 的一部分）；Mesh 一节在 lit 模式下多了 `roughness`（默认 0.65）和 `metalness`（默认 0）两个滑块，存在 `renderer.mesh` 里随 config 走。粒子的颜色本身就是它的 albedo（起始色 / 渐变 / Color Instance 采到的像素），这两个滑块决定灯光怎么落在上面；metalness > 0 的粒子会被 SSR 视为反射面。
 
 **面板量程按装置的尺度改了**（2026-09-14）：gravity 滑块 ±1（原来 ±20）；maxParticles 1000–500000、rateOverTime 1000–100000，两者不再受 Helper 里 Enable big numbers 的管（那个开关现在只放宽 rateOverDistance 和 burst 的上限）；输入框里敲的数同样被钳在量程内，低于 1000 的发射率进不去。**新建系统起步是 10000 粒、1000 /秒**，定义在胶水的 `editorDefaultConfig()`，只有新建走它；加载仍按库的默认值合并，旧 config 省略这两个键时的含义不变。库的 `getDefaultParticleSystemConfig` 没动，序列化的 diff 基准也没动，所以新建出来的这两个值会明确写进 JSON。
@@ -178,7 +180,7 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 - 测试场景是内置 example **WIP-Test**（`packages/editor/public/examples/wip-test/`），存在磁盘上，清空 localStorage 也在。它引用的是那张山水画；73MB 的那个测试视频进不了仓库
 - **WIP-Test-2** 是作品本身：画框 + 一盏投影的平行光（带 `shadow` 块）+ 俯视输出相机（iPhone 17 Pro Max 画幅、SSR 和 SSAO 都开）+ 视频 color source。它的 `preview.webp` 还是换灯前的画面，刷新确认过不是 bug，维持现状。参数是 2026-09-11 在手机上调好后用 COPY 拷出的 JSON 直接写进去的（以后也这么更新：贴 JSON，不用截图），测试用的红球已经删掉。**编辑器一启动就直接加载它**（`DEFAULT_EXAMPLE`，在 `src/examples-config.js`；boot 一开始就 fetch，场景就绪后走和点 Examples 一样的 `window.editor.load`；fetch 失败就留在默认发射器，HUD 的 `boot:` 一行会写 `default … failed`）。代价是**刷新即回到示例**：面板里没导出的改动不会保留——粒子参数本来就不跨刷新，场景以前会留，现在也不留了；要保留就 Save 或者抄回 example。视频是 `public/assets/videos/wechat-20240829.mp4`（1000²、53s、1.6Mbps、10.6MB，随站点部署），config 用 **URL** 引用它（`_editorData.embeddedVideos`），所以任何能打开站点的设备都能播，手机上也是从 Examples 一点就开。这是「资产走 URL、config 走仓库」这条路的第一个样品
 - **做一个带视频的 example 的步骤**：把视频放进 `public/assets/videos/`；Textures 面板 **Add Video by URL** 填 `./assets/videos/<文件>`（相对地址，本地和 Pages 都能解析），Use；调好后 Copy，把 JSON 存成 `public/examples/<slug>/config.json`（slug 是名字小写、非字母数字换成连字符），配一张 `preview.webp`，在 `src/examples-config.js` 里加名字。本地上传（Add Video）的视频只在本机浏览器里，带不进 config
-- 控制台 harness `public/__ai-test.js`，当前基线 **340/340**（含 `colorInstanceReport` 36、`collisionReport` 9、`trailReport` 9、`stretchReport` 9、`aoReport` 8、`shadowReport` 10、`report` 30、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 36、`frameReport` 28；`perfReport` 是测量不是断言，不计入）
+- 控制台 harness `public/__ai-test.js`，当前基线 **351/351**（含 `noiseReport` 11、`colorInstanceReport` 36、`collisionReport` 9、`trailReport` 9、`stretchReport` 9、`aoReport` 8、`shadowReport` 10、`report` 30、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 36、`frameReport` 28；`perfReport` 是测量不是断言，不计入）
 
 ---
 
@@ -234,6 +236,7 @@ await __t.stretchReport()   // 拖影：无键为 0、材质记账、隐含朝�
 await __t.trailReport()     // GPU ribbon：TRAIL 走 GPU、材质是 GPU 版、没有 CPU ribbon、环已绑定、条带顶点数、读回有画、往返、无报错
 await __t.collisionReport() // 碰撞面：GPU 路径、BOUNCE / CLAMP / KILL 出界 0%、弹开带外向速度、CLAMP 不冻住、recover 往返、无报错
 await __t.colorInstanceReport() // 色源映射：三个平面、缩放、四种 wrap、offset，GPU 颜色缓冲逐粒子对独立的参考映射；debug 平面的层、材质、位置、手柄真拖一次、离屏读回；序列化、面板
+await __t.noiseReport()      // curl 场：simplex / Perlin 两种都连贯、流速同量级；drift 0 场形状不变、drift 大形状变；drift live、type 重建；序列化
 ```
 
 `videoReport` 要能 fetch 到 `./assets-local/AnimateDiff_00013.mp4`。那是个指向仓库旁边 `assets4test/` 的软链，目录整个 gitignore，新机器上要重建：
@@ -347,6 +350,7 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 - 色源的杠杆改成 live：`updateConfig` 换采样器设置（同一张图不读回）并给活粒子当场重新上色（`recolorLiveParticles`），kernel 每帧从 start 缓冲取色；编辑器这两节不再重建，拖动 10 Hz 节流。profile 里一次改动从 250 ms 长任务变成零。修了 deepMerge 让 live 改动写进库默认值的老 bug。jest 加 8 条，`colorInstanceReport` 34 条，基线 334/334。
 - `spawnOnSource`：出生落在图外或 alpha 为 0 的像素上就重抽，发射器等于缩成源图；"没有东西"一律纯黑、不过 tweak、不冻、不可见，重上色能藏能恢复（`baseOpacity`）。scale 0.5 的开洞和泛灰由此消失。jest 加 4 条，`colorInstanceReport` 36 条，基线 336/336。
 - 画框内壁被画面照亮：`getMeanColor` + `tintFrameEdges`，FRAME 的 `edgeTint` 随 config 走，编辑器和播放页同一条路。jest 加 2 条，`frameReport` 28 条，基线 340/340。
+- curl noise 的 `drift`（场沿各轴滚动的速度，可归零）和 `type`（SIMPLEX / PERLIN，Perlin 乘 0.49 对齐流速）；Noise 一节走 live，四个烤进 kernel 的项重建。jest 加 6 条，`noiseReport` 11 条，基线 351/351。顺手修了 debug 平面的绿框：WebGPU 渲染器不画 `LineLoop`（每帧报错、不画），换成 `LineSegments`。
 - CPU 路径的 curl noise：`curl-noise.ts` 逐字移植 kernel 的 simplex 和 curl，`applyModifiers` 在 `noise.curl` 时走它；TRAIL 和 WebGL 回退从此和 GPU 同一个流场。jest 加 8 条。
 - TRAIL 的"线往中间连"：ribbon 收尾那个槽被省略清理跳过、留着原点，每颗新生粒子都拉一条到中心；改成每帧压在头上，jest 加两条。
 - `renderer.mesh.velocityStretch`：MESH 粒子沿真实位移方向拉伸的拖影，GPU 路径，零额外开销；面板一个滑块；`stretchReport` 9 条，基线 274/274。库里顺手修了一条过期的 jest 期望（`createComputePipeline` 自 touch wake 起有第七个参数）。

@@ -168,13 +168,16 @@ const build = (targetScene: THREE.Scene): void => {
   planeMesh.renderOrder = 9998;
   box.add(planeMesh);
 
-  const corners = [
+  // Four edges as segments: the WebGPU renderer draws Line and LineSegments,
+  // not LineLoop (it logs an error every frame and draws nothing).
+  const c = [
     new THREE.Vector3(-0.5, -0.5, 0),
     new THREE.Vector3(0.5, -0.5, 0),
     new THREE.Vector3(0.5, 0.5, 0),
     new THREE.Vector3(-0.5, 0.5, 0),
   ];
-  const frame = new THREE.LineLoop(
+  const corners = [c[0], c[1], c[1], c[2], c[2], c[3], c[3], c[0]];
+  const frame = new THREE.LineSegments(
     new THREE.BufferGeometry().setFromPoints(corners),
     new THREE.LineBasicMaterial({
       color: COLOR_SOURCE_DEBUG_COLOR,

@@ -2173,7 +2173,7 @@
       const frame = debug.getObjectByName('color-source-debug-frame');
       const label = debug.getObjectByName('color-source-debug-label');
       check('the image plane ignores depth and is see-through', !!plane && plane.material.depthTest === false && plane.material.transparent === true && !!plane.material.opacityNode, plane ? `depthTest ${plane.material.depthTest}` : 'no plane');
-      check('a green frame and a label mark it', !!frame && frame.isLineLoop && frame.material.color.getHex() === 0x33ff88 && !!label && label.isSprite, `${frame?.material.color.getHexString()} ${label?.type}`);
+      check('a green frame and a label mark it', !!frame && frame.isLineSegments && frame.material.color.getHex() === 0x33ff88 && !!label && label.isSprite, `${frame?.type} ${frame?.material.color.getHexString()} ${label?.type}`);
       const box = debug.getObjectByName('color-source-debug-box');
       check('the frame is the mapped area, 4 × 2', !!box && Math.abs(box.scale.x - 4) < 1e-3 && Math.abs(box.scale.y - 2) < 1e-3, `${box?.scale.x} × ${box?.scale.y}`);
       check('it lies on the XZ plane at the emitter plus the offset', Math.abs(debug.rotation.x + Math.PI / 2) < 1e-6 && Math.abs(debug.position.x - 1) < 1e-6 && Math.abs(debug.position.z - 0.5) < 1e-6, `rot ${debug.rotation.x.toFixed(3)} at ${debug.position.x}, ${debug.position.z}`);
@@ -2267,6 +2267,172 @@
   };
 
   /**
+   * The curl noise field: its base noise (simplex or classic Perlin), its
+   * drift, and their levers. A still piece flows through the field; the
+   * field's shape is read from the GPU as the particles' displacement per
+   * frame, binned over the emitter, and compared between two moments: a
+   * still field (drift 0) keeps its shape, a fast-drifting one does not.
+   * Both noises must be coherent flows of about the same speed.
+   */
+  const noiseReport = async () => {
+    const lines = [];
+    const check = (label, ok, detail = '') =>
+      lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+    const w = window.__world;
+    const r = w.renderer;
+    const scene = w.scene;
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const errBefore = errs.length;
+    const link = window.__playerLink;
+    const frames = async (n, ms = 4000) => {
+      const start = link.frames();
+      const t0 = performance.now();
+      while (performance.now() - t0 < ms) {
+        if (link.frames() >= start + n) return true;
+        await wait(30);
+      }
+      return false;
+    };
+    const fix = await fixture();
+    const piece = (noise) => {
+      const c = structuredClone(fix);
+      c.transform = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 90, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } };
+      c.simulationSpace = 'WORLD';
+      c.startSpeed = { min: 0, max: 0 };
+      c.startLifetime = { min: 40, max: 40 };
+      c.maxParticles = 4000;
+      c.emission = { rateOverTime: 4000, bursts: [] };
+      c.shape = { shape: 'RECTANGLE', rectangle: { scale: { x: 6, y: 6 } } };
+      c.gravity = 0;
+      c.forceFields = [];
+      c.collisionPlanes = [];
+      c.touch = { ...(c.touch || {}), isActive: false };
+      c.particleColorInstance = { ...(c.particleColorInstance || {}), isActive: false, useLuminanceForNoise: false };
+      c.velocityOverLifetime = { linear: { x: { min: 0, max: 0 }, y: { min: 0, max: 0 }, z: { min: 0, max: 0 } }, orbital: { x: { min: 0, max: 0 }, y: { min: 0, max: 0 }, z: { min: 0, max: 0 } } };
+      // Slow enough that a bin keeps its population between two reads a second apart.
+      c.noise = { isActive: true, useRandomOffset: false, curl: true, strength: 0.25, frequency: 0.5, octaves: 1, positionAmount: 1, rotationAmount: 0, sizeAmount: 0, influence: { x: 1, y: 1, z: 1 }, type: 'SIMPLEX', drift: { x: 0, y: 0, z: 0 }, ...noise };
+      return c;
+    };
+    const particles = () => { let m = null; scene.traverse((o) => { if (o.geometry?.isInstancedBufferGeometry) m = o; }); return m; };
+    // The buffers exist on the GPU only once a frame has run; in a starved
+    // pane that can take a while, so a read that finds none waits and tries again.
+    const positions = async () => {
+      for (let attempt = 0; attempt < 8; attempt++) {
+        try {
+          const g = particles().geometry;
+          const pos = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceOffset));
+          const col = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceColor));
+          return { pos, col, n: g.attributes.instanceOffset.count };
+        } catch (e) {
+          await frames(1, 1500);
+        }
+      }
+      throw new Error('particle buffers never reached the GPU');
+    };
+    // The field's shape: mean displacement per 1 × 1 bin over the 6 × 6 emitter, from two reads a couple of frames apart.
+    const shape = async () => {
+      const a = await positions();
+      await frames(2);
+      const b = await positions();
+      const bins = new Map();
+      let speedSq = 0, moved = 0;
+      let coherent = 0, pairs = 0;
+      const sample = [];
+      for (let i = 0; i < a.n; i++) {
+        if (a.col[i * 4 + 3] <= 0.01 || b.col[i * 4 + 3] <= 0.01) continue;
+        const dx = b.pos[i * 4] - a.pos[i * 4], dy = b.pos[i * 4 + 1] - a.pos[i * 4 + 1], dz = b.pos[i * 4 + 2] - a.pos[i * 4 + 2];
+        const l = Math.hypot(dx, dy, dz);
+        if (l < 1e-6) continue;
+        moved++;
+        speedSq += l * l;
+        const key = `${Math.floor(a.pos[i * 4])},${Math.floor(a.pos[i * 4 + 2])}`;
+        const bin = bins.get(key) || { x: 0, y: 0, z: 0, n: 0 };
+        bin.x += dx / l; bin.y += dy / l; bin.z += dz / l; bin.n++;
+        bins.set(key, bin);
+        if (sample.length < 400) sample.push({ x: a.pos[i * 4], z: a.pos[i * 4 + 2], dx: dx / l, dy: dy / l, dz: dz / l });
+      }
+      // Neighbours within 0.3 move the same way in a flow field.
+      for (let i = 0; i < sample.length; i++) for (let j = i + 1; j < sample.length; j++) {
+        const p = sample[i], q = sample[j];
+        if (Math.hypot(p.x - q.x, p.z - q.z) > 0.3) continue;
+        coherent += p.dx * q.dx + p.dy * q.dy + p.dz * q.dz; pairs++;
+      }
+      return { bins, moved, rms: Math.sqrt(speedSq / Math.max(1, moved)), coherence: pairs ? coherent / pairs : 0, pairs };
+    };
+    const compare = (s1, s2) => {
+      let dot = 0, n = 0;
+      for (const [k, b1] of s1.bins) {
+        const b2 = s2.bins.get(k);
+        if (!b2 || b1.n < 10 || b2.n < 10) continue;
+        const l1 = Math.hypot(b1.x, b1.y, b1.z), l2 = Math.hypot(b2.x, b2.y, b2.z);
+        if (l1 < 1e-6 || l2 < 1e-6) continue;
+        dot += (b1.x * b2.x + b1.y * b2.y + b1.z * b2.z) / (l1 * l2); n++;
+      }
+      return { similarity: n ? dot / n : 0, bins: n };
+    };
+
+    // ── Simplex, still field ────────────────────────────────────────────────
+    window.editor.load(piece({ type: 'SIMPLEX', drift: { x: 0, y: 0, z: 0 } }));
+    await wait(1500);
+    await frames(2);
+    const stillA = await shape();
+    check('the particles flow through a simplex curl field (neighbours move together)', stillA.moved > 1000 && stillA.coherence > 0.35, `${stillA.moved} moving, coherence ${stillA.coherence.toFixed(2)} over ${stillA.pairs} pairs`);
+    await wait(1000);
+    await frames(2);
+    const stillB = await shape();
+    const still = compare(stillA, stillB);
+    check('with drift 0 the field keeps its shape over time', still.bins >= 12 && still.similarity > 0.6, `similarity ${still.similarity.toFixed(2)} over ${still.bins} bins`);
+    const meshStill = particles();
+
+    // ── Drift: a live change, and a fast one changes the shape ─────────────
+    const gui = document.querySelector('.lil-gui.root');
+    const controlOf = (name, within = null) => [...((within ?? gui)?.querySelectorAll('.controller') ?? [])].find((c) => c.querySelector('.name')?.textContent.trim() === name);
+    const driftFolder = [...(gui?.querySelectorAll('.lil-gui') ?? [])].find((f) => f.querySelector('.title')?.textContent.trim().startsWith('drift'));
+    const setNumber = (c, value) => { const el = c?.querySelector('input'); if (!el) return false; el.value = String(value); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return true; };
+    const setDrift = (x, y, z) => setNumber(controlOf('x', driftFolder), x) && setNumber(controlOf('y', driftFolder), y) && setNumber(controlOf('z', driftFolder), z);
+    check('the panel has the drift sliders', !!driftFolder && !!controlOf('x', driftFolder) && !!controlOf('z', driftFolder));
+    const setOk = setDrift(3, 3, 3);
+    await wait(400);
+    check('drift is live: the mesh is the same object after the change', setOk && particles() === meshStill);
+    const liveCfg = window.editor.getCurrentParticleSystemConfig();
+    check('the config took the drift', liveCfg.noise?.drift?.x === 3 && liveCfg.noise?.drift?.z === 3, JSON.stringify(liveCfg.noise?.drift));
+    await frames(2);
+    const driftA = await shape();
+    await wait(1000);
+    await frames(2);
+    const driftB = await shape();
+    const drifting = compare(driftA, driftB);
+    // Drift 3 at frequency 0.5 moves the field six world units in a second: another field.
+    check('a fast drift changes the field\'s shape between two moments', drifting.bins >= 12 && drifting.similarity < still.similarity - 0.3, `similarity ${drifting.similarity.toFixed(2)} vs still ${still.similarity.toFixed(2)}`);
+
+    // ── Perlin: a rebuild, a flow of the same order ─────────────────────────
+    const typeControl = controlOf('type (curl)');
+    const select = typeControl?.querySelector('select');
+    let typeOk = false;
+    if (select) {
+      const index = [...select.options].findIndex((o) => /perlin/i.test(o.textContent));
+      if (index >= 0) { select.selectedIndex = index; select.dispatchEvent(new Event('change', { bubbles: true })); typeOk = true; }
+    }
+    await wait(1800);
+    await frames(2);
+    check('the panel offers the noise type, and Perlin rebuilds the system', typeOk && particles() !== meshStill && window.editor.getCurrentParticleSystemConfig().noise?.type === 'PERLIN');
+    setDrift(0, 0, 0);
+    await wait(400);
+    await frames(2);
+    const perlin = await shape();
+    check('the particles flow through a Perlin curl field', perlin.moved > 1000 && perlin.coherence > 0.35, `${perlin.moved} moving, coherence ${perlin.coherence.toFixed(2)}`);
+    check('Perlin flows at about the speed of simplex (the gain)', perlin.rms > stillA.rms * 0.4 && perlin.rms < stillA.rms * 2.5, `rms ${perlin.rms.toFixed(4)} vs simplex ${stillA.rms.toFixed(4)} per frame`);
+
+    const json = JSON.parse(window.editor.serialize());
+    check('type and drift travel in the config', json.noise?.type === 'PERLIN' && json.noise?.drift?.x === 0, JSON.stringify({ type: json.noise?.type, drift: json.noise?.drift }));
+
+    await load();
+    check('no runtime errors', errs.length === errBefore, errs.slice(errBefore, errBefore + 3).join(' | '));
+    const failed = lines.filter((l) => l.startsWith('FAIL')).length;
+    return [`noise: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
+  };
+
+  /**
    * The frame budget: fps, the main thread's share of a frame by pass, the
    * GPU's timestamp sum (open the page with ?gputime), and the sizes the
    * preview's passes run at. A measurement, not a pass/fail list, and only
@@ -2326,6 +2492,7 @@
   window.__t = {
     perfReport,
     colorInstanceReport,
+    noiseReport,
     collisionReport,
     trailReport,
     stretchReport,

@@ -276,6 +276,10 @@ type CreationSnapshot = {
   sizeOverLifetimeActive: boolean;
   rotationOverLifetimeActive: boolean;
   noiseActive: boolean;
+  /** Kernel-baked noise choices: curl mode, the noise the field is built from, the octave count. */
+  noiseCurl: boolean;
+  noiseType: string;
+  noiseOctaves: number;
 };
 let creationSnapshot: CreationSnapshot | null = null;
 const configEntries: ConfigEntry[] = [];
@@ -285,14 +289,16 @@ const configEntries: ConfigEntry[] = [];
 let liveRecreateTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * Keys that go live whatever the Helper's toggle says: they reach only the
- * CPU-side colour sampler and the particles' start colours
- * (recolorLiveParticles in the library), never the kernel or a material, so
- * there is nothing to rebuild. The recolour walks every live slot, so while a
- * slider drags it is applied at most ten times a second — the first change at
- * once, the rest trailing.
+ * Keys that go live whatever the Helper's toggle says. The colour source's
+ * levers reach only the CPU-side sampler and the particles' start colours
+ * (recolorLiveParticles in the library); the noise's reach uniforms the kernel
+ * reads every frame. Neither touches a kernel or a material — except the
+ * noise choices the kernel bakes in (on/off, curl, the noise type, octaves),
+ * which the structural check below sends to a full rebuild. The recolour
+ * walks every live slot, so while a slider drags a live update is applied at
+ * most ten times a second — the first change at once, the rest trailing.
  */
-const ALWAYS_LIVE_KEYS = ['particleColorInstance'];
+const ALWAYS_LIVE_KEYS = ['particleColorInstance', 'noise'];
 let liveUpdateTimer: ReturnType<typeof setTimeout> | null = null;
 let liveUpdatePending = false;
 
@@ -878,7 +884,10 @@ const recreateParticleSystem = (markAsDirty = true, liveUpdateKeys?: string[]): 
         !!activeConfig.sizeOverLifetime?.isActive !== creationSnapshot.sizeOverLifetimeActive ||
         !!activeConfig.rotationOverLifetime?.isActive !==
           creationSnapshot.rotationOverLifetimeActive ||
-        !!activeConfig.noise?.isActive !== creationSnapshot.noiseActive;
+        !!activeConfig.noise?.isActive !== creationSnapshot.noiseActive ||
+        !!activeConfig.noise?.curl !== creationSnapshot.noiseCurl ||
+        (activeConfig.noise?.type ?? 'SIMPLEX') !== creationSnapshot.noiseType ||
+        (activeConfig.noise?.octaves ?? 1) !== creationSnapshot.noiseOctaves;
     }
 
     if (!structuralChange && !touchesBakedCurves) {
@@ -950,6 +959,9 @@ const doFullRecreate = (activeConfig: any, markAsDirty: boolean): void => {
     sizeOverLifetimeActive: !!activeConfig.sizeOverLifetime?.isActive,
     rotationOverLifetimeActive: !!activeConfig.rotationOverLifetime?.isActive,
     noiseActive: !!activeConfig.noise?.isActive,
+    noiseCurl: !!activeConfig.noise?.curl,
+    noiseType: activeConfig.noise?.type ?? 'SIMPLEX',
+    noiseOctaves: activeConfig.noise?.octaves ?? 1,
   };
 
   // Update backend indicator badge
