@@ -34,6 +34,11 @@ const detachPlainObjects = <T>(value: T): T => {
 };
 
 type ColorInstanceSample = {
+  /**
+   * Whether there is something under the position: on the source and on a
+   * texel with alpha. False is nothing — black, alpha 0, motion untouched.
+   */
+  hit: boolean;
   /** Linear start colour. */
   r: number;
   g: number;
@@ -44,12 +49,16 @@ type ColorInstanceSample = {
   noiseMul: number;
 };
 const colorInstanceSample: ColorInstanceSample = {
+  hit: false,
   r: 0,
   g: 0,
   b: 0,
   alpha: 1,
   noiseMul: 1,
 };
+
+/** How many times a birth is drawn again to land on the source. */
+const SPAWN_ON_SOURCE_TRIES = 32;
 
 /**
  * What the colour source gives a particle at a spawn position: the texel
@@ -86,6 +95,19 @@ const sampleColorInstance = (
     b8 = pixels[o + 2];
     a8 = pixels[o + 3];
   }
+  if (a8 === 0) {
+    // Nothing here — off the source, or a texel with no alpha. Not a black
+    // pixel: no look is applied (contrast below 1 would lift it to grey),
+    // no luminance read (it would stop the particle), and it is invisible.
+    out.hit = false;
+    out.r = 0;
+    out.g = 0;
+    out.b = 0;
+    out.alpha = 0;
+    out.noiseMul = 1;
+    return;
+  }
+  out.hit = true;
   // The source's own look, before the pixel becomes a start colour: hue,
   // saturation and contrast in display (sRGB) space, the way an image
   // editor applies them.
@@ -728,6 +750,7 @@ const DEFAULT_PARTICLE_SYSTEM_CONFIG: ParticleSystemConfig = {
     scale: { x: 1, y: 1 },
     wrap: ColorInstanceWrap.ZERO,
     offset: { x: 0, y: 0, z: 0 },
+    spawnOnSource: true,
     useAlphaForOpacity: false,
     useLuminanceForNoise: false,
     luminanceNoiseAmount: 0,
@@ -1192,6 +1215,12 @@ export const createParticleSystem = (
   generalData.startValues.startColorB = Array.from(
     { length: maxParticles },
     () => 0
+  );
+  // The start opacity as drawn, before the colour source's alpha (or its
+  // absence) is folded in — what a live recolour restores from.
+  generalData.startValues.baseOpacity = Array.from(
+    { length: maxParticles },
+    () => 1
   );
 
   // Extracted so updateConfig can re-run it when rotationOverLifetime changes.
@@ -1899,6 +1928,8 @@ export const createParticleSystem = (
     );
     scalarArray[base + S_COLOR_A] =
       generalData.startValues.startOpacity[particleIndex];
+    generalData.startValues.baseOpacity[particleIndex] =
+      generalData.startValues.startOpacity[particleIndex];
 
     scalarArray[base + S_ROTATION] = calculateValue(
       generalData.particleSystemId,
@@ -1942,6 +1973,55 @@ export const createParticleSystem = (
       startPositions[particleIndex],
       velocities[particleIndex]
     );
+
+    // The colour source, sampled where this particle is born. Where the
+    // source covers only part of the emitter (wrap ZERO) or has texels with
+    // no alpha, a birth that lands on nothing is drawn again until it lands
+    // on something — the emitter effectively shrinks to the source and the
+    // whole budget goes to the picture. One that never lands is nothing:
+    // black, invisible, free to move. The sample is used by the colour
+    // block below; nothing samples in between.
+    const ci = generalData.colorInstance;
+    const ciReady = !!(ci?.isActive && ensureColorInstancePixels(ci));
+    if (ciReady) {
+      const rectScale = normalizedConfig.shape.rectangle?.scale;
+      const rectWidth = rectScale?.x || 1;
+      const rectHeight = rectScale?.y || 1;
+      const spawn = startPositions[particleIndex];
+      sampleColorInstance(
+        ci!,
+        spawn.x,
+        spawn.y,
+        spawn.z,
+        rectWidth,
+        rectHeight,
+        colorInstanceSample
+      );
+      if (!colorInstanceSample.hit && ci!.spawnOnSource) {
+        for (
+          let attempt = 0;
+          attempt < SPAWN_ON_SOURCE_TRIES && !colorInstanceSample.hit;
+          attempt++
+        ) {
+          calculatePositionAndVelocity(
+            generalData,
+            normalizedConfig.shape,
+            normalizedConfig.startSpeed,
+            spawn,
+            velocities[particleIndex]
+          );
+          sampleColorInstance(
+            ci!,
+            spawn.x,
+            spawn.y,
+            spawn.z,
+            rectWidth,
+            rectHeight,
+            colorInstanceSample
+          );
+        }
+      }
+    }
     // GPU compute: position is set via the emit scatter in the compute shader
     // (writeParticleToModifierBuffers queues it). Do NOT set needsUpdate —
     // that triggers a full CPU→GPU upload that overwrites GPU-computed
@@ -2051,35 +2131,25 @@ export const createParticleSystem = (
     // luminance. Stays 1 (no modulation) unless the feature is on and the
     // particle spawned inside the mapped area.
     let colorInstanceNoiseMul = 1;
-    const ci = generalData.colorInstance;
-    if (ci?.isActive && ensureColorInstancePixels(ci)) {
-      const rectScale = normalizedConfig.shape.rectangle?.scale;
-      const spawn = startPositions[particleIndex];
-      sampleColorInstance(
-        ci,
-        spawn.x,
-        spawn.y,
-        spawn.z,
-        rectScale?.x || 1,
-        rectScale?.y || 1,
-        colorInstanceSample
-      );
-      scalarArray[base + S_COLOR_R] = colorInstanceSample.r;
-      scalarArray[base + S_COLOR_G] = colorInstanceSample.g;
-      scalarArray[base + S_COLOR_B] = colorInstanceSample.b;
-      generalData.startValues.startColorR[particleIndex] =
-        colorInstanceSample.r;
-      generalData.startValues.startColorG[particleIndex] =
-        colorInstanceSample.g;
-      generalData.startValues.startColorB[particleIndex] =
-        colorInstanceSample.b;
-      if (ci.useAlphaForOpacity) {
-        generalData.startValues.startOpacity[particleIndex] *=
-          colorInstanceSample.alpha;
+    if (ciReady) {
+      // colorInstanceSample still holds this birth's sample from the draw.
+      const sample = colorInstanceSample;
+      scalarArray[base + S_COLOR_R] = sample.r;
+      scalarArray[base + S_COLOR_G] = sample.g;
+      scalarArray[base + S_COLOR_B] = sample.b;
+      generalData.startValues.startColorR[particleIndex] = sample.r;
+      generalData.startValues.startColorG[particleIndex] = sample.g;
+      generalData.startValues.startColorB[particleIndex] = sample.b;
+      if (!sample.hit) {
+        // Nothing under it: invisible, whatever the alpha toggle says.
+        generalData.startValues.startOpacity[particleIndex] = 0;
+        scalarArray[base + S_COLOR_A] = 0;
+      } else if (ci!.useAlphaForOpacity) {
+        generalData.startValues.startOpacity[particleIndex] *= sample.alpha;
         scalarArray[base + S_COLOR_A] =
           generalData.startValues.startOpacity[particleIndex];
       }
-      colorInstanceNoiseMul = colorInstanceSample.noiseMul;
+      colorInstanceNoiseMul = sample.noiseMul;
     }
 
     // In curl mode the noiseOffset slot is unused (the field is sampled from
@@ -2741,9 +2811,10 @@ export const createParticleSystem = (
    * lever on the source shows on the particles already out and not only on
    * the next births. A pass over the slots on the CPU, once per change and
    * never per frame; on the GPU path only the two start-value buffers are
-   * re-uploaded, and the kernel takes its colour from them every frame. The
-   * texel's alpha is not re-applied: it was folded into startOpacity at
-   * birth and cannot be unfolded. Returns how many particles were recoloured.
+   * re-uploaded, and the kernel takes its colour and alpha from them every
+   * frame. Opacity is rebuilt from the value drawn at birth (baseOpacity):
+   * the texel's alpha folded in where the config says so, zero where there
+   * is nothing under the particle now. Returns how many were recoloured.
    */
   const recolorLiveParticles = (): number => {
     const ci = generalData.colorInstance;
@@ -2776,15 +2847,23 @@ export const createParticleSystem = (
         rectHeight,
         colorInstanceSample
       );
-      const { r, g, b, noiseMul } = colorInstanceSample;
+      const { r, g, b, alpha, hit, noiseMul } = colorInstanceSample;
       sv.startColorR[i] = r;
       sv.startColorG[i] = g;
       sv.startColorB[i] = b;
       scalarArray[base + S_COLOR_R] = r;
       scalarArray[base + S_COLOR_G] = g;
       scalarArray[base + S_COLOR_B] = b;
+      // Visible where there is something, from the opacity drawn at birth;
+      // hidden where there is nothing now — and back when there is again.
+      const opacity = hit
+        ? sv.baseOpacity[i] * (ci.useAlphaForOpacity ? alpha : 1)
+        : 0;
+      sv.startOpacity[i] = opacity;
+      scalarArray[base + S_COLOR_A] = opacity;
       if (svArr && sceArr) {
         const i4 = i * 4;
+        svArr[i4 + 2] = opacity;
         svArr[i4 + 3] = r;
         sceArr[i4] = g;
         sceArr[i4 + 1] = b;

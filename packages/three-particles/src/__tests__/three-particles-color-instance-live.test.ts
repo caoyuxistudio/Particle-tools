@@ -9,17 +9,20 @@ import * as THREE from 'three';
 import { createParticleSystem } from '../js/effects/three-particles/three-particles.js';
 import type { ParticleSystem } from '../js/effects/three-particles/types.js';
 
+/** The right texel's alpha; a test can make it a hole. */
+let rightAlpha = 255;
+
 class FakeContext {
   drawImage(): void {}
   getImageData(_x: number, _y: number, w: number, h: number) {
     const data = new Uint8ClampedArray(w * h * 4);
-    // Column 0 red, column 1 blue, opaque.
+    // Column 0 red, column 1 blue.
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const o = (y * w + x) * 4;
         data[o] = x === 0 ? 255 : 0;
         data[o + 2] = x === 0 ? 0 : 255;
-        data[o + 3] = 255;
+        data[o + 3] = x === 0 ? 255 : rightAlpha;
       }
     }
     return { data };
@@ -53,11 +56,16 @@ const colorInstance = (over: Record<string, unknown> = {}) => ({
   scale: { x: 1, y: 1 },
   wrap: 'ZERO',
   offset: { x: 0, y: 0, z: 0 },
+  spawnOnSource: false,
   ...over,
 });
 
 /** A still, motionless system on a 2 × 2 rectangle in the XY plane (z = 0). */
-const createSystem = (maxParticles = 64, rateOverTime = 4000) => {
+const createSystem = (
+  maxParticles = 64,
+  rateOverTime = 4000,
+  ci: Record<string, unknown> = {}
+) => {
   const startTime = 1000;
   const ps = createParticleSystem(
     {
@@ -68,7 +76,7 @@ const createSystem = (maxParticles = 64, rateOverTime = 4000) => {
       startSpeed: 0,
       emission: { rateOverTime },
       shape: { shape: 'RECTANGLE', rectangle: { scale: { x: 2, y: 2 } } },
-      particleColorInstance: colorInstance(),
+      particleColorInstance: colorInstance(ci),
     } as any,
     startTime
   );
@@ -94,6 +102,8 @@ const rgb = (ps: ParticleSystem, i: number): [number, number, number] => {
   const c = attrs(ps).color;
   return [c.getX(i), c.getY(i), c.getZ(i)];
 };
+const alphaOf = (ps: ParticleSystem, i: number): number =>
+  attrs(ps).color.getW(i);
 
 const isRed = (c: number[]) => c[0] > 0.99 && c[1] < 0.01 && c[2] < 0.01;
 const isBlue = (c: number[]) => c[0] < 0.01 && c[1] < 0.01 && c[2] > 0.99;
@@ -116,11 +126,13 @@ describe('a lever on the colour source recolours the particles already out', () 
       particleColorInstance: colorInstance({ offset: { x: 5, y: 0, z: 0 } }),
     } as any);
 
-    // Same particles, same places, new colours: nothing was rebuilt.
+    // Same particles, same places, new colours: nothing was rebuilt. Off
+    // the source is nothing: black, and hidden.
     expect(live(ps)).toEqual(idx);
     idx.forEach((i, k) => {
       expect([pos.getX(i), pos.getY(i), pos.getZ(i)]).toEqual(before[k]);
       expect(isBlack(rgb(ps, i))).toBe(true);
+      expect(alphaOf(ps, i)).toBe(0);
     });
     ps.dispose();
   });
@@ -207,6 +219,84 @@ describe('a lever on the colour source recolours the particles already out', () 
     const idx = live(ps);
     expect(idx.length).toBeGreaterThan(before);
     for (const i of idx) expect(isRed(rgb(ps, i))).toBe(true);
+    ps.dispose();
+  });
+});
+
+describe('births land only where the source is', () => {
+  afterEach(() => {
+    rightAlpha = 255;
+  });
+
+  it('spawnOnSource: with the source at half width every birth is inside it', () => {
+    const { ps, step } = createSystem(64, 4000, {
+      scale: { x: 0.5, y: 1 },
+      spawnOnSource: true,
+    });
+    step(100);
+    const idx = live(ps);
+    expect(idx.length).toBeGreaterThan(20);
+    const pos = attrs(ps).position;
+    for (const i of idx) {
+      expect(Math.abs(pos.getX(i))).toBeLessThanOrEqual(0.5 + 1e-6);
+      expect(alphaOf(ps, i)).toBe(1);
+      const c = rgb(ps, i);
+      expect(isRed(c) || isBlue(c)).toBe(true);
+    }
+    ps.dispose();
+  });
+
+  it('off: births fall anywhere, and those off the source are nothing — black and hidden', () => {
+    const { ps, step } = createSystem(64, 4000, {
+      scale: { x: 0.5, y: 1 },
+      spawnOnSource: false,
+    });
+    step(100);
+    const idx = live(ps);
+    const pos = attrs(ps).position;
+    let outside = 0;
+    for (const i of idx) {
+      if (Math.abs(pos.getX(i)) > 0.5) {
+        outside++;
+        expect(isBlack(rgb(ps, i))).toBe(true);
+        expect(alphaOf(ps, i)).toBe(0);
+      } else {
+        expect(alphaOf(ps, i)).toBe(1);
+      }
+    }
+    expect(outside).toBeGreaterThan(5);
+    ps.dispose();
+  });
+
+  it('a texel with no alpha is nothing too: births avoid it', () => {
+    rightAlpha = 0;
+    const { ps, step } = createSystem(64, 4000, { spawnOnSource: true });
+    step(100);
+    const idx = live(ps);
+    const pos = attrs(ps).position;
+    expect(idx.length).toBeGreaterThan(20);
+    for (const i of idx) {
+      expect(pos.getX(i)).toBeLessThanOrEqual(0);
+      expect(isRed(rgb(ps, i))).toBe(true);
+    }
+    ps.dispose();
+  });
+
+  it('a particle hidden by one change is shown again by the next', () => {
+    const { ps, step } = createSystem();
+    step(100);
+    const idx = live(ps);
+    const pos = attrs(ps).position;
+    const outer = idx.filter((i) => Math.abs(pos.getX(i)) > 0.5);
+    expect(outer.length).toBeGreaterThan(5);
+    ps.updateConfig({
+      particleColorInstance: colorInstance({ scale: { x: 0.5, y: 1 } }),
+    } as any);
+    for (const i of outer) expect(alphaOf(ps, i)).toBe(0);
+    ps.updateConfig({
+      particleColorInstance: colorInstance({ scale: { x: 1, y: 1 } }),
+    } as any);
+    for (const i of outer) expect(alphaOf(ps, i)).toBe(1);
     ps.dispose();
   });
 });

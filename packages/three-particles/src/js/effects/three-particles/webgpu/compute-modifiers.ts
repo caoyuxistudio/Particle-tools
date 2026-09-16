@@ -1031,6 +1031,13 @@ export function createModifierComputeUpdate(
           const col = sColor.element(i).toVar();
           col.w.assign(sv.z.mul(multiplier));
           sColor.element(i).assign(col);
+        } else {
+          // No opacity curve: alpha is the start opacity, taken from the
+          // start-value buffer every frame so a live recolour that hides a
+          // particle (nothing under it now) or shows it again lands.
+          const col = sColor.element(i).toVar();
+          col.w.assign(sv.z);
+          sColor.element(i).assign(col);
         }
 
         // 5. Color Over Lifetime

@@ -218,6 +218,7 @@ export const applyColorInstanceSettings = (
   ci.offsetX = config.offset?.x ?? 0;
   ci.offsetY = config.offset?.y ?? 0;
   ci.offsetZ = config.offset?.z ?? 0;
+  ci.spawnOnSource = config.spawnOnSource ?? true;
   ci.useAlphaForOpacity = !!config.useAlphaForOpacity;
   ci.useLuminanceForNoise = !!config.useLuminanceForNoise;
   ci.luminanceNoiseAmount = config.luminanceNoiseAmount ?? 0;
@@ -245,6 +246,7 @@ export const createColorInstanceData = (
       offsetX: 0,
       offsetY: 0,
       offsetZ: 0,
+      spawnOnSource: true,
       useAlphaForOpacity: false,
       useLuminanceForNoise: false,
       luminanceNoiseAmount: 0,

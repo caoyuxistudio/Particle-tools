@@ -887,6 +887,14 @@ export type ParticleColorInstanceConfig = {
    * the emitter.
    */
   offset?: { x?: number; y?: number; z?: number };
+  /**
+   * Births land only where the source has something: a spawn position that
+   * falls off the source (wrap `ZERO`) or on a texel with no alpha is drawn
+   * again, up to a few dozen times, so the emitter effectively shrinks to
+   * the source and the whole particle budget goes to the picture. Default
+   * true. Off, such a birth is nothing — black, invisible, free to move.
+   */
+  spawnOnSource?: boolean;
   /** Multiply the image's alpha channel into startOpacity. */
   useAlphaForOpacity?: boolean;
   /**
@@ -950,6 +958,8 @@ export type ColorInstanceData = {
   offsetX: number;
   offsetY: number;
   offsetZ: number;
+  /** See {@link ParticleColorInstanceConfig.spawnOnSource}. */
+  spawnOnSource: boolean;
   useAlphaForOpacity: boolean;
   useLuminanceForNoise: boolean;
   luminanceNoiseAmount: number;

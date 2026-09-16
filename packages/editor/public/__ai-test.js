@@ -2022,11 +2022,13 @@
       const scale = [ci.scale?.x ?? 1, ci.scale?.y ?? 1];
       const wrap = ci.wrap || 'ZERO';
       const offset = [ci.offset?.x ?? 0, ci.offset?.y ?? 0, ci.offset?.z ?? 0];
-      let alive = 0, match = 0, black = 0;
+      let alive = 0, match = 0, black = 0, maxAbsX = 0, maxAbsZ = 0;
       const distinct = new Set();
       for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
         if (col[i * 4 + 3] <= 0.01) continue;
         alive++;
+        maxAbsX = Math.max(maxAbsX, Math.abs(pos[i * 4]));
+        maxAbsZ = Math.max(maxAbsZ, Math.abs(pos[i * 4 + 2]));
         const want = expectedColour(refUv(plane, scale, wrap, offset, pos[i * 4], pos[i * 4 + 1], pos[i * 4 + 2]));
         const got = [col[i * 4], col[i * 4 + 1], col[i * 4 + 2]];
         if (got.every((c, k) => Math.abs(c - want[k]) < 0.02)) match++;
@@ -2037,7 +2039,7 @@
       // the buffer's floats; the mapping is right when nearly all agree.
       const ratio = alive ? match / alive : 0;
       check(label, alive > 500 && ratio >= 0.97, `${match}/${alive} match the reference, ${distinct.size} colours, ${black} black`);
-      return { alive, match, black, distinct: distinct.size };
+      return { alive, match, black, distinct: distinct.size, maxAbsX, maxAbsZ };
     };
 
     const xz = await run('XZ: the texel under (x, z), the top-down piece', { x: 90, y: 0, z: 0 }, { plane: 'XZ' });
@@ -2045,8 +2047,15 @@
     await run('XY: a wall facing +Z, columns along +X, rows along −Y', { x: 0, y: 0, z: 0 }, { plane: 'XY' });
     await run('YZ: a wall facing +X, columns along −Z, rows along −Y', { x: 0, y: 90, z: 0 }, { plane: 'YZ' });
     await run('scale 2 shows the middle half of the source', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 2, y: 2 } });
-    const zero = await run('scale 0.5, ZERO: off the source is black', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'ZERO' });
-    check('and three quarters of the area is off the source', !!zero && zero.black > zero.alive * 0.6 && zero.black < zero.alive * 0.9, `${zero?.black}/${zero?.alive} black`);
+    // Under ZERO at half scale the source covers the middle quarter of the
+    // 4 × 2 rectangle: |x| ≤ 1, |z| ≤ 0.5. Births land only there (the
+    // budget goes to the picture); with that off, a birth off the source is
+    // nothing — invisible, so it does not count as alive here.
+    const zero = await run('scale 0.5, ZERO: every birth lands on the source', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'ZERO' });
+    check('and all of them inside its footprint, |x| ≤ 1, |z| ≤ 0.5', !!zero && zero.alive > 2500 && zero.maxAbsX <= 1.02 && zero.maxAbsZ <= 0.52, `${zero?.alive} alive, |x| ≤ ${zero?.maxAbsX.toFixed(2)}, |z| ≤ ${zero?.maxAbsZ.toFixed(2)}`);
+    const anywhere = await run('spawn only on the source off: births off it are nothing, invisible', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'ZERO', spawnOnSource: false });
+    // (The black ones that do show are the painting's own dark texels.)
+    check('so a quarter of the births show', !!anywhere && anywhere.alive > 3000 * 0.15 && anywhere.alive < 3000 * 0.35, `${anywhere?.alive} visible of 3000`);
     await run('scale 0.5, REPEAT: the source tiles', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'REPEAT' });
     await run('scale 0.5, MIRROR: every other tile flipped', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'MIRROR' });
     await run('scale 0.5, STRETCH: the edge texel runs on', { x: 90, y: 0, z: 0 }, { plane: 'XZ', scale: { x: 0.5, y: 0.5 }, wrap: 'STRETCH' });
@@ -2219,7 +2228,7 @@
     check('plane, scale, wrap and offset travel in the config', pci.plane === 'XY' && pci.scale?.x === 0.5 && pci.scale?.y === 0.5 && pci.wrap === 'STRETCH' && pci.offset?.x === 1 && pci.offset?.y === 0.5, JSON.stringify({ plane: pci.plane, scale: pci.scale, wrap: pci.wrap, offset: pci.offset }));
     const gui = document.querySelector('.lil-gui.root');
     const names = [...(gui?.querySelectorAll('.name') ?? [])].map((n) => n.textContent.trim());
-    check('the panel offers plane, scale, the outside-the-source choice, the offset and the debug toggle', ['plane', 'x (across)', 'y (down)', 'outside the source', 'show source (debug)', 'Show colour source (debug)'].every((n) => names.includes(n)), names.filter((n) => /plane|across|down|outside|debug/.test(n)).join(' | '));
+    check('the panel offers plane, scale, the outside-the-source choice, spawn-on-source, the offset and the debug toggle', ['plane', 'x (across)', 'y (down)', 'outside the source', 'spawn only on the source', 'show source (debug)', 'Show colour source (debug)'].every((n) => names.includes(n)), names.filter((n) => /plane|across|down|outside|spawn|debug/.test(n)).join(' | '));
 
     await load();
     check('no runtime errors', errs.length === errBefore, errs.slice(errBefore, errBefore + 3).join(' | '));

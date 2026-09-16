@@ -63,6 +63,7 @@ export const createParticleColorInstanceEntries = ({
   if (config.scale.x === undefined) config.scale.x = 1;
   if (config.scale.y === undefined) config.scale.y = 1;
   if (!config.wrap) config.wrap = 'ZERO';
+  if (config.spawnOnSource === undefined) config.spawnOnSource = true;
   if (!config.offset) config.offset = { x: 0, y: 0, z: 0 };
   (['x', 'y', 'z'] as const).forEach((axis) => {
     if (config.offset[axis] === undefined) config.offset[axis] = 0;
@@ -144,6 +145,15 @@ export const createParticleColorInstanceEntries = ({
       'stretch (edge)': 'STRETCH',
     })
     .name('outside the source')
+    .onChange(recreateParticleSystem)
+    .listen();
+
+  // Births are drawn again until they land on the source (off it under ZERO,
+  // or on a texel with no alpha), so the whole budget goes to the picture.
+  // Off, such a birth is nothing: black, invisible, free to move.
+  folder
+    .add(config, 'spawnOnSource')
+    .name('spawn only on the source')
     .onChange(recreateParticleSystem)
     .listen();
 
