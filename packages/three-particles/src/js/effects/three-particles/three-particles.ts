@@ -225,6 +225,7 @@ import {
   SubEmitterConfig,
   MeshConfig,
   TrailConfig,
+  type ColorInstanceData,
 } from './types.js';
 
 export * from './types.js';
