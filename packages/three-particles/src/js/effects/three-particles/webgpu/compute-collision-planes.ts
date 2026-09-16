@@ -13,10 +13,13 @@
  *   - CLAMP (1): project position onto plane, zero velocity along normal
  *   - BOUNCE (2): mirror the position across the plane and reflect the
  *     frame's actual motion (velocity, forces, curl noise, fingers — all of
- *     it) with damping. The bounce is stored as a velocity relative to the
- *     flow, so a particle the field carried into a wall leaves it at the
- *     reflected speed and, when the plane has a `recover` time, hands itself
- *     back to the flow over that many seconds.
+ *     it) with damping. The damped reflection becomes the particle's
+ *     velocity and its bounce weight (a float in the particle's init slot,
+ *     see compute-modifiers.ts) goes to 1; from then on the kernel moves it
+ *     by vel + (1 − bounce) × flow, both fading with the plane's `recover`,
+ *     so a particle the field carried into a wall leaves it at the damped
+ *     speed and is handed back to the flow over that many seconds — never
+ *     faster than the reflection or the flow.
  *
  * The planes are applied at the end of the frame, after every modifier that
  * moves a particle, so what they see is where the particle really ended up.
@@ -145,12 +148,19 @@ export function createCollisionPlaneTSL(
     ({
       vel,
       delta,
+      bounce,
     }: {
       vel: ShaderNodeObject<Node>;
       delta: ShaderNodeObject<Node>;
+      bounce: ShaderNodeObject<Node>;
     }) => {
+      // The bounce velocity and its weight fade together, so a bounced
+      // particle's motion is vel + (1 − bounce) × flow: a blend from the
+      // reflection back to the field, never faster than either.
       If(uBounceRecover.greaterThan(0.0), () => {
-        vel.assign(vel.mul(exp(delta.negate().div(uBounceRecover))));
+        const keep = exp(delta.negate().div(uBounceRecover));
+        vel.assign(vel.mul(keep));
+        bounce.assign(bounce.mul(keep));
       });
     },
     'void'
@@ -163,6 +173,9 @@ export function createCollisionPlaneTSL(
    * @param vel - Current particle velocity (vec3, modified in place)
    * @param effVel - The frame's actual motion as a velocity: (pos − pos at
    *   frame start) / dt, which includes what the modifiers did
+   * @param bounce - The particle's bounce weight (float, modified in place):
+   *   1 the frame it bounces, decaying with `recover`; the kernel takes the
+   *   flow only as far as it has faded
    * @param oiaVec - orbitalIsActive vec4 (w = isActive, modified for KILL)
    * @param sColor - Color storage node (modified for KILL)
    * @param ps - particleState vec4 (x = lifetime, modified for lifetime loss)
@@ -175,6 +188,7 @@ export function createCollisionPlaneTSL(
       pos,
       vel,
       effVel,
+      bounce,
       oiaVec,
       sColorNode,
       ps,
@@ -185,6 +199,7 @@ export function createCollisionPlaneTSL(
       pos: ShaderNodeObject<Node>;
       vel: ShaderNodeObject<Node>;
       effVel: ShaderNodeObject<Node>;
+      bounce: ShaderNodeObject<Node>;
       oiaVec: ShaderNodeObject<Node>;
       sColorNode: ShaderNodeObject<Node>;
       ps: ShaderNodeObject<Node>;
@@ -252,16 +267,21 @@ export function createCollisionPlaneTSL(
 
               // Reflect the frame's actual motion, not just `vel`: in a piece
               // driven by curl noise `vel` is zero and the field did all the
-              // moving. The stored velocity is then the bounce *relative to
-              // the flow* — next frame the field adds its push again, and
-              // flow + stored = the reflected motion. A pure-velocity
-              // particle has no flow part and gets the classic reflection.
+              // moving. The reflection becomes the particle's velocity and
+              // the bounce weight goes to 1: from here the kernel moves it by
+              // vel + (1 − bounce) × flow, both fading with `recover`, so the
+              // particle leaves at the damped speed and is handed back to the
+              // field — never faster than either. (An earlier version stored
+              // the reflection *relative to the flow at the wall* and let the
+              // field add its push again; where the field differed a step
+              // away, the stale part showed as a burst of speed off the wall.)
+              // A pure-velocity particle has no flow and gets the classic
+              // reflection.
               const eDotN = dot(effVel, planeNormal);
-              const reflected = effVel
-                .sub(planeNormal.mul(eDotN.mul(2.0)))
-                .mul(dampen);
-              const flow = effVel.sub(vel);
-              vel.assign(reflected.sub(flow));
+              vel.assign(
+                effVel.sub(planeNormal.mul(eDotN.mul(2.0))).mul(dampen)
+              );
+              bounce.assign(1.0);
 
               // Apply lifetime loss
               If(lifetimeLoss.greaterThan(0.0), () => {
@@ -279,9 +299,9 @@ export function createCollisionPlaneTSL(
     countUniform: uCollisionPlaneCount,
     /** Uniform: the longest bounce `recover` time among the planes, seconds (0 = none). */
     recoverUniform: uBounceRecover,
-    /** TSL function to call in the compute kernel: apply({ pos, vel, effVel, ... }) */
+    /** TSL function to call in the compute kernel: apply({ pos, vel, effVel, bounce, ... }) */
     apply: applyCollisionPlanesTSL,
-    /** TSL function to call once per frame after the velocity step: recover({ vel, delta }) */
+    /** TSL function to call once per frame after the velocity step: recover({ vel, delta, bounce }) */
     recover: applyBounceRecovery,
   };
 }

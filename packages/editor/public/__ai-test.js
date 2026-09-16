@@ -1948,8 +1948,11 @@
         if (wallDist(x, z) < 0.4) {
           nearWall++;
           const n = outwardNormal(x, z);
-          // A bounce leaves the particle with a stored velocity away from the wall.
-          if (b.vel[i * 4] * n[0] + b.vel[i * 4 + 2] * n[2] > 0.1) leaving++;
+          // A bounce leaves the particle with the damped reflection as its
+          // velocity, away from the wall; it fades with `recover`, and the
+          // field's push back toward the wall makes the next bounces small,
+          // so the sign is the mark, not the size.
+          if (b.vel[i * 4] * n[0] + b.vel[i * 4 + 2] * n[2] > 1e-4) leaving++;
           const dx = b.pos[i * 4] - a.pos[i * 4], dz = b.pos[i * 4 + 2] - a.pos[i * 4 + 2];
           nearSpeedSum += Math.hypot(dx, dz) / 0.15;
         }
@@ -1989,20 +1992,35 @@
     live.renderer.mesh.velocityStretch = 0.15;
     window.editor.reset();
     await wait(3500);
-    {
+    // The speeds the stretch reads, over the live particles: the fastest and
+    // the fastest thousandth.
+    const speeds = async () => {
       const g = particles().geometry;
       const st = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceParticleState));
       const col = new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceColor));
-      let alive = 0, fast = 0, maxSpeed = 0;
+      const all = [];
       for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
         if (col[i * 4 + 3] <= 0.01) continue;
-        alive++;
-        const speed = st[i * 4 + 3];
-        if (speed > maxSpeed) maxSpeed = speed;
-        if (speed > 20) fast++;
+        all.push(st[i * 4 + 3]);
       }
-      check('a bounce\'s mirror jump is not read as speed by the stretch (needs frames)', alive > 1000 && fast === 0, `${fast} of ${alive} faster than 20 u/s, max ${maxSpeed.toFixed(1)}`);
-    }
+      all.sort((a, b) => a - b);
+      return { alive: all.length, fast: all.filter((v) => v > 20).length, max: all[all.length - 1] ?? 0, p999: all[Math.floor(all.length * 0.999)] ?? 0 };
+    };
+    const withWalls = await speeds();
+    check('a bounce\'s mirror jump is not read as speed by the stretch (needs frames)', withWalls.alive > 1000 && withWalls.fast === 0, `${withWalls.fast} of ${withWalls.alive} faster than 20 u/s, max ${withWalls.max.toFixed(1)}`);
+
+    // A bounce leaves at the damped speed and is handed back to the field:
+    // the particle's motion is vel + (1 − bounce) × flow with both fading, so
+    // it is never faster than the reflection or the flow. Before this the
+    // reflection was stored relative to the flow at the wall, and where the
+    // field differed a step away the stale part showed as a burst of speed
+    // off the wall — up to twice the flow. Same piece, walls off, is the
+    // flow's own speed to compare against.
+    live.collisionPlanes = [];
+    window.editor.reset();
+    await wait(3500);
+    const noWalls = await speeds();
+    check('a bounce never speeds a particle up (needs frames)', withWalls.alive > 1000 && noWalls.alive > 1000 && withWalls.p999 <= noWalls.p999 * 1.15 && withWalls.max <= noWalls.max * 1.25, `with walls max ${withWalls.max.toFixed(2)} / p99.9 ${withWalls.p999.toFixed(2)}, without ${noWalls.max.toFixed(2)} / ${noWalls.p999.toFixed(2)}`);
     live.renderer.mesh.velocityStretch = 0;
 
     // The recover time is part of the piece.

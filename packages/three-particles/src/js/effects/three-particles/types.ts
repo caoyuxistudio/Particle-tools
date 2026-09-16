@@ -1276,9 +1276,11 @@ export type CollisionPlaneConfig = {
   lifetimeLoss?: number;
   /**
    * BOUNCE only: how many seconds a bounced particle takes to hand itself
-   * back to the flow. A bounce is stored as velocity relative to what the
-   * field (curl noise, fingers, forces) is doing; this is the time constant
-   * it decays with. 0 keeps the bounce velocity for good.
+   * back to the flow. The damped reflection becomes the particle's velocity
+   * and, while it fades with this time constant, the field (curl noise,
+   * fingers, forces) moves it only as far as the bounce has faded — so it
+   * leaves the wall at the damped speed and is never faster than the
+   * reflection or the flow. 0 keeps the bounce velocity for good.
    *
    * GPU (WebGPU compute) backend only.
    * @default 0

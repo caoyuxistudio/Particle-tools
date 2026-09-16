@@ -76,7 +76,9 @@ import type { BakedCurveMap } from './curve-bake.js';
  *   4:   velocity.x
  *   5:   velocity.y
  *   6:   velocity.z
- *   7:   (padding)
+ *   7:   bounce weight — GPU-owned: 1 the frame a particle bounces off a
+ *        collision plane, fading with the plane's `recover`; 0 from the CPU
+ *        at emission (see compute-collision-planes.ts)
  *   8:   color.R
  *   9:   color.G
  *   10:  color.B
@@ -905,11 +907,16 @@ export function createModifierComputeUpdate(
 
         pos.assign(pos.add(vel.mul(uDelta)));
 
-        // A bounce is stored as velocity relative to the flow; with a recover
-        // time it decays back into the field from here on.
+        // A bounce: `vel` holds the reflected velocity and the slot's weight
+        // is 1; both fade with the plane's `recover`, and the flow below is
+        // taken only as far as the weight has faded.
+        const bounce = collisionPlaneNodes
+          ? sCurveData.element(initBase.add(7)).toVar()
+          : null;
         if (collisionPlaneNodes) {
-          collisionPlaneNodes.recover({ vel, delta: uDelta });
+          collisionPlaneNodes.recover({ vel, delta: uDelta, bounce: bounce! });
         }
+        const posAfterVel = collisionPlaneNodes ? vec3(pos).toVar() : null;
 
         // The finger trail — moves the position directly, like curl noise.
         // A finger's push is a shove, not travel: it moves the particle but
@@ -1223,6 +1230,18 @@ export function createModifierComputeUpdate(
           });
         }
 
+        // What the field, the fingers and the orbit did this frame, against
+        // what the particle's own velocity did. A particle carrying a bounce
+        // takes it only as far as the bounce has faded: its motion is then
+        // vel + (1 − bounce) × flow, a blend from the reflection back to the
+        // field over `recover`, never faster than either.
+        if (collisionPlaneNodes) {
+          const flowShare = float(1).sub(bounce!);
+          const flowDisp = pos.sub(posAfterVel!);
+          pos.assign(posAfterVel!.add(flowDisp.mul(flowShare)));
+          if (wakeShove) wakeShove.assign(wakeShove.mul(flowShare));
+        }
+
         // Collision planes — last, after every modifier that moves a particle,
         // so they see where it really ended up and how it really moved. Where
         // the particle got to under its own motion is kept: a bounce mirrors
@@ -1241,6 +1260,7 @@ export function createModifierComputeUpdate(
             pos,
             vel,
             effVel,
+            bounce: bounce!,
             oiaVec,
             sColorNode: sColor,
             ps,
@@ -1251,6 +1271,10 @@ export function createModifierComputeUpdate(
         }
 
         // === WRITE BACK ===
+
+        if (collisionPlaneNodes) {
+          sCurveData.element(initBase.add(7)).assign(bounce!);
+        }
 
         if (flags.trackTravelDirection) {
           // The frame's own motion: without the collision mirror and without
