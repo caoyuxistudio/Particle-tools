@@ -19,7 +19,11 @@
  *     by vel + (1 − bounce) × flow, both fading with the plane's `recover`,
  *     so a particle the field carried into a wall leaves it at the damped
  *     speed and is handed back to the flow over that many seconds — never
- *     faster than the reflection or the flow.
+ *     faster than the reflection or the flow. A finger's shove is neither
+ *     mirrored nor reflected: the part of the way it pushed the particle
+ *     through is pinned at the wall, and only the particle's own motion
+ *     bounces — a finger sweeping particles into a wall holds them against
+ *     it instead of launching them off it.
  *
  * The planes are applied at the end of the frame, after every modifier that
  * moves a particle, so what they see is where the particle really ended up.
@@ -27,18 +31,19 @@
  * @module
  */
 import {
-  Fn,
-  float,
-  vec3,
-  vec4,
-  uniform,
-  If,
-  Loop,
+  clamp,
   Continue,
   dot,
   exp,
-  type ShaderNodeObject,
+  float,
+  Fn,
+  If,
+  Loop,
   type Node,
+  type ShaderNodeObject,
+  uniform,
+  vec3,
+  vec4,
 } from 'three/tsl';
 
 import { CollisionPlaneMode } from '../three-particles-enums.js';
@@ -171,8 +176,11 @@ export function createCollisionPlaneTSL(
    *
    * @param pos - Current particle position (vec3, modified in place)
    * @param vel - Current particle velocity (vec3, modified in place)
-   * @param effVel - The frame's actual motion as a velocity: (pos − pos at
-   *   frame start) / dt, which includes what the modifiers did
+   * @param effVel - The frame's own motion as a velocity: (pos − pos at
+   *   frame start − shove) / dt, which includes what the field did but not a
+   *   finger's push
+   * @param shove - What a finger's push moved the particle this frame (vec3,
+   *   world units): pinned at the wall rather than mirrored or reflected
    * @param bounce - The particle's bounce weight (float, modified in place):
    *   1 the frame it bounces, decaying with `recover`; the kernel takes the
    *   flow only as far as it has faded
@@ -188,6 +196,7 @@ export function createCollisionPlaneTSL(
       pos,
       vel,
       effVel,
+      shove,
       bounce,
       oiaVec,
       sColorNode,
@@ -199,6 +208,7 @@ export function createCollisionPlaneTSL(
       pos: ShaderNodeObject<Node>;
       vel: ShaderNodeObject<Node>;
       effVel: ShaderNodeObject<Node>;
+      shove: ShaderNodeObject<Node>;
       bounce: ShaderNodeObject<Node>;
       oiaVec: ShaderNodeObject<Node>;
       sColorNode: ShaderNodeObject<Node>;
@@ -262,8 +272,19 @@ export function createCollisionPlaneTSL(
             // BOUNCE mode (2)
             .Else(() => {
               // Mirror the position across the plane: the particle went
-              // |signedDist| through, so it comes out that far in front.
-              pos.assign(pos.sub(planeNormal.mul(signedDist.mul(2.0))));
+              // |signedDist| through, so it comes out that far in front —
+              // except for the part of the way a finger pushed it, which is
+              // pinned at the wall: a finger sweeping particles into a wall
+              // holds them against it, it does not bounce them off it.
+              const shoveIn = clamp(
+                dot(shove, planeNormal).negate(),
+                float(0.0),
+                signedDist.negate()
+              );
+              const mirror = signedDist.negate().sub(shoveIn);
+              pos.assign(
+                pos.sub(planeNormal.mul(signedDist)).add(planeNormal.mul(mirror))
+              );
 
               // Reflect the frame's actual motion, not just `vel`: in a piece
               // driven by curl noise `vel` is zero and the field did all the
@@ -299,7 +320,7 @@ export function createCollisionPlaneTSL(
     countUniform: uCollisionPlaneCount,
     /** Uniform: the longest bounce `recover` time among the planes, seconds (0 = none). */
     recoverUniform: uBounceRecover,
-    /** TSL function to call in the compute kernel: apply({ pos, vel, effVel, bounce, ... }) */
+    /** TSL function to call in the compute kernel: apply({ pos, vel, effVel, shove, bounce, ... }) */
     apply: applyCollisionPlanesTSL,
     /** TSL function to call once per frame after the velocity step: recover({ vel, delta, bounce }) */
     recover: applyBounceRecovery,

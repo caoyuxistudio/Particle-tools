@@ -926,7 +926,9 @@ export function createModifierComputeUpdate(
         // out of the heading and speed below; the collision planes still see
         // it, since a finger can push a particle into a wall.
         const wakeShove =
-          touchWakeNodes && flags.trackTravelDirection ? vec3(0).toVar() : null;
+          touchWakeNodes && (flags.trackTravelDirection || flags.collisionPlanes)
+            ? vec3(0).toVar()
+            : null;
         if (touchWakeNodes) {
           const posBeforeWake = wakeShove ? vec3(pos).toVar() : null;
           touchWakeNodes.apply({ pos, delta: uDelta });
@@ -1230,16 +1232,18 @@ export function createModifierComputeUpdate(
           });
         }
 
-        // What the field, the fingers and the orbit did this frame, against
-        // what the particle's own velocity did. A particle carrying a bounce
-        // takes it only as far as the bounce has faded: its motion is then
-        // vel + (1 − bounce) × flow, a blend from the reflection back to the
-        // field over `recover`, never faster than either.
+        // What the field and the orbit did this frame, against what the
+        // particle's own velocity did. A particle carrying a bounce takes it
+        // only as far as the bounce has faded: its motion is then vel + (1 −
+        // bounce) × flow, a blend from the reflection back to the field over
+        // `recover`, never faster than either. A finger's shove is not part
+        // of that blend — it stays whole, so a finger keeps its hold on a
+        // particle it has just bounced.
         if (collisionPlaneNodes) {
           const flowShare = float(1).sub(bounce!);
-          const flowDisp = pos.sub(posAfterVel!);
-          pos.assign(posAfterVel!.add(flowDisp.mul(flowShare)));
-          if (wakeShove) wakeShove.assign(wakeShove.mul(flowShare));
+          const shove = wakeShove ?? vec3(0);
+          const flowDisp = pos.sub(posAfterVel!).sub(shove);
+          pos.assign(posAfterVel!.add(flowDisp.mul(flowShare)).add(shove));
         }
 
         // Collision planes — last, after every modifier that moves a particle,
@@ -1252,14 +1256,21 @@ export function createModifierComputeUpdate(
           ? vec3(pos).toVar()
           : null;
         if (collisionPlaneNodes) {
+          // The frame's own motion, a finger's shove taken out: the shove is
+          // what the planes pin, not what they reflect — otherwise a finger
+          // sweeping particles into a wall came off it as their velocity, at
+          // hundreds of units a second, a long streak.
+          const shove = wakeShove ?? vec3(0);
           const effVel = pos
             .sub(posAtFrameStart!)
+            .sub(shove)
             .div(tslMax(uDelta, float(1e-6)))
             .toVar();
           collisionPlaneNodes.apply({
             pos,
             vel,
             effVel,
+            shove,
             bounce: bounce!,
             oiaVec,
             sColorNode: sColor,

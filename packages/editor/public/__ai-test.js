@@ -1786,13 +1786,20 @@
     // was drawn as a long twitching streak. Stretch on, touch on, a hard push
     // fed straight to the system: the particles under it move, and none of
     // them reports the push as speed.
+    // And a wall two units along the push: the finger presses the particles
+    // against it. The wall holds — they stay inside, jittering at most a
+    // frame's shove — and it does not launch them: a bounce reflects the
+    // particle's own motion, with the shove taken out, so the finger cannot
+    // turn into speed by way of a wall either. Before this, half the finger's
+    // speed came off the wall as the particle's velocity, a long streak.
     const touch = window.__touch;
     if (touch && back.touch) {
       back.touch = { ...back.touch, isActive: true, strength: 1 };
+      const centre = touch.screenToWorld(0, 0);
+      back.collisionPlanes = [{ isActive: true, mode: 'BOUNCE', position: { x: centre.x + 2, y: centre.y, z: centre.z }, normal: { x: -1, y: 0, z: 0 }, dampen: 0.5, lifetimeLoss: 0, recover: 1 }];
       window.editor.reset();
       await wait(2500);
       const g = particles().geometry;
-      const centre = touch.screenToWorld(0, 0);
       const readPositions = async () => new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceOffset));
       const readAlpha = async () => new Float32Array(await r.getArrayBufferAsync(g.attributes.instanceColor));
       const before = await readPositions();
@@ -1821,8 +1828,17 @@
         dx += after[i * 4] - before[i * 4];
       }
       const meanDx = pushed ? dx / pushed : 0;
-      check('a finger\'s push moves the particles under it (needs frames)', pushed > 50 && meanDx > 2, `${pushed} particles, mean ${meanDx.toFixed(2)} along the push`);
+      let through = 0, beyond = 0;
+      for (let i = 0; i < g.attributes.instanceOffset.count; i++) {
+        if (aliveAfter[i * 4 + 3] <= 0.01) continue;
+        const over = after[i * 4] - (centre.x + 2);
+        if (over > 1) through++;
+        if (over > beyond) beyond = over;
+      }
+      check('a finger\'s push moves the particles under it (needs frames)', pushed > 50 && meanDx > 1, `${pushed} particles, mean ${meanDx.toFixed(2)} along the push`);
       check('but is not read as speed by the stretch (needs frames)', alive > 1000 && fast === 0, `${fast} of ${alive} faster than 20 u/s, max ${maxSpeed.toFixed(1)} against a ${push} u/s push`);
+      check('the wall holds against the finger (needs frames)', through === 0, `${through} more than a unit past it, furthest ${beyond.toFixed(2)}`);
+      check('and does not launch them off it (needs frames)', maxSpeed < 5, `max ${maxSpeed.toFixed(1)} u/s off a ${push} u/s push into it`);
     }
     check('no runtime errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 

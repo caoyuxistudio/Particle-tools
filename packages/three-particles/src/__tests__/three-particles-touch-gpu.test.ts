@@ -29,6 +29,22 @@ describe('the finger trail on the GPU', () => {
     expect(pipeline.touchWakeInfo!.strengthUniform).toBeDefined();
   });
 
+  it('builds with the trail, heading and stretch tracking and collision planes', () => {
+    // The planes pin a finger's shove and reflect only the particle's own
+    // motion; that path exists only with the trail and the planes together.
+    const cfg = meshConfig({ alignToVelocity: true, velocityStretch: 0.1 });
+    const pipeline = createComputePipeline(50, true, cfg, 1, 0, 4, true);
+    expect(pipeline.touchWakeInfo).not.toBeNull();
+    expect(pipeline.collisionPlaneInfo).not.toBeNull();
+  });
+
+  it('builds with collision planes and no trail', () => {
+    const cfg = meshConfig({ alignToVelocity: true, velocityStretch: 0.1 });
+    const pipeline = createComputePipeline(50, true, cfg, 1, 0, 4, false);
+    expect(pipeline.touchWakeInfo).toBeNull();
+    expect(pipeline.collisionPlaneInfo).not.toBeNull();
+  });
+
   it('builds with the trail and no heading to correct', () => {
     const cfg = meshConfig({ alignToVelocity: false, velocityStretch: 0 });
     const pipeline = createComputePipeline(50, true, cfg, 1, 0, 0, true);
