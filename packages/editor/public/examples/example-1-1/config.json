@@ -277,7 +277,9 @@
       },
       "dampen": 0.5,
       "lifetimeLoss": 0,
-      "recover": 1
+      "recover": 1,
+      "touchCap": 8,
+      "maxSpeed": 0
     },
     {
       "isActive": true,
@@ -294,7 +296,9 @@
       },
       "dampen": 0.5,
       "lifetimeLoss": 0,
-      "recover": 1
+      "recover": 1,
+      "touchCap": 8,
+      "maxSpeed": 0
     },
     {
       "isActive": true,
@@ -311,7 +315,9 @@
       },
       "dampen": 0.5,
       "lifetimeLoss": 0,
-      "recover": 1
+      "recover": 1,
+      "touchCap": 8,
+      "maxSpeed": 0
     },
     {
       "isActive": true,
@@ -328,7 +334,9 @@
       },
       "dampen": 0.5,
       "lifetimeLoss": 0,
-      "recover": 1
+      "recover": 1,
+      "touchCap": 8,
+      "maxSpeed": 0
     }
   ],
   "touch": {

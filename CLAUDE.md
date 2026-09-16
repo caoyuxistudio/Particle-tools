@@ -179,7 +179,7 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 
 - 测试场景是内置 example **WIP-Test**（`packages/editor/public/examples/wip-test/`），存在磁盘上，清空 localStorage 也在。它引用的是那张山水画；73MB 的那个测试视频进不了仓库
 - **WIP-Test-2** 是作品本身：画框 + 一盏投影的平行光（带 `shadow` 块）+ 俯视输出相机（iPhone 17 Pro Max 画幅、SSR 和 SSAO 都开）+ 视频 color source。它的 `preview.webp` 还是换灯前的画面，刷新确认过不是 bug，维持现状。参数是 2026-09-11 在手机上调好后用 COPY 拷出的 JSON 直接写进去的（以后也这么更新：贴 JSON，不用截图），测试用的红球已经删掉。**编辑器一启动就直接加载它**（`DEFAULT_EXAMPLE`，在 `src/examples-config.js`；boot 一开始就 fetch，场景就绪后走和点 Examples 一样的 `window.editor.load`；fetch 失败就留在默认发射器，HUD 的 `boot:` 一行会写 `default … failed`）。代价是**刷新即回到示例**：面板里没导出的改动不会保留——粒子参数本来就不跨刷新，场景以前会留，现在也不留了；要保留就 Save 或者抄回 example。视频是 `public/assets/videos/wechat-20240829.mp4`（1000²、53s、1.6Mbps、10.6MB，随站点部署），config 用 **URL** 引用它（`_editorData.embeddedVideos`），所以任何能打开站点的设备都能播，手机上也是从 Examples 一点就开。这是「资产走 URL、config 走仓库」这条路的第一个样品
-- **example-1-1 是正式的第一个 example**（2026-09-16，`public/examples/example-1-1/`）：作品当时最新的参数——画框 0.17 / 0.17、投影的平行光、iPhone 17 Pro Max 画幅 + SSR + SSAO、四面 BOUNCE 墙、touch 开、noise drift (0, 0.1, 0)、色源 scale 0.35 × 0.75 + offset + tweak——色源是内置贴图 **DEFAULT_TEXTURE**（`public/assets/textures/default-texture.webp`，816 × 1456 的那幅画，随站点部署；`texture-config.ts` 注册、`texture-metadata.ts` 给日期、`texture-selector.ts` 列进 builtInTextures，和 SHANSHUI 一样不标 `isParticleTexture`），config 里不再内嵌图片（9 KB），到哪台设备都是同一张图。贴进来的 JSON 里 `showColorSourceDebug` 是 true，照原样存了（只在编辑器里可见，输出和播放页没有）。`preview.webp` 是演示模式的截图（独立 Chrome 里 CDP `Page.captureScreenshot` 截画布，缩到 360 × 782）。**新建系统的默认色源也换成 DEFAULT_TEXTURE**（原来是 SHANSHUI，那张贴图还在）。编辑器启动仍然加载 WIP-Test-2。
+- **example-1-1 是正式的第一个 example**（2026-09-16，`public/examples/example-1-1/`）：作品当时最新的参数——画框 0.17 / 0.17、投影的平行光、iPhone 17 Pro Max 画幅 + SSR + SSAO、四面 BOUNCE 墙、touch 开、noise drift (0, 0.1, 0)、色源 scale 0.35 × 0.75 + offset + tweak——色源是内置贴图 **DEFAULT_TEXTURE**（`public/assets/textures/default-texture.webp`，816 × 1456 的那幅画，随站点部署；`texture-config.ts` 注册、`texture-metadata.ts` 给日期、`texture-selector.ts` 列进 builtInTextures，和 SHANSHUI 一样不标 `isParticleTexture`），config 里不再内嵌图片（9 KB），到哪台设备都是同一张图。贴进来的 JSON 里 `showColorSourceDebug` 是 true，照原样存了（只在编辑器里可见，输出和播放页没有）。**2026-09-16 晚存下的参数**（就是仓库里这份 config，右侧显示端 18:53 的快照和它一致）：200000 粒、50000 /秒；四面 BOUNCE 墙 x = −2（法线 +x）/ 2.01（−x）、z = −4.3（+z）/ 4.28（−z），每面 dampen 0.5、lifetimeLoss 0、recover 1、touchCap 8、maxSpeed 0（后两个是新字段，按默认值明确写进了 config）；touch 只开了 `isActive`（其余按库默认：radius 0.12、strength 1、wake 0.4、swirl 0.3、maxSpeed 8）；mesh velocityStretch 0.085、alignToVelocity 关、roughness 0.65、metalness 0；noise strength 1.51、drift (0, 0.1, 0)、simplex；色源 scale 0.35 × 0.75、offset y 0.64 / z −0.17。**弹墙的手感作者还不满意**（见「还欠的账」），参数先这样，之后在编辑器里逐面调、COPY 贴回来更新。`preview.webp` 是演示模式的截图（独立 Chrome 里 CDP `Page.captureScreenshot` 截画布，缩到 360 × 782）。**新建系统的默认色源也换成 DEFAULT_TEXTURE**（原来是 SHANSHUI，那张贴图还在）。编辑器启动仍然加载 WIP-Test-2。
 - **Examples 面板只列 example-1-1、WIP-Test-2、WIP-Test**（2026-09-16）。其余（上游的游戏特效和早期的 shanshui / temp-1 等测试）挪进了 `src/examples-config.js` 的 `hiddenExamples`：config 字符串和 `public/examples/` 下的文件夹都还在，搬回 `particleExamples` 就恢复；V2 不会用到它们，哪天整个删掉也行
 - **做一个带内置图片的 example 的步骤**：图片转 webp 放进 `public/assets/textures/`；`texture-config.ts` 加一个 `TextureId` 和 `{ id, url }`（照片不标 `isParticleTexture`）、`texture-metadata.ts` 给日期、`texture-selector.ts` 的 builtInTextures 列上；config 的 `_editorData.colorInstanceTextureId` 写那个 id，删掉 `embeddedTextures`，存成 `public/examples/<slug>/config.json`，配一张 `preview.webp`，`src/examples-config.js` 里加名字
 - **做一个带视频的 example 的步骤**：把视频放进 `public/assets/videos/`；Textures 面板 **Add Video by URL** 填 `./assets/videos/<文件>`（相对地址，本地和 Pages 都能解析），Use；调好后 Copy，把 JSON 存成 `public/examples/<slug>/config.json`（slug 是名字小写、非字母数字换成连字符），配一张 `preview.webp`，在 `src/examples-config.js` 里加名字。本地上传（Add Video）的视频只在本机浏览器里，带不进 config
@@ -196,6 +196,8 @@ Player 已经是放映端了（§3「Player — 独立放映端」）：贴 JSON
 **1. App 壳上真机。** 壳已经在 `apps/ios/ParticlePlayer/`（§3「iOS App 壳」），iOS 26 模拟器上构建通过；差的是 Xcode 27 beta 装到 iOS 27 的手机上跑一遍，再决定要不要把 player 文件打进 App 本地做离线。
 
 **2. 手机上验手感。** 手指尾迹（touch）和陀螺仪视差都在，参数要在 iPhone 上调：Perf / Gyro 面板 → Copy report → 贴回来；作品参数照旧 COPY → 贴 JSON → 写进 example。
+
+**3. V2，第二迭代（2026-09-16 起）。** V1 引擎线到 f51bf34 为止推上线了，下一个对话从这里开始：把现有的工作移植到新的 UI 界面，按 `V2-ARCHITECTURE.md` 的合同（Document / Schema / Tokens）和里程碑走。V1 这条线只留 bug 修和作品参数更新。
 
 这也是为什么前面那些设计要那样做：config 自包含、场景存进 config、后期归相机、layer 分离——都是为了让"复制一段 JSON 过去就能完整重现"这件事成立。
 
@@ -360,7 +362,7 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 - BOUNCE 撞墙不再变快：反射速度直接存进 `vel`、init slot 的第 7 个 float 当弹跳权重，运动 = `vel + (1 − bounce) × 流场`，两者同步按 `recover` 衰减；旧的"相对流场"存法在流场变化处会多出一股加速。`collisionReport` 加 1 条（有墙 / 无墙的最快速度对照）、贴墙外向速度那条按新语义改成只看符号，基线 359/359。
 - 手指的推不再进朝向和 velocity stretch：kernel 量出 wake 那一段位移、从这一帧的位移里减掉。手机上按住就抽搐的长条由此消失。jest 加 3 条，`stretchReport` 加 2 条，基线 358/358。
 - 手指把粒子扫到墙上不再弹飞：墙按 `touch.maxSpeed` 封顶回应手指的推（那么多镜像 + 反射，多的放回墙面），弹跳权重不压手指。改前一根 40 u/s 的手指撞墙反射出 154 u/s、之后一秒里慢慢衰减；先试了钉在墙面（作者不要粘住），现在按上限弹回，最快 4.4，半秒退回 1.1 个单位。jest 加 2 条，`stretchReport` 加 3 条，基线 362/362。example-1-1 的左右墙收到 ±2。
-- 弹墙的参数逐面可调：`collisionPlanes[].touchCap`（这面墙最多按多快的手指回应）和 `maxSpeed`（离墙速度上限）两个新字段，`recover` 改成真的按面走（权重和 recover 打包进 init slot 第 7 个 float，全局 uniform 删了，没撞过墙的粒子不再衰减）；面板每面墙五个滑块。`stretchReport` 加 4 条，jest 加 1 条，基线 366/366。
+- 弹墙的参数逐面可调：`collisionPlanes[].touchCap`（这面墙最多按多快的手指回应）和 `maxSpeed`（离墙速度上限）两个新字段，`recover` 改成真的按面走（权重和 recover 打包进 init slot 第 7 个 float，全局 uniform 删了，没撞过墙的粒子不再衰减）；面板每面墙五个滑块。`stretchReport` 加 4 条，jest 加 1 条，基线 366/366。example-1-1 的四面墙把 touchCap 8 / maxSpeed 0 明确写进了 config。手感还不满意，记进「还欠的账」；这一天从 example-1-1 起的七个提交一起推上线。
 - CPU 路径的 curl noise：`curl-noise.ts` 逐字移植 kernel 的 simplex 和 curl，`applyModifiers` 在 `noise.curl` 时走它；TRAIL 和 WebGL 回退从此和 GPU 同一个流场。jest 加 8 条。
 - TRAIL 的"线往中间连"：ribbon 收尾那个槽被省略清理跳过、留着原点，每颗新生粒子都拉一条到中心；改成每帧压在头上，jest 加两条。
 - `renderer.mesh.velocityStretch`：MESH 粒子沿真实位移方向拉伸的拖影，GPU 路径，零额外开销；面板一个滑块；`stretchReport` 9 条，基线 274/274。库里顺手修了一条过期的 jest 期望（`createComputePipeline` 自 touch wake 起有第七个参数）。
@@ -376,6 +378,7 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 
 ## 6. 还欠的账
 
+- **弹墙的手感还没调到作者满意**（2026-09-16）。BOUNCE 的模型改了三轮（反射速度直接进 `vel` + 弹跳权重、手指的推封顶、逐面的 dampen / maxSpeed / touchCap / recover），数字上都对（撞墙不再变快、手指扫到墙上不弹飞也不粘住），但作者试下来感觉还不是想要的那种，先把公式的参数全部暴露到面板让他自己逐面调，作为后续待办保留。可能的方向：撞墙那一下的响应曲线（现在是硬反射再乘系数）、弹回后的减速形状（现在是指数衰减回流场）、手指压墙时的手感（现在是按 touchCap 封顶）。改的时候 `stretchReport` 手指那段和 `collisionReport` 是量尺。
 - 新增的功能代码基本没有单元测试，提交时绕过了覆盖率门禁（浏览器 harness 补了一部分，但不是一回事）
 - `world.ts` 有 `window.__world`、`player.ts` 有 `window.__player`、`three-particles-editor.ts` 有 `window.__playerLink`（挂起规则的焦点输入，harness 没法真的让页面失焦）、`window.__videoTextures`（绕过文件对话框）和 `window.__perfHud`，加上 `window.__gyroHud`、`window.__touch`，七个调试出口，harness 依赖它们，正式发布前要处理
 - GPU 版 TRAIL 没有 twistPrevention 和 ribbonId（连成一条）；环的大小受 128 MiB binding 限制，200k 粒子最多 41 个样本。没有 WebGPU 时回退到 CPU 版
