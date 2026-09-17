@@ -6,7 +6,8 @@
 // place — so it is not made deeply reactive. Instead every change bumps `rev`,
 // and anything that reads a value through `get()` re-reads when `rev` moves.
 
-import { doc, applyChange, load as sessionLoad, serialize as sessionSerialize } from '../engine/session';
+import { doc, applyChange, load as sessionLoad, serialize as sessionSerialize, syncFurniture } from '../engine/session';
+import { FURNITURE_PATHS } from '../engine/furniture';
 import { watchDocument, type DocumentChange } from '@engine/document-events';
 import type { ChangeLevel } from '@engine/schema';
 
@@ -35,7 +36,14 @@ const setAt = (path: string, value: unknown): void => {
 export const patch = (path: string, value: unknown): void => {
   setAt(path, value);
   const level = applyChange(path);
+  if (FURNITURE_PATHS.test(path)) syncFurniture();
   lastChange = { path, level };
+  rev += 1;
+};
+
+/** A gizmo moved something: the document is already written, only the revision moves. */
+export const engineChanged = (path: string): void => {
+  lastChange = { path, level: 'live' };
   rev += 1;
 };
 

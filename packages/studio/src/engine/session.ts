@@ -29,6 +29,7 @@ import { buildParticleSystem } from '@engine/particle-factory';
 import { applySimulation, resetSimulation } from '@engine/simulation';
 import { setNotifier, type Notifier } from '@engine/notify';
 import { schema, fieldAt, documentDefaults, type ChangeLevel, type Doc } from '@engine/schema';
+import { installFurniture, syncFurniture, syncFurnitureFrame } from './furniture';
 
 export type CycleData = { pauseStartTime: number; totalPauseTime: number; now: number; delta: number; elapsed: number };
 
@@ -64,6 +65,8 @@ export const rebuild = (): void => {
   particleSystem = buildParticleSystem(doc, { webGPUAvailable, depthTexture: getDepthTexture() });
   container.add(particleSystem.instance);
   rebuilds += 1;
+  // The shape helper lives inside the instance and went with the old one.
+  syncFurniture();
 };
 let rebuilds = 0;
 export const rebuildCount = (): number => rebuilds;
@@ -121,6 +124,7 @@ export const applyChange = (path: string): ChangeLevel | 'none' => {
 export const load = (config: Doc): void => {
   resetSimulation(container);
   loadParticleSystem({ config, particleSystemConfig: doc, recreateParticleSystem: () => rebuild() });
+  syncFurniture();
 };
 
 export const serialize = (): string => JSON.stringify(serializeConfig(doc));
@@ -149,6 +153,7 @@ const animate = (): void => {
     updateParticleSystems(cycleData);
   }
   tintFrameEdges(particleSystem?.getMeanColor?.(meanColor) ? meanColor : null);
+  syncFurnitureFrame();
   updateWorld(!!doc.renderer?.softParticles?.enabled, container, particleSystem?.computeNode ?? null);
   if (framesDrawn === 1) mark('first-frame');
   requestAnimationFrame(animate);
@@ -164,6 +169,8 @@ export type BootOptions = {
   notifier: Notifier;
   /** The piece to open, already fetched. */
   piece: Doc | null;
+  /** A gizmo wrote the document (path); the store bumps its revision. */
+  onEngineChange?: (path: string) => void;
 };
 
 let booted = false;
@@ -184,6 +191,7 @@ export const boot = async (options: BootOptions): Promise<void> => {
   mark('world');
   container = new THREE.Object3D();
   getScene().add(container);
+  installFurniture({ doc, container: () => container, particleSystem: () => particleSystem, changed: (path) => { applyChange(path); options.onEngineChange?.(path); } });
 
   await new Promise<void>((resolve) => initAssets(resolve));
   await new Promise<void>((resolve) => loadCustomAssets({ textures: [], onComplete: resolve }));
@@ -211,7 +219,7 @@ export const boot = async (options: BootOptions): Promise<void> => {
   animate();
 };
 
-export { schema, getOutputCamera };
+export { schema, getOutputCamera, syncFurniture };
 
 // TEMP DEBUG — the studio's seam for its harness, like V1's window.editor.
 (window as any).__studio = {

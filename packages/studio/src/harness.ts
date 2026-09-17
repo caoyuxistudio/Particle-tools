@@ -109,6 +109,24 @@ export const report = async (): Promise<string> => {
   await settle(20);
   check('an engine change bumps the revision', revision() > revBefore, `${revBefore} -> ${revision()}`);
 
+  // Furniture follows the document: the walls' helpers appear with the switch, on the furniture layer.
+  const furniture = () => { const L = new (window as any).__world.THREE.Layers(); L.set(1); return (window as any).__world.scene.children.filter((o: any) => o.layers.test(L) && !o.isTransformControlsRoot); };
+  const planesBefore = get('_editorData.showCollisionPlanes');
+  patch('_editorData.showCollisionPlanes', false);
+  await settle(50);
+  const noneShown = furniture().length;
+  patch('_editorData.showCollisionPlanes', true);
+  await settle(50);
+  const shown = furniture().length;
+  check('show collision planes puts one helper per wall on the furniture layer', shown - noneShown === (doc.collisionPlanes?.length ?? 0) && shown > noneShown, `${noneShown} -> ${shown}`);
+  const axesBefore = get('_editorData.showWorldAxes');
+  patch('_editorData.showWorldAxes', true);
+  await settle(20);
+  check('show world axes adds an AxesHelper', furniture().some((o: any) => o.type === 'AxesHelper'));
+  patch('_editorData.showWorldAxes', !!axesBefore);
+  patch('_editorData.showCollisionPlanes', !!planesBefore);
+  await settle(50);
+
   // Every leaf of the live document has a field (schema coverage, live).
   const uncovered = leafPaths(doc).filter((p) => typeof p.split('.').reduce((o: any, k) => (o == null ? undefined : o[k]), doc) !== 'function').filter((p) => !coversLeaf(p));
   check('the live document is covered by the schema', uncovered.length === 0, uncovered.slice(0, 5).join(', '));

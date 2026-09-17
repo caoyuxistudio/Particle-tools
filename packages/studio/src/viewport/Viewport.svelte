@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { boot, doc } from '../engine/session';
-  import { connectEvents, refresh } from '../store/document.svelte';
+  import { connectEvents, refresh, engineChanged } from '../store/document.svelte';
 
   let cell: HTMLDivElement;
   let stats: HTMLDivElement;
@@ -30,6 +30,7 @@
       },
       notifier: { info: (m) => (note = m), success: (m) => (note = m), error: (m) => (note = m) },
       piece,
+      onEngineChange: engineChanged,
     });
     refresh();
     void doc;

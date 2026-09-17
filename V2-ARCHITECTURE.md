@@ -255,6 +255,8 @@ genie（data-dune.vercel.app）**不是库**，是别人的应用，它的 CSS �
 
 结构照 §3：`engine/session.ts` 是唯一碰引擎的胶水（boot：backend → world → assets → scene → 作品 → compileAsync → 帧循环，照 player.ts 而不是 V1 glue；`applyChange(path)` 按 `fieldAt(path).change` 决定 updateConfig 还是重建，两条路各自 100 ms 节流、live 的首末必到），`store/document.svelte.ts` 是单一真相（文档对象本身是引擎的、loader 就地合并，所以不做深层代理：每次 patch 或引擎事件 `rev += 1`，控件通过 `get(path)` 读、`patch(path, value)` 写），`inspector/` 只读 schema（Column 有 particles / scene 两个 tab），`scene/` 是移植的面板，`ui/tokens.css` + `reset.css` 是全部样式。**画布不在格子里**：引擎照旧把 canvas 铺满窗口、放在 `.studio` 之下，viewport 的格子量自己的矩形注入 `setViewportInsets`——§1.3b 说的"两种布局同一个注入口"，这就是第二种。harness 只进 dev bundle（`main.ts` 里 `import.meta.env.DEV` 才 import `harness.ts`）。
 
+家具（碰撞面 / 力场 / 形状 / 坐标轴 / 色源 debug 平面）在 `engine/furniture.ts`：跟着文档走，store 改到相关路径就 `syncFurniture()`，debug 平面每帧 `syncFurnitureFrame()`；手柄拖动写回文档、按 live 走。这是 V1 里 entries 的副作用，V2 里是文档的投影。
+
 M2 第一刀查出的两个 V1 bug：`serializeConfig` 的碰撞面 reducer 漏了 `touchCap` / `maxSpeed`（COPY 一直在丢，example-1-1 里有是因为手写进去的；studio 的 round-trip 第一次跑就报出来，已在 main 修并合回）；Vite 对 `./player/` 这种目录地址回退成 SPA 的 index，iframe 要写 `./player/index.html`。
 
 **M3 · 对等**
