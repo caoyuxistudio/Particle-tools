@@ -120,6 +120,9 @@
     check('new system starts at 1000 a second', freshRate === 1000, `${freshRate}`);
     check('new system colours from the built-in picture', freshTex === 'DEFAULT_TEXTURE', `${freshTex}`);
     check('scene object count', got.length === want.length, `${got.length}/${want.length}`);
+    // COPY keeps every wall setting the piece carries (touchCap / maxSpeed were dropped until 2026-09-17).
+    const wallsBack = JSON.parse(window.editor.serialize()).collisionPlanes ?? [];
+    check('COPY keeps the walls\' touchCap and maxSpeed', wallsBack.length === cfg.collisionPlanes.length && wallsBack.every((w, i) => w.touchCap === cfg.collisionPlanes[i].touchCap && w.maxSpeed === cfg.collisionPlanes[i].maxSpeed), JSON.stringify(wallsBack[0] ?? null));
     check('scene data identical', diff(want, got).length === 0, diff(want, got).slice(0, 4).join(' | '));
     check('live boxes', l.box === want.filter((o) => o.type === 'BOX').length, `${l.box}`);
     check('live spheres', l.sphere === want.filter((o) => o.type === 'SPHERE').length, `${l.sphere}`);
