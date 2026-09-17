@@ -29,8 +29,11 @@ type ShapeConfig = {
   };
 };
 
-const HELPER_COLOR = 0x00ff00;
-const HELPER_COLOR_INNER = 0x00aa00;
+// Blue-violet, unlike anything else in the viewport (walls are green / red /
+// blue by mode, the colour source is green, the axes are RGB).
+const HELPER_COLOR = 0x8f7bff;
+const HELPER_COLOR_INNER = 0x5b4bd6;
+export const SHAPE_HELPER_NAME = 'shape-helper';
 const SEGMENTS = 64;
 
 let currentShapeHelper: THREE.Object3D | null = null;
@@ -394,10 +397,29 @@ const createRectangleHelper = (config: ShapeConfig['rectangle']): THREE.Object3D
   const rectGeom = new THREE.BufferGeometry().setFromPoints(rectPoints);
   group.add(new THREE.Line(rectGeom, material));
 
+  // Corner brackets, a little inside each corner, and the two diagonals faint:
+  // the marks of a frame something is emitted from.
+  const tick = Math.min(halfX, halfY) * 0.18;
+  const bracketPoints: THREE.Vector3[] = [];
+  transformedCorners.forEach((corner, i) => {
+    const next = transformedCorners[(i + 1) % 4];
+    const prev = transformedCorners[(i + 3) % 4];
+    const toNext = next.clone().sub(corner).normalize().multiplyScalar(tick);
+    const toPrev = prev.clone().sub(corner).normalize().multiplyScalar(tick);
+    const inset = corner.clone().add(toNext.clone().multiplyScalar(0.6)).add(toPrev.clone().multiplyScalar(0.6));
+    bracketPoints.push(inset.clone().add(toNext), inset.clone(), inset.clone(), inset.clone().add(toPrev));
+  });
+  group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(bracketPoints), material));
+  const diagonals = new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints([transformedCorners[0], transformedCorners[2], transformedCorners[1], transformedCorners[3]]),
+    new THREE.LineBasicMaterial({ color: HELPER_COLOR_INNER, transparent: true, opacity: 0.35 })
+  );
+  group.add(diagonals);
+
   return group;
 };
 
-export const createShapeHelper = (shapeConfig: ShapeConfig): THREE.Object3D | null => {
+const shapeOutline = (shapeConfig: ShapeConfig): THREE.Object3D | null => {
   switch (shapeConfig.shape) {
     case 'SPHERE':
       return createSphereHelper(shapeConfig.sphere);
@@ -412,6 +434,66 @@ export const createShapeHelper = (shapeConfig: ShapeConfig): THREE.Object3D | nu
     default:
       return null;
   }
+};
+
+/** A small tag reading EMITTER, so the outline is not mistaken for a wall or the colour source. */
+const buildEmitterLabel = (): THREE.Sprite => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#8f7bff';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+  ctx.fillStyle = '#8f7bff';
+  ctx.font = 'bold 30px ui-monospace, Menlo, monospace';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.fillText('EMITTER', canvas.width / 2, canvas.height / 2 + 1);
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map, transparent: true, depthTest: false, depthWrite: false })
+  );
+  sprite.scale.set(1.2, 0.3, 1);
+  sprite.renderOrder = 10000;
+  return sprite;
+};
+
+/**
+ * The emitter's shape in its own local space: the outline of the shape, the
+ * emission direction (local +Z) as an arrow, a centre mark and a tag. The
+ * caller places the group where the emitter is (its transform), since a GPU
+ * particle mesh keeps an identity world matrix and applies the transform in
+ * its kernel — children of it would sit at the origin.
+ */
+export const createShapeHelper = (shapeConfig: ShapeConfig): THREE.Object3D | null => {
+  const outline = shapeOutline(shapeConfig);
+  if (!outline) return null;
+  const group = new THREE.Group();
+  group.name = SHAPE_HELPER_NAME;
+  group.add(outline);
+
+  const box = new THREE.Box3().setFromObject(outline);
+  const size = box.getSize(new THREE.Vector3());
+  const extent = Math.max(0.5, Math.min(size.x || 1, size.y || 1, size.z || size.x || 1));
+  const arrowLength = Math.max(0.4, extent * 0.35);
+  group.add(new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(), arrowLength, HELPER_COLOR, arrowLength * 0.3, arrowLength * 0.15));
+
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.05, 8, 8),
+    new THREE.MeshBasicMaterial({ color: HELPER_COLOR, depthTest: false })
+  );
+  dot.renderOrder = 999;
+  group.add(dot);
+
+  const label = buildEmitterLabel();
+  const top = new THREE.Vector3(box.min.x, box.max.y, box.max.z);
+  label.position.copy(top).add(new THREE.Vector3(0.6, 0.2, 0));
+  group.add(label);
+  return group;
 };
 
 export const updateShapeHelper = (

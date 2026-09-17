@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { boot, doc } from '../engine/session';
   import { connectEvents, refresh, engineChanged } from '../store/document.svelte';
+  import Toolbar from './Toolbar.svelte';
 
   let cell: HTMLDivElement;
   let note = $state('');
@@ -38,6 +39,7 @@
 
 <!-- The canvas is mounted at the app level (the whole window); this cell is only the free area. -->
 <div class="cell" bind:this={cell}>
+  <Toolbar />
   {#if note}<div class="note">{note}</div>{/if}
 </div>
 
@@ -50,7 +52,7 @@
   .note {
     position: absolute;
     left: var(--sp-2);
-    bottom: var(--sp-2);
+    bottom: calc(var(--sp-4) + var(--control-h) + var(--sp-2));
     color: var(--fg-dim);
     font-size: var(--fs-1);
   }

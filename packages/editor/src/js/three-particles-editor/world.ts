@@ -1440,7 +1440,7 @@ export const setTerrain = (textureId?: string): void => {
     const material = new THREE.MeshBasicMaterial({
       wireframe: true,
       depthWrite: false,
-      color: 0x111111,
+      color: 0x242424,
     });
     mesh.material = material;
     mesh.receiveShadow = false; // a wireframe grid cannot show a shadow

@@ -10,7 +10,7 @@ import { createCollisionPlaneHelpers, disposeCollisionPlaneHelpers } from '@engi
 import { initCollisionPlaneInteraction, disposeCollisionPlaneInteraction, deselectCollisionPlane } from '@engine/collision-plane-interaction';
 import { createForceFieldHelpers, disposeForceFieldHelpers } from '@engine/force-field-helper';
 import { initForceFieldInteraction, disposeForceFieldInteraction, deselectForceField } from '@engine/force-field-interaction';
-import { updateShapeHelper } from '@engine/shape-helper';
+import { updateShapeHelper, SHAPE_HELPER_NAME } from '@engine/shape-helper';
 import { markAsEditorOnly } from '@engine/editor-layers';
 import { showColorSourceDebug, hideColorSourceDebug, syncColorSourceDebug, isColorSourceDebugShown, type ColorSourceDebugState } from '@engine/color-source-debug';
 import type { Doc } from '@engine/schema';
@@ -91,8 +91,22 @@ export const syncFurniture = (): void => {
     fieldsShown = false;
   }
 
-  const ps = host.particleSystem();
-  if (ps?.instance) updateShapeHelper(ps.instance, host.doc.shape, !!ed.showShape);
+  // On the container, not inside the particle mesh: a GPU system keeps an
+  // identity world matrix and applies the transform in its kernel, so a child
+  // of it would sit at the origin. Placed by the document's transform instead.
+  const container = host.container();
+  updateShapeHelper(container, host.doc.shape, !!ed.showShape);
+  const helper = container.children.find((c) => c.name === SHAPE_HELPER_NAME);
+  if (helper) {
+    const tr = host.doc.transform ?? {};
+    helper.position.set(tr.position?.x ?? 0, tr.position?.y ?? 0, tr.position?.z ?? 0);
+    helper.rotation.set(
+      THREE.MathUtils.degToRad(tr.rotation?.x ?? 0),
+      THREE.MathUtils.degToRad(tr.rotation?.y ?? 0),
+      THREE.MathUtils.degToRad(tr.rotation?.z ?? 0)
+    );
+    helper.scale.set(tr.scale?.x ?? 1, tr.scale?.y ?? 1, tr.scale?.z ?? 1);
+  }
 
   if (ed.showWorldAxes) scene.add(worldAxes);
   else scene.remove(worldAxes);
@@ -134,4 +148,4 @@ export const syncFurnitureFrame = (): void => {
 };
 
 /** Paths whose change moves furniture. */
-export const FURNITURE_PATHS = /^(collisionPlanes|forceFields|shape|_editorData\.(showCollisionPlanes|showForceFields|showShape|showWorldAxes|showLocalAxes))(\.|$)/;
+export const FURNITURE_PATHS = /^(collisionPlanes|forceFields|shape|transform|_editorData\.(showCollisionPlanes|showForceFields|showShape|showWorldAxes|showLocalAxes))(\.|$)/;

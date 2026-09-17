@@ -36,7 +36,7 @@ const createPlaneHelper = (
   // Grid plane
   const gridHelper = new THREE.GridHelper(PLANE_SIZE, GRID_DIVISIONS, color, color);
   gridHelper.material.transparent = true;
-  gridHelper.material.opacity = 0.35;
+  gridHelper.material.opacity = 0.18;
 
   // Rotate grid so its "up" aligns with the plane normal
   const up = new THREE.Vector3(0, 1, 0);
@@ -54,7 +54,8 @@ const createPlaneHelper = (
   const planeMat = new THREE.MeshBasicMaterial({
     color,
     transparent: true,
-    opacity: 0.08,
+    // Barely there: four of these stacked in a view used to tint everything green.
+    opacity: 0.02,
     side: THREE.DoubleSide,
     depthWrite: false,
   });

@@ -198,9 +198,6 @@ export const schema: Group[] = [
       bool('_editorData.showCollisionPlanes', 'Show collision planes', 'live', {
         editorOnly: true,
       }),
-      bool('_editorData.showColorSourceDebug', 'Show colour source (debug)', 'live', {
-        editorOnly: true,
-      }),
       bool('_editorData.useIndividualUpdate', 'Individual update method', 'live', {
         editorOnly: true,
       }),
@@ -517,6 +514,10 @@ export const schema: Group[] = [
         'live'
       ),
       bool('particleColorInstance.spawnOnSource', 'spawn only on the source', 'live'),
+      bool('_editorData.showColorSourceDebug', 'show source (debug)', 'live', {
+        editorOnly: true,
+        hint: 'Lays the source over the emitter in the viewport; the editor only.',
+      }),
       bool('particleColorInstance.useAlphaForOpacity', 'useAlphaForOpacity', 'live'),
       bool('particleColorInstance.useLuminanceForNoise', 'luminance -> curl noise', 'structural'),
       num('particleColorInstance.luminanceNoiseAmount', 'luminance amount', -1, 1, 0.01, 'live'),

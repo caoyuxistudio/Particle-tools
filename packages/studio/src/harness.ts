@@ -11,6 +11,7 @@ import { openCurve, openGradient, openTexture, applyPending } from './editors/op
 
 type Line = string;
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const THREE_deg = (rad: number) => (rad * 180) / Math.PI;
 
 const diff = (a: any, b: any, path = '', out: string[] = []): string[] => {
   if (a === b) return out;
@@ -120,6 +121,27 @@ export const report = async (): Promise<string> => {
   await settle(50);
   const shown = furniture().length;
   check('show collision planes puts one helper per wall on the furniture layer', shown - noneShown === (doc.collisionPlanes?.length ?? 0) && shown > noneShown, `${noneShown} -> ${shown}`);
+  // The emitter's shape helper sits where the emitter is — the document's transform, not the origin.
+  const shapeBefore2 = get('_editorData.showShape');
+  patch('_editorData.showShape', true);
+  await settle(50);
+  const T = (window as any).__world.THREE;
+  const helperObj = (window as any).__world.scene.getObjectByName('shape-helper');
+  const wp = helperObj ? helperObj.getWorldPosition(new T.Vector3()) : null;
+  const wq = helperObj ? new T.Euler().setFromQuaternion(helperObj.getWorldQuaternion(new T.Quaternion())) : null;
+  const tr = doc.transform;
+  check('the emitter shape helper is placed by the transform', !!wp && Math.abs(wp.y - tr.position.y) < 1e-6 && Math.abs(THREE_deg(wq!.x) - tr.rotation.x) < 0.01, wp ? `at ${wp.toArray().map((n: number) => n.toFixed(2))}, x-rot ${THREE_deg(wq!.x).toFixed(1)}° vs ${tr.position.y} / ${tr.rotation.x}°` : 'no helper');
+  check('and carries its tag and arrow', !!helperObj && helperObj.children.some((c: any) => c.isSprite) && helperObj.children.some((c: any) => c.type === 'ArrowHelper'));
+  patch('_editorData.showShape', !!shapeBefore2);
+  const toolbar = [...document.querySelectorAll<HTMLButtonElement>('.toolbar button')];
+  check('the viewport toolbar carries the furniture switches', toolbar.length === 5 && toolbar.every((b) => b.dataset.switch));
+  const wallsSwitch = toolbar.find((b) => b.dataset.switch === '_editorData.showCollisionPlanes');
+  const wallsWas = get('_editorData.showCollisionPlanes');
+  wallsSwitch?.click();
+  await settle(30);
+  check('a toolbar switch patches the document', get('_editorData.showCollisionPlanes') === !wallsWas);
+  wallsSwitch?.click();
+  await settle(30);
   const axesBefore = get('_editorData.showWorldAxes');
   patch('_editorData.showWorldAxes', true);
   await settle(20);
