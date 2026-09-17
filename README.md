@@ -1,4 +1,4 @@
-# threeparticle-CAOModed
+# Particle Tools
 
 A modified fork of NewKrok's Three.js particle system and its visual editor,
 extended for Cao Yuxi's (曹雨西) media-art installation work.

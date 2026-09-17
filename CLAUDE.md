@@ -19,7 +19,7 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 
 拥有者：曹雨西（Cao Yuxi），新媒体艺术家。这是他自用的创作工具，不是要回馈上游的通用库。
 
-线上：<https://caoyuxistudio.github.io/threeparticle-CAOModed/>（推 main 自动部署）
+线上：<https://caoyuxistudio.github.io/Particle-tools/>（推 main 自动部署；仓库 2026-09-17 从 threeparticle-CAOModed 改名为 **Particle-tools**，studio 在 `/Studio/`）
 
 ---
 
@@ -304,7 +304,7 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 
 **roughness 上限就是 1**，抬滑块上限没有意义（着色模型和 SSR 的 lod 计算都会截断）。要更模糊用相机的 `resolution`（降分辨率追踪，更省不是更费）或 `blur`。
 
-**库的 `npm run build` 分两段，ESM 先成功、DTS 后失败**（2026-09-16 踩过）。tsup 先出 `dist/index.js`（esbuild，不查类型），再另起一个 worker 生成 `.d.ts`（真正的 tsc）。本地 dist 已经更新、编辑器照常能跑，但 DTS 那段可以在**后面**报 `error TS…` 并以非零退出——Pages 的部署工作流里 "Build the particle library" 就是这样连着两次红的（一个只在类型位置用的 `ColorInstanceData` 没导入）。看构建输出要看到最后一行 `DTS ⚡️ Build success`，别 `head` 截前几行；推之前想稳的话按 `.github/workflows/deploy.yml` 的步骤在干净目录里用 node 20 走一遍（`npx -y node@20` 有 node 20 可用），部署状态用 `curl https://api.github.com/repos/caoyuxistudio/threeparticle-CAOModed/actions/runs?per_page=3` 看（日志要 admin 权限，`gh` 这台机器没装）。
+**库的 `npm run build` 分两段，ESM 先成功、DTS 后失败**（2026-09-16 踩过）。tsup 先出 `dist/index.js`（esbuild，不查类型），再另起一个 worker 生成 `.d.ts`（真正的 tsc）。本地 dist 已经更新、编辑器照常能跑，但 DTS 那段可以在**后面**报 `error TS…` 并以非零退出——Pages 的部署工作流里 "Build the particle library" 就是这样连着两次红的（一个只在类型位置用的 `ColorInstanceData` 没导入）。看构建输出要看到最后一行 `DTS ⚡️ Build success`，别 `head` 截前几行；推之前想稳的话按 `.github/workflows/deploy.yml` 的步骤在干净目录里用 node 20 走一遍（`npx -y node@20` 有 node 20 可用），部署状态用 `curl https://api.github.com/repos/caoyuxistudio/Particle-tools/actions/runs?per_page=3` 看（日志要 admin 权限，`gh` 这台机器没装）。
 
 **canvas 读回三件事**：`getContext('2d')` 不显式写 `willReadFrequently: false`，Chrome 会在几次 `getImageData` 之后把整个 canvas 降到 CPU（对视频意味着每帧先在 CPU 上转换整帧）；GPU canvas 的 `getImageData` 是等 GPU 队列的同步停顿，页面渲染越重停得越久，所以读回要么不在主线程做，要么别做；隐藏文档里 rAF 和 `requestVideoFrameCallback` 都不跑，`display:none` 的视频也不触发后者。
 
@@ -328,7 +328,7 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 - **家具接线**（同日，作者试用时发现 Helper 的 show collision planes 没反应）：V1 里碰撞面 / 力场 / 形状 / 坐标轴 / 色源 debug 平面的手柄是 lil-gui entries 顺手建的，studio 第一刀没接。现在 `engine/furniture.ts` 让它们跟着文档走：`syncFurniture()` 在 store 改到相关路径、加载、重建之后重建手柄（碰撞面和力场的手柄带 TransformControls，拖动写回文档并按 live 走 updateConfig），`syncFurnitureFrame()` 每帧同步 debug 平面（和 V1 的 onUpdate 一样）。harness 加 2 条（开关一开每面墙一个手柄且都在家具层、世界坐标轴出现），21/21。
 - **M3**（同日）：三个 canvas 编辑器（曲线、渐变、贴图选择器）接进 studio——DOM 预埋、样式换 token、引擎里的编辑器代码不动；演示模式（present 按钮 / Esc）、Perf HUD（P）、Gyro 面板（G）、手指输入按 V1 glue 的接线装进 `session.ts`；手机竖屏单列布局。harness 加 8 条（三个编辑器打开、选贴图重绑色源并重建、演示进出、HUD 和演示条、touch 装上），29/29。细节和没做的（display 窗口、子发射器）在 V2-ARCHITECTURE.md §6 M3 补记。
 - **曲线 / 渐变编辑器的 Apply**（同日，作者试用曲线编辑器时提的）：编辑器每拖一下就回调，studio 之前每次回调都重建粒子系统（曲线是烤进去的，只能重建），粒子每拖一下就清零。现在回调只把改动记成"未应用"（底部注脚 + `Apply to particles` 按钮点亮），按 Apply 或关闭编辑器才 `touched(path)` 重建一次；渐变编辑器同样。**Save Current 不再用 `window.prompt`**：两个编辑器加了 `setPresetPrompts({ askName, confirmOverwrite })`（引擎模块，V1 默认仍是 prompt / confirm），studio 注入一个模态框里的行内输入框——桌面 app 的内置浏览器会吞掉 prompt，所以"存了没反应"。预设架改成 grid（每格等宽、名字在图下），两个虚线按钮也换成 token 色。harness 加 5 条，34/34。
-- **M4 第一步：studio 上线到 `/studio/`**（同日，作者定的：线上 V1 保留在根路径，以后主要在 V2 上开发）。studio 的生产构建是可搬的（`base: './'`，构建时不带 V1 的 public，`scripts/copy-shared.mjs` 只把 `assets/`、`examples/`、`favicon/` 拷进 dist，15 MB）；main 上的 `deploy.yml` 多检出 **v2 分支**，构建它的库和 studio，把 dist 放到 `packages/editor/public/studio/` 再一起上传——所以**推 main 才部署，但线上的 studio 是 v2 分支当时的 HEAD**：改了 studio 要先推 v2，再在 main 上触发一次部署（`workflow_dispatch` 或任意一次推送）。本地验过：dist 挂在 `/studio/` 子路径下作品、视频（`/studio/assets/videos/…`）、帧循环都对，零报错；harness 只在 dev bundle 里，线上没有。线上地址 <https://caoyuxistudio.github.io/threeparticle-CAOModed/studio/>。
+- **M4 第一步：studio 上线到 `/studio/`**（同日，作者定的：线上 V1 保留在根路径，以后主要在 V2 上开发）。studio 的生产构建是可搬的（`base: './'`，构建时不带 V1 的 public，`scripts/copy-shared.mjs` 只把 `assets/`、`examples/`、`favicon/` 拷进 dist，15 MB）；main 上的 `deploy.yml` 多检出 **v2 分支**，构建它的库和 studio，把 dist 放到 `packages/editor/public/Studio/` 再一起上传——所以**推 main 才部署，但线上的 studio 是 v2 分支当时的 HEAD**：改了 studio 要先推 v2，再在 main 上触发一次部署（`workflow_dispatch` 或任意一次推送）。本地验过：dist 挂在 `/studio/` 子路径下作品、视频（`/studio/assets/videos/…`）、帧循环都对，零报错；harness 只在 dev bundle 里，线上没有。线上地址 <https://caoyuxistudio.github.io/Particle-tools/Studio/>（同日仓库改名 Particle-tools、子目录改成大写的 `Studio/`，小写 `/studio/` 留了一个跳转页；作品叫 **Particle Tools Studio**）。
 - **两个坑**（同日）：① `sirv public` 不带 `--dev` 会在启动时缓存文件长度，之后重新打包的 bundle 被按旧长度截断，浏览器报 `Unexpected end of input`、player 页面空白——静态服务器一律 `sirv public --dev`（v2 的 `editor-static` 已改）。② 自动化面板隐藏时（`document.visibilityState === 'hidden'`）rAF 不跑，editor 的 boot 链在"让一帧"那步停住、`window.editor` 永远不出现，gizmo 这类要帧的报告全挂；独立 Chrome 里要测的 tab 也必须在前台（`curl localhost:9222/json/activate/<id>`）。
 
 

@@ -33,7 +33,7 @@
 </script>
 
 <header class="topbar">
-  <span class="brand">PARTICLE STUDIO</span>
+  <span class="brand">PARTICLE TOOLS STUDIO</span>
   <span class="piece">{name}</span>
   <span class="spacer"></span>
   <span class="status">{status}</span>

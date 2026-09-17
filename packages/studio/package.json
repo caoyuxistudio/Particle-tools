@@ -1,9 +1,9 @@
 {
-  "name": "three-particles-studio",
+  "name": "particle-tools-studio",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "V2 of the editor: a studio over the same engine and the same document (V2-ARCHITECTURE.md).",
+  "description": "Particle Tools Studio \u2014 V2 of the editor: a studio over the same engine and the same document (V2-ARCHITECTURE.md).",
   "scripts": {
     "dev": "vite --port 5173 --strictPort",
     "build": "vite build && node scripts/copy-shared.mjs",
