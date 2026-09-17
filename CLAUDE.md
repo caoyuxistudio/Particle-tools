@@ -183,7 +183,7 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 - **Examples 面板只列 example-1-1、WIP-Test-2、WIP-Test**（2026-09-16）。其余（上游的游戏特效和早期的 shanshui / temp-1 等测试）挪进了 `src/examples-config.js` 的 `hiddenExamples`：config 字符串和 `public/examples/` 下的文件夹都还在，搬回 `particleExamples` 就恢复；V2 不会用到它们，哪天整个删掉也行
 - **做一个带内置图片的 example 的步骤**：图片转 webp 放进 `public/assets/textures/`；`texture-config.ts` 加一个 `TextureId` 和 `{ id, url }`（照片不标 `isParticleTexture`）、`texture-metadata.ts` 给日期、`texture-selector.ts` 的 builtInTextures 列上；config 的 `_editorData.colorInstanceTextureId` 写那个 id，删掉 `embeddedTextures`，存成 `public/examples/<slug>/config.json`，配一张 `preview.webp`，`src/examples-config.js` 里加名字
 - **做一个带视频的 example 的步骤**：把视频放进 `public/assets/videos/`；Textures 面板 **Add Video by URL** 填 `./assets/videos/<文件>`（相对地址，本地和 Pages 都能解析），Use；调好后 Copy，把 JSON 存成 `public/examples/<slug>/config.json`（slug 是名字小写、非字母数字换成连字符），配一张 `preview.webp`，在 `src/examples-config.js` 里加名字。本地上传（Add Video）的视频只在本机浏览器里，带不进 config
-- 控制台 harness `public/__ai-test.js`，当前基线 **366/366**（含 `noiseReport` 11、`colorInstanceReport` 36、`collisionReport` 10、`trailReport` 9、`stretchReport` 18、`aoReport` 8、`shadowReport` 10、`report` 35、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 36、`frameReport` 28；`perfReport` 是测量不是断言，不计入）
+- 控制台 harness `public/__ai-test.js`，当前基线 **371**（v2 分支，2026-09-17；含 `cameraReport` 27、`gizmoReport` 13、`colorInstanceReport` 37；预览宽度那一条在宽而矮的窗口里会失败，V1 也一样）。V1 收工时是 **366/366**（含 `noiseReport` 11、`colorInstanceReport` 36、`collisionReport` 10、`trailReport` 9、`stretchReport` 18、`aoReport` 8、`shadowReport` 10、`report` 35、`standaloneReport` 20、`touchReport` 9、`parallaxReport` 19、`videoReport` 30、`gizmoReport` 12、`playerReport` 41、`presentReport` 36、`frameReport` 28；`perfReport` 是测量不是断言，不计入）
 
 ---
 
@@ -315,6 +315,14 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 ---
 
 ## 7. 进度记录
+
+### 2026-09-17 · V2 起步：分支布局与 M0 第一步
+
+- **分支布局定了**：标签 `v1-final`（491b95b）是 V1 收工时的书签；**main = V1**，线上继续从 main 部署，只落 bug 修和作品参数；**v2 分支**放 V2 的全部工作，本机用 worktree 放在 `../threeparticle-v2`，两套并排跑（V1 `npm run dev` 8080，v2 的 `.claude/launch.json` 多了一个 `editor-static`：`sirv public --port 8082`，跑构建产物）。main 的修改定期合进 v2，只走这一个方向。仓库保持 public。
+- **M0 第一步：引擎允许清单进 CI**（`engine-boundary.json` + `scripts/check-engine-boundary.mjs` + `.github/workflows/ci.yml`，细节在 V2-ARCHITECTURE.md §1.2 的补记）。脚本第一次跑就报出三处文档没记的反向引用（snackbar store ×2、legacy modal 的 store、lil-gui entries 里的几何目录），都改成注入或搬家：新文件 `notify.ts`（引擎 → 用户提示的注入口）和 `mesh-geometry.ts`。V1 行为不变：worktree 里全套 harness 跑完 360/366，差的 6 条是环境——`cameraReport` 那条预览宽度断言在 1800×1100 的窗口里 V1 同样失败（预览按高度封顶），`videoReport` 的 5 条标着 needs a visible window（面板 `visibilityState` 是 hidden）。tsc 错误数和 main 一样是 64（都是旧的），editor jest 15/15。
+- **M0 第二、三项**（同日）：`world.ts` 的视口边界和 stats 挂点改成注入（`setViewportInsets` / `setStatsContainer`，V1 的 DOM 查法原样搬进胶水），引擎不再查任何面板的 DOM；新文件 `document-events.ts`（`watchDocument` / `emitDocumentChange`），场景手柄、updateSceneObject、增删替换、探针烘焙、三个粒子手柄在改了 document 之后发带路径的事件，`window.editor.watchDocument` 暴露给界面和 harness。接口细节在 V2-ARCHITECTURE.md §1.3 补记。harness 加 5 条（注入口存在、注入的数字被采用、V1 注入的就是自己的面板、场景拖拽发事件、色源 offset 拖拽发事件），独立 Chrome 真实窗口（3008×1505）里全套 370/371，差的那一条是 `cameraReport` 的「preview can take half the screen」：iPhone 画幅的预览在这个窗口里按高度封顶到 678 宽、到不了半屏，V1 在同一窗口同样失败（23/24），和改动无关。M0 至此完成，下一步 M1（schema）。
+- **两个坑**（同日）：① `sirv public` 不带 `--dev` 会在启动时缓存文件长度，之后重新打包的 bundle 被按旧长度截断，浏览器报 `Unexpected end of input`、player 页面空白——静态服务器一律 `sirv public --dev`（v2 的 `editor-static` 已改）。② 自动化面板隐藏时（`document.visibilityState === 'hidden'`）rAF 不跑，editor 的 boot 链在"让一帧"那步停住、`window.editor` 永远不出现，gizmo 这类要帧的报告全挂；独立 Chrome 里要测的 tab 也必须在前台（`curl localhost:9222/json/activate/<id>`）。
+
 
 ### 2026-09-11 · 手机上的作品闭环
 

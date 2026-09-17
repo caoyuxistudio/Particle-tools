@@ -21,6 +21,10 @@ import {
 import { installPresentationControls } from './three-particles-editor/presentation';
 import { installPerfHud } from './three-particles-editor/perf-hud';
 import { installGyroHud } from './three-particles-editor/gyro-hud';
+import { setNotifier } from './three-particles-editor/notify';
+import { watchDocument } from './three-particles-editor/document-events';
+import { showErrorSnackbar, showInfoSnackbar, showSuccessSnackbar } from './stores/snackbar-store';
+import { showLegacyConfigModal } from './stores/legacy-config-modal-store';
 import { DEFAULT_EXAMPLE } from '../examples-config';
 import { toUrlFriendlyString } from './utils/name-utils';
 import {
@@ -35,6 +39,8 @@ import { prepareParticleBackend } from './three-particles-editor/gpu-support';
 import { buildParticleSystem } from './three-particles-editor/particle-factory';
 import {
   createWorld,
+  setStatsContainer,
+  setViewportInsets,
   compileWorld,
   resetCamera,
   setTerrain,
@@ -100,6 +106,44 @@ import { createCollisionPlaneEntries } from './three-particles-editor/entries/co
 import { createTrailEntries } from './three-particles-editor/entries/trail-entries';
 import { createMeshEntries } from './three-particles-editor/entries/mesh-entries';
 import { generateDefaultName } from './utils/name-utils';
+
+// The engine talks to the person through this sink (V2-ARCHITECTURE.md §1.2);
+// V1 routes it to its snackbar and the legacy-config modal.
+setNotifier({
+  info: showInfoSnackbar,
+  success: showSuccessSnackbar,
+  error: showErrorSnackbar,
+  legacyConfig: () => showLegacyConfigModal.set(true),
+});
+
+/** Below this much room between the panels, the layout is a phone's. */
+const NARROW_FREE_WIDTH = 220;
+
+// V1's canvas fills the window and its panels float over it; this is how much
+// of it they cover (V2-ARCHITECTURE.md §1.3b). The engine only ever sees the
+// numbers, never the panels.
+setViewportInsets((canvas) => {
+  const rightPanel = document.querySelector('.right-panel');
+  const leftPanel = document.querySelector('.panel-content');
+  const left = leftPanel ? leftPanel.getBoundingClientRect().right - canvas.left : 0;
+  let right = rightPanel ? rightPanel.getBoundingClientRect().left - canvas.left : canvas.width;
+  let top = 0;
+
+  // A phone in portrait: the control panel's column spans the full height and
+  // leaves no room beside it, so the preview would land under a panel and its
+  // buttons with it — which is how presentation mode became unreachable
+  // without turning the phone sideways. There the preview takes the canvas's
+  // full width and sits below the panel's (collapsed) title bar instead.
+  if (right - left < NARROW_FREE_WIDTH) {
+    right = canvas.width;
+    const gui = document.querySelector('.right-panel .lil-gui.root');
+    if (gui) {
+      const rect = gui.getBoundingClientRect();
+      if (rect.height < 200) top = Math.max(0, rect.bottom - canvas.top);
+    }
+  }
+  return { left, right, top };
+});
 
 type ConfigMetadata = {
   name: string;
@@ -483,6 +527,7 @@ export const createParticleSystemEditor = async (targetQuery: string): Promise<v
     };
   }
 
+  setStatsContainer(document.querySelector<HTMLElement>('.stats'));
   scene = await createWorld(targetQuery);
   bootMark('world');
 
@@ -1395,6 +1440,7 @@ interface EditorInterface {
   /** The piece as COPY would put it on the clipboard: what a player pastes. */
   serialize: () => string;
   resetCamera: () => void;
+  watchDocument: typeof watchDocument;
   reset: () => void;
   play: () => void;
   pause: () => void;
@@ -1460,6 +1506,8 @@ window.editor = {
   serialize: () => JSON.stringify(serializeConfig(particleSystemConfig)),
   reset: () => recreateParticleSystem(false),
   resetCamera,
+  // Engine → UI change events (V2-ARCHITECTURE.md §1.3a); V1 itself polls.
+  watchDocument,
   play: resumeTime,
   pause: pauseTime,
   updateAssets: () =>

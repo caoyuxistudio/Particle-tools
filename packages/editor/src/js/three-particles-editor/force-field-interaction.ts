@@ -4,6 +4,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { getCamera, getRendererDomElement, getOrbitControls } from './world';
 import { getForceFieldCenterMeshes, getForceFieldHelpers } from './force-field-helper';
 import { EDITOR_LAYER, markAsEditorOnly } from './editor-layers';
+import { emitDocumentChange } from './document-events';
 
 let transformControls: TransformControls | null = null;
 let activeForceFieldIndex: number | null = null;
@@ -136,6 +137,7 @@ export const initForceFieldInteraction = (
     if (onPositionChangeCallback) {
       onPositionChangeCallback(activeForceFieldIndex, helper.position);
     }
+    emitDocumentChange({ scope: 'particle', path: `forceFields.${activeForceFieldIndex}.position`, source: 'gizmo' });
   });
 
   domElement.addEventListener('pointerdown', onPointerDown);

@@ -85,6 +85,16 @@ setViewportInsets(fn: () => { left: number; right: number; top: number })
 
 V1 的 content.svelte 注入它今天的查法，V2 的 viewport 格子注入自己的。其余的 `document.` 都是运行时该有的：挂 canvas、safe-area 探针、theme-color、截图下载。stats 挂到 `.stats` 那处也改成注入容器。
 
+**2026-09-17 补记（M0 第一步做完时发现的）**：上面说"只有一处"是按 DOM 查法数的。按 **import 图**数，引擎里还有三处反向引用，允许清单脚本第一次跑就报出来了，已修：
+
+| 漏点 | 是什么 | 修法 |
+|---|---|---|
+| `save-and-load.ts` → `../stores/snackbar-store`、`presentation.ts` → 同上 | 引擎直接调 Svelte store 弹 snackbar；player 因此把 `svelte/store` 打进了 bundle | 新文件 `notify.ts`：`setNotifier({ info, success, error, legacyConfig })` 由界面注入，引擎只调 `notify.*`，没注入就是空操作。V1 在胶水 `three-particles-editor.ts` 顶部注入 snackbar 和 legacy modal；player 不注入 |
+| `save-and-load.ts` → `./showLegacyConfigModal`（一个 `writable<boolean>`） | 引擎自己持有一个 Svelte store 来开模态框 | 走同一个 notifier 的 `legacyConfig()`；store 文件搬到界面侧 `src/js/stores/legacy-config-modal-store.ts` |
+| `particle-factory.ts` → `./entries/mesh-entries`（lil-gui 那一层） | 只为了拿 `createGeometry`，但那个文件 `import type { GUI }` | 几何目录抽成 `mesh-geometry.ts`（引擎），`mesh-entries` 从它 import 并 re-export |
+
+允许清单本身是 `packages/editor/engine-boundary.json`（`engine` 模块清单、`externals` 只有 three 和 @newkrok、`roots` 是 `src/player.ts`），检查脚本 `scripts/check-engine-boundary.mjs`（`npm run check:boundary`，零依赖），两条规则：引擎模块只能 import 引擎模块和 externals；root 的整个 import 图不能走出引擎。`.github/workflows/ci.yml` 在所有分支上跑它和编辑器的 jest。现在 34 个引擎模块、player 触及 20 个、0 违规。**V2 加任何东西进引擎清单，改这份 JSON。**
+
 ### 1.3 引擎必须提供、今天没有的三份约定
 
 这三件是 3D 编辑器里界面和引擎真正咬合的地方，V1 靠巧合或轮询糊过去了，V2 要写成接口：
@@ -94,6 +104,11 @@ V1 的 content.svelte 注入它今天的查法，V2 的 viewport 格子注入自
 **b. 视口边界（界面 → 引擎）。** 见 1.2。V1 是画布整窗、面板浮在上面；genie 是 grid 里的一个格子。两种布局都通过同一个注入口告诉引擎"哪块是画面"。
 
 **c. 指针归属。** 画布上的 orbit、手柄、手指尾迹三套监听都在 canvas 元素上。规则：**只有 canvas 收指针，面板是它的兄弟节点不是父节点**，浮层用 `pointer-events: none` 除非自己是控件。演示模式和 player 里没有手柄，touch-input 才生效（V1 已是这样）。
+
+**2026-09-17 补记（M0 做完时的实际接口）**：
+
+- **a. 变更通知**落成 `document-events.ts`：`watchDocument(fn) → unsubscribe`、`emitDocumentChange(change)`。事件两种：`{ scope: 'scene', id, keys, source }`（source 是 gizmo / update / add / remove / load / bake；整场景替换时 id 为 null、keys 为 `['*']`）和 `{ scope: 'particle', path, source: 'gizmo' }`（path 是 config 里的点路径，如 `forceFields.2.position`、`collisionPlanes.0.position`、`particleColorInstance.offset`）。发的地方：scene-objects 的手柄拖拽、`updateSceneObject`、add / duplicate / remove / replace、探针烘焙；力场、碰撞面、色源 debug 平面三个手柄的拖拽。V1 的胶水把 `watchDocument` 挂在 `window.editor` 上但自己不订阅（lil-gui 照旧轮询）；harness 的 gizmoReport 和 colorInstanceReport 各断言一次拖拽真的发出带路径的事件。**没有的**：面板改滑块不发事件（那是界面自己做的改动，V2 的 store 就是发起方）；相机同步（`syncOutputCamera`）只把相机物体的设置推进渲染器，不改 document，所以不发。
+- **b. 视口边界**落成 `world.ts` 的 `setViewportInsets((canvasRect) => ({ left, right, top })) → previous`（返回上一个 provider 便于还原；传 null 回到"整个画布"的默认）。V1 的 provider 在胶水 `three-particles-editor.ts` 顶部，就是原来那段查 `.panel-content` / `.right-panel` / lil-gui 高度的逻辑原样搬过去；player 不注入。同一批：`setStatsContainer(el)` 让帧计数器的挂点由界面在 `createWorld` 前给，引擎不再查 `.stats`。`world.ts` 里剩下的 `document.` 全是运行时的（挂 canvas、safe-area 探针、theme-color、截图）。
 
 ---
 
@@ -216,9 +231,9 @@ genie（data-dune.vercel.app）**不是库**，是别人的应用，它的 CSS �
 每一步都有可机械验证的判据，没有判据的不算完成。
 
 **M0 · 边界**（引擎线配合，改动小）
-- 允许清单脚本进 CI，`player.ts` 通过。
-- `world.ts` 的视口边界改为注入，V1 注入今天的查法，harness 238/238 不变。
-- 引擎新增 config 变更事件（手柄拖 transform、相机同步至少接上）。
+- ✅ 允许清单脚本进 CI，`player.ts` 通过。（2026-09-17，v2 分支）
+- ✅ `world.ts` 的视口边界改为注入，V1 注入今天的查法，harness 不变。（2026-09-17）
+- ✅ 引擎新增 config 变更事件（手柄拖 transform、相机同步至少接上）。（2026-09-17，见 §1.3 补记）
 
 **M1 · Schema**
 - `schema.ts` 覆盖默认 config 的全部键，覆盖测试绿。

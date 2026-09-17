@@ -302,6 +302,20 @@
       w.controls.update();
     })();
 
+    // The engine never reads the panels' DOM (V2-ARCHITECTURE.md §1.2): the UI
+    // injects how much of the canvas it covers, and the engine believes it.
+    (() => {
+      const w = window.__world;
+      check('viewport insets are injected, not queried', typeof w.setViewportInsets === 'function');
+      const previous = w.setViewportInsets(() => ({ left: 123, right: 456, top: 7 }));
+      const injected = w.freeViewportBounds();
+      check('the engine uses the injected insets', injected.left === 123 && injected.right === 456 && injected.top === 7, JSON.stringify(injected));
+      w.setViewportInsets(previous);
+      const restored = w.freeViewportBounds();
+      const rightPanel = document.querySelector('.right-panel')?.getBoundingClientRect().left - w.canvasBounds().left;
+      check('V1 injects its own panels', typeof previous === 'function' && Math.abs(restored.right - rightPanel) < 1, `${restored.right} vs panel at ${rightPanel}`);
+    })();
+
     check('preview can take half the screen, or all the room between the panels', (() => {
       const before = window.__world.getPreviewScale();
       window.__world.setPreviewScale(1);
@@ -1313,6 +1327,8 @@
         const before = controls.object.position.clone();
         const stored = () => storedScene().find((o) => o.type === 'SPHERE')?.position;
         const storedBefore = JSON.stringify(stored());
+        const events = [];
+        const unwatch = window.editor.watchDocument((e) => events.push(e));
         fire('pointerdown', hit.x, hit.y);
         check('pressing a handle starts a drag', controls.dragging === true);
         fire('pointermove', hit.x + 40, hit.y + 25);
@@ -1324,6 +1340,10 @@
         check('the drag ends on release', controls.dragging === false);
         check('the stored scene follows the drag', JSON.stringify(stored()) !== storedBefore);
         check('orbit controls are back after the drag', w.controls.enabled === true);
+        unwatch();
+        const sphereId = storedScene().find((o) => o.type === 'SPHERE')?.id;
+        const fromGizmo = events.filter((e) => e.scope === 'scene' && e.source === 'gizmo');
+        check('the drag announces a document change (scene, gizmo, position)', fromGizmo.length > 0 && fromGizmo.every((e) => e.id === sphereId && e.keys.includes('position')), `${fromGizmo.length} events, ${JSON.stringify(fromGizmo[0] ?? null)}`);
       }
     }
 
@@ -2357,6 +2377,8 @@
         check('hovering finds a handle', !!hit, hit ? hit.axis : 'nothing within 80px');
         if (hit) {
           const before = JSON.stringify(window.editor.getCurrentParticleSystemConfig().particleColorInstance.offset);
+          const events = [];
+          const unwatch = window.editor.watchDocument((e) => events.push(e));
           fire('pointerdown', hit.x, hit.y);
           fire('pointermove', hit.x + 40, hit.y + 25);
           fire('pointermove', hit.x + 80, hit.y + 50);
@@ -2365,6 +2387,8 @@
           const after = window.editor.getCurrentParticleSystemConfig().particleColorInstance.offset;
           check('dragging the handle rewrites the offset', JSON.stringify(after) !== before && Math.abs(after.y) < 1e-6, `${before} → ${JSON.stringify(after)}`);
           check('orbit controls are back after the drag', w.controls.enabled === true);
+          unwatch();
+          check('the drag announces particleColorInstance.offset', events.some((e) => e.scope === 'particle' && e.path === 'particleColorInstance.offset' && e.source === 'gizmo'), `${events.length} events`);
         }
       }
       // It draws: the editor camera, rendered offscreen, shows more green

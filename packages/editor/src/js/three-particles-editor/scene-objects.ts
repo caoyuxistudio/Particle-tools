@@ -29,6 +29,7 @@ import { defaultParallaxSettings, setParallaxSettings, setParallaxPlane } from '
 import type { ParallaxSettings } from './parallax';
 import { EDITOR_LAYER, markAsEditorOnly } from './editor-layers';
 import { isPlayer } from './runtime-mode';
+import { emitDocumentChange } from './document-events';
 
 const STORAGE_KEY = 'particle-system-editor/scene-objects';
 
@@ -305,6 +306,7 @@ const ensureTransformControls = (): TransformControls => {
     objects[idx] = { ...objects[idx], ...patch };
     persist();
     onSceneChanged?.();
+    emitDocumentChange({ scope: 'scene', id: selectedId, keys: Object.keys(patch), source: 'gizmo' });
   });
 
   const helper = controls.getHelper();
@@ -1123,6 +1125,7 @@ export const addSceneObject = (type: SceneObjectType): SceneObject => {
   objects = [...objects, obj];
   mount(obj);
   persist();
+  emitDocumentChange({ scope: 'scene', id: obj.id, keys: ['*'], source: 'add' });
   return obj;
 };
 
@@ -1159,6 +1162,7 @@ export const duplicateSceneObject = (id: string): SceneObject | null => {
   objects = [...objects, copy];
   mount(copy);
   persist();
+  emitDocumentChange({ scope: 'scene', id: copy.id, keys: ['*'], source: 'add' });
   return copy;
 };
 
@@ -1168,6 +1172,7 @@ export const updateSceneObject = (id: string, patch: Partial<SceneObject>): void
   objects[idx] = { ...objects[idx], ...patch };
   applyToThree(objects[idx]);
   persist();
+  emitDocumentChange({ scope: 'scene', id, keys: Object.keys(patch), source: 'update' });
 };
 
 export const removeSceneObject = (id: string): void => {
@@ -1175,6 +1180,7 @@ export const removeSceneObject = (id: string): void => {
   unmount(id);
   objects = objects.filter((o) => o.id !== id);
   persist();
+  emitDocumentChange({ scope: 'scene', id, keys: ['*'], source: 'remove' });
 };
 
 /**
@@ -1237,6 +1243,7 @@ export const bakeLightProbe = async (id: string): Promise<void> => {
   if (idx >= 0) {
     objects[idx] = { ...objects[idx], sh: probe.sh.toArray() };
     persist();
+    emitDocumentChange({ scope: 'scene', id, keys: ['sh'], source: 'bake' });
   }
 };
 
@@ -1280,4 +1287,5 @@ export const replaceSceneObjects = (next: SceneObject[]): void => {
   objects.forEach(mount);
   persist();
   onSceneChanged?.();
+  emitDocumentChange({ scope: 'scene', id: null, keys: ['*'], source: 'load' });
 };

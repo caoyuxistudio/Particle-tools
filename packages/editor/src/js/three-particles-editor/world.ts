@@ -571,13 +571,23 @@ export const isPreviewVisible = (): boolean => previewVisible;
  * that matters. `S` hides it: a display on a wall should not be wearing a
  * frame counter.
  */
+let statsContainer: HTMLElement | null = null;
+
+/**
+ * Where the editor's frame counter hangs (V2-ARCHITECTURE.md §1.2): the UI
+ * hands the engine an element before `createWorld`, the engine never looks
+ * for one. The player passes nothing and gets the pinned layer below.
+ */
+export const setStatsContainer = (el: HTMLElement | null): void => {
+  statsContainer = el;
+};
+
 const installStats = (): void => {
   stats = new Stats();
 
   if (!isPlayer()) {
-    const statsContainer = document.querySelector('.stats');
     if (!statsContainer) {
-      throw new Error('Stats container not found');
+      throw new Error('Stats container not set — call setStatsContainer() before createWorld()');
     }
     statsContainer.appendChild(stats.dom);
     return;
@@ -697,6 +707,7 @@ export const createWorld = async (targetQuery: string): Promise<THREE.Scene> => 
     getOutputCamera,
     isPreviewVisible,
     freeViewportBounds,
+    setViewportInsets,
     getPreviewScale,
     setPreviewScale,
     previewRect,
@@ -1171,8 +1182,34 @@ const toCanvasSpace = (event: PointerEvent): { x: number; y: number } => {
   return { x: event.clientX - rect.left, y: event.clientY - rect.top };
 };
 
-/** Below this much room between the panels, the layout is a phone's. */
-const NARROW_FREE_WIDTH = 220;
+/** How much of the canvas the UI's panels cover, in canvas CSS pixels. */
+export type ViewportInsets = { left: number; right: number; top: number };
+
+/**
+ * Given the canvas's rect, where the free viewport is: `left` is the first
+ * free x, `right` the last, `top` the first free y — all relative to the
+ * canvas's top-left.
+ */
+export type ViewportInsetsProvider = (canvas: DOMRect) => ViewportInsets;
+
+const fullCanvas: ViewportInsetsProvider = (canvas) => ({ left: 0, right: canvas.width, top: 0 });
+let viewportInsets: ViewportInsetsProvider = fullCanvas;
+
+/**
+ * The UI tells the engine which part of the canvas is free (V2-ARCHITECTURE.md
+ * §1.2 / §1.3b); the engine never reads the UI's DOM to find out. V1 injects
+ * its panel geometry, a studio injects its grid cell, the player injects
+ * nothing and has the whole canvas. Returns the previous provider so a caller
+ * can put it back. `null` restores the full-canvas default.
+ */
+export const setViewportInsets = (
+  provider: ViewportInsetsProvider | null
+): ViewportInsetsProvider => {
+  const previous = viewportInsets;
+  viewportInsets = provider ?? fullCanvas;
+  previewBoundsAt = 0;
+  return previous;
+};
 
 export const freeViewportBounds = (): { left: number; right: number; top: number } => {
   const now = performance.now();
@@ -1180,27 +1217,12 @@ export const freeViewportBounds = (): { left: number; right: number; top: number
   previewBoundsAt = now;
 
   const canvas = canvasBounds();
-  const rightPanel = document.querySelector('.right-panel');
-  const leftPanel = document.querySelector('.panel-content');
-  const left = leftPanel ? leftPanel.getBoundingClientRect().right - canvas.left : 0;
-  let right = rightPanel ? rightPanel.getBoundingClientRect().left - canvas.left : canvas.width;
-  let top = 0;
-
-  // A phone in portrait: the control panel's column spans the full height and
-  // leaves no room beside it, so the preview would land under a panel and its
-  // buttons with it — which is how presentation mode became unreachable
-  // without turning the phone sideways. There the preview takes the canvas's
-  // full width and sits below the panel's (collapsed) title bar instead.
-  if (right - left < NARROW_FREE_WIDTH) {
-    right = canvas.width;
-    const gui = document.querySelector('.right-panel .lil-gui.root');
-    if (gui) {
-      const rect = gui.getBoundingClientRect();
-      if (rect.height < 200) top = Math.max(0, rect.bottom - canvas.top);
-    }
-  }
-
-  previewBounds = { left, right, top };
+  const insets = viewportInsets(canvas);
+  previewBounds = {
+    left: Math.max(0, insets.left),
+    right: Math.min(canvas.width, insets.right),
+    top: Math.max(0, insets.top),
+  };
   return previewBounds;
 };
 

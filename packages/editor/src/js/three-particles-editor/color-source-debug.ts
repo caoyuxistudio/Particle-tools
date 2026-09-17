@@ -23,6 +23,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { getCamera, getOrbitControls, getRendererDomElement } from './world';
 import { getCollisionPlaneCenterMeshes } from './collision-plane-helper';
 import { EDITOR_LAYER, markAsEditorOnly } from './editor-layers';
+import { emitDocumentChange } from './document-events';
 
 export type ColorSourcePlane = 'XZ' | 'XY' | 'YZ';
 export type ColorSourceWrap = 'ZERO' | 'REPEAT' | 'MIRROR' | 'STRETCH';
@@ -274,6 +275,7 @@ const installInteraction = (): void => {
   transformControls.addEventListener('change', () => {
     if (!dragging || !selected || !group) return;
     onDragCallback?.(group.position);
+    emitDocumentChange({ scope: 'particle', path: 'particleColorInstance.offset', source: 'gizmo' });
   });
   domElement.addEventListener('pointerdown', onPointerDown);
   listening = true;

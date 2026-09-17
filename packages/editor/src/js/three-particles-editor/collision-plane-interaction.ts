@@ -4,6 +4,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { getCamera, getRendererDomElement, getOrbitControls } from './world';
 import { getCollisionPlaneCenterMeshes, getCollisionPlaneHelpers } from './collision-plane-helper';
 import { EDITOR_LAYER, markAsEditorOnly } from './editor-layers';
+import { emitDocumentChange } from './document-events';
 
 let transformControls: TransformControls | null = null;
 let activeCollisionPlaneIndex: number | null = null;
@@ -130,6 +131,7 @@ export const initCollisionPlaneInteraction = (
     if (onPositionChangeCallback) {
       onPositionChangeCallback(activeCollisionPlaneIndex, helper.position);
     }
+    emitDocumentChange({ scope: 'particle', path: `collisionPlanes.${activeCollisionPlaneIndex}.position`, source: 'gizmo' });
   });
 
   domElement.addEventListener('pointerdown', onPointerDown);
