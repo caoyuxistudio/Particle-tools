@@ -120,6 +120,37 @@ for (const root of roots) {
   reached = new Set([...reached, ...seen.keys()]);
 }
 
+// --- rule 3: the studio imports the engine only through the allowlist ---------
+// packages/studio reaches the engine as `@engine/<module>` (a Vite alias onto
+// src/js/three-particles-editor). Every such import must name a module in the
+// engine set; nothing else under packages/editor may be imported from there.
+
+const studioSrc = join(pkgRoot, '..', 'studio', 'src');
+let studioImports = 0;
+if (existsSync(studioSrc)) {
+  const walk = (dir) =>
+    readdirSync(dir).flatMap((f) => {
+      const full = join(dir, f);
+      return statSync(full).isDirectory() ? walk(full) : /\.(ts|js|svelte)$/.test(f) ? [full] : [];
+    });
+  for (const file of walk(studioSrc)) {
+    const src = readFileSync(file, 'utf8');
+    const relFile = toPosix(relative(join(pkgRoot, '..'), file));
+    for (const m of src.matchAll(IMPORT_RE)) {
+      const s = m[1] ?? m[2] ?? m[3];
+      if (!s) continue;
+      if (s.startsWith('@engine/')) {
+        studioImports += 1;
+        const target = `src/js/three-particles-editor/${s.slice('@engine/'.length)}`;
+        const resolved = [target, `${target}.ts`, `${target}/index.ts`].find((c) => engine.has(c));
+        if (!resolved) violations.push(`${relFile}: imports '${s}', not in the engine set`);
+      } else if (/(^|\/)editor\/src\//.test(s) || s.includes('three-particles-editor/')) {
+        violations.push(`${relFile}: imports '${s}' from V1 directly — use @engine/<module>`);
+      }
+    }
+  }
+}
+
 // --- report -----------------------------------------------------------------
 
 if (process.argv.includes('--list')) {
@@ -128,7 +159,7 @@ if (process.argv.includes('--list')) {
   console.log('  (* = reached from a root)');
 }
 console.log(
-  `engine boundary: ${engine.size} modules, ${reached.size} reached from ${roots.join(', ')}, ${violations.length} violation${violations.length === 1 ? '' : 's'}`
+  `engine boundary: ${engine.size} modules, ${reached.size} reached from ${roots.join(', ')}, ${studioImports} studio imports, ${violations.length} violation${violations.length === 1 ? '' : 's'}`
 );
 for (const v of violations) console.log(`  ✗ ${v}`);
 process.exit(violations.length ? 1 : 0);

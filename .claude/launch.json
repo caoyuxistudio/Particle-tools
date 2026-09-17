@@ -24,6 +24,16 @@
       ],
       "cwd": "packages/editor",
       "port": 8082
+    },
+    {
+      "name": "studio",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "packages/studio",
+      "port": 5173
     }
   ]
 }

@@ -246,10 +246,16 @@ genie（data-dune.vercel.app）**不是库**，是别人的应用，它的 CSS �
 - ✅ 三级 `change` 标注完成，与 glue 今天的判断一致（拿 V1 的行为做对照）。（同日；harness 抽查烤进 kernel 的 13 个开关是 structural、6 个 updateConfig 能吃的键是 live）
 
 **M2 · 壳与检视器**
-- `packages/studio` 用 Vite 起来，加载 WIP-Test-2，画面与 V1 一致（人眼）。
-- inspector 从 schema 渲染全部分组，原生控件。
-- Scene 面板移植完成。
-- COPY 出的 JSON 通过 §2.1 两条 round-trip。
+- ✅ `packages/studio` 用 Vite 起来，加载 **example-1-1**（作者 2026-09-17 定的作品，不再是 WIP-Test-2），画面与 V1 一致（同一个引擎、同一份文档；人眼看过）。
+- ✅ inspector 从 schema 渲染全部分组，原生控件（`range` + `number` 成对、`select`、`checkbox`、`color`、`details` 折叠；曲线 / 渐变 / 贴图选择器三个编辑器留到 M3，先显示占位）。
+- ✅ Scene 面板移植完成（V1 的两个 .svelte 原样搬，SMUI 图标换成字形、svrollbar 换成原生滚动、颜色换成 token）。
+- ✅ COPY 出的 JSON 通过 §2.1 两条 round-trip（studio 的 harness `__st.report()`：serialize() 与 V1 写出的 example 文件逐字段相等；同源 iframe 里起一个 standalone player 贴进去再序列化回来逐字段相等）。
+
+**2026-09-17 补记（M2 第一刀的实际形状，`packages/studio`）**：Vite 8 + Svelte 5（runes）+ TypeScript，无组件库。`vite.config.ts` 的三件事：`@engine` 别名指到 `packages/editor/src/js/three-particles-editor`（引擎就地引用，不搬文件；`check-engine-boundary.mjs` 第三条规则扫 studio 的每个 `@engine/…` 引用必须在清单里，直接引 V1 路径也报）；`publicDir` 指到 V1 的 `public`（examples、assets、视频、V1 打好的 player bundle 全部同源可用——开放问题 2 的答案：既不软链也不复制，直接共用）；裸 `three` 别名成 `three/webgpu` 且 `dedupe`（V1 rollup 的 dedupeThree 在 Vite 里的等价物，否则引擎、库、studio 三份 three）。
+
+结构照 §3：`engine/session.ts` 是唯一碰引擎的胶水（boot：backend → world → assets → scene → 作品 → compileAsync → 帧循环，照 player.ts 而不是 V1 glue；`applyChange(path)` 按 `fieldAt(path).change` 决定 updateConfig 还是重建，两条路各自 100 ms 节流、live 的首末必到），`store/document.svelte.ts` 是单一真相（文档对象本身是引擎的、loader 就地合并，所以不做深层代理：每次 patch 或引擎事件 `rev += 1`，控件通过 `get(path)` 读、`patch(path, value)` 写），`inspector/` 只读 schema（Column 有 particles / scene 两个 tab），`scene/` 是移植的面板，`ui/tokens.css` + `reset.css` 是全部样式。**画布不在格子里**：引擎照旧把 canvas 铺满窗口、放在 `.studio` 之下，viewport 的格子量自己的矩形注入 `setViewportInsets`——§1.3b 说的"两种布局同一个注入口"，这就是第二种。harness 只进 dev bundle（`main.ts` 里 `import.meta.env.DEV` 才 import `harness.ts`）。
+
+M2 第一刀查出的两个 V1 bug：`serializeConfig` 的碰撞面 reducer 漏了 `touchCap` / `maxSpeed`（COPY 一直在丢，example-1-1 里有是因为手写进去的；studio 的 round-trip 第一次跑就报出来，已在 main 修并合回）；Vite 对 `./player/` 这种目录地址回退成 SPA 的 index，iframe 要写 `./player/index.html`。
 
 **M3 · 对等**
 - 三个 canvas 编辑器接上；演示模式、Perf / Gyro HUD、手指尾迹、视差在 studio 里可用。

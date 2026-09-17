@@ -1,0 +1,36 @@
+/*
+ * Every visual decision of the studio (V2-ARCHITECTURE.md §2.3, §4).
+ * Nothing else in the package names a colour, a size or a font: it names a
+ * token. The first values are genie's rules — one monospace face, root 11px,
+ * four body sizes, one weight, a grey scale, 1px lines, no radius, no shadow.
+ */
+:root {
+  --font: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --fs-0: 8px;
+  --fs-1: 9px;
+  --fs-2: 10px;
+  --fs-3: 11px;
+  --lh: 1.45;
+  --tracking: 0.02em;
+
+  --bg: #080808;
+  --panel: #111111;
+  --panel-2: #161616;
+  --line: #333333;
+  --line-soft: #222222;
+  --fg-dim: #777777;
+  --fg: #bbbbbb;
+  --fg-strong: #eeeeee;
+  --fg-max: #ffffff;
+  --accent: #77ccff;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+
+  --topbar-h: 48px;
+  --bottombar-h: 29px;
+  --inspector-w: 340px;
+  --control-h: 20px;
+}

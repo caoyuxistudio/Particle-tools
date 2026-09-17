@@ -1,0 +1,103 @@
+/* One reset for every native control; panels never style a control again (V2-ARCHITECTURE.md §4). */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 var(--fs-3) / var(--lh) var(--font);
+  letter-spacing: var(--tracking);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  margin: 0;
+  padding: 0 var(--sp-2);
+  height: var(--control-h);
+  outline: none;
+}
+button {
+  cursor: pointer;
+  color: var(--fg);
+}
+button:hover {
+  background: var(--panel-2);
+  color: var(--fg-strong);
+}
+button[aria-pressed='true'] {
+  background: var(--fg-strong);
+  color: var(--bg);
+  border-color: var(--fg-strong);
+}
+input[type='number'],
+input[type='text'] {
+  width: 100%;
+}
+input[type='number']:focus,
+input[type='text']:focus,
+select:focus {
+  border-color: var(--fg-dim);
+}
+input[type='range'] {
+  border: 0;
+  padding: 0;
+  width: 100%;
+  accent-color: var(--fg);
+  height: var(--control-h);
+}
+input[type='checkbox'] {
+  width: 12px;
+  height: 12px;
+  accent-color: var(--fg);
+  border: 0;
+  padding: 0;
+}
+input[type='color'] {
+  width: 100%;
+  padding: 1px;
+  background: var(--panel);
+}
+select {
+  width: 100%;
+  background: var(--panel);
+}
+details > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+label {
+  cursor: default;
+}
+hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
