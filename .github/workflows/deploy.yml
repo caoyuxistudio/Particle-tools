@@ -49,6 +49,33 @@ jobs:
       - name: Drop source maps
         run: rm -f packages/editor/public/build/*.map
 
+      # V2 — the studio — lives on the v2 branch and is served beside V1 at
+      # /studio/ (V2-ARCHITECTURE.md §6 M4). Its build is self-contained (a
+      # relative base, its own copy of the pieces and assets), so it is built
+      # from that branch's checkout and dropped into V1's public folder.
+      - name: Check out the v2 branch
+        uses: actions/checkout@v4
+        with:
+          ref: v2
+          path: v2
+
+      - name: Build the particle library (v2)
+        working-directory: v2/packages/three-particles
+        run: |
+          npm install
+          npm run build
+
+      - name: Build the studio
+        working-directory: v2/packages/studio
+        run: |
+          npm install
+          npm run build
+
+      - name: Place the studio at /studio/
+        run: |
+          rm -rf packages/editor/public/studio
+          cp -R v2/packages/studio/dist packages/editor/public/studio
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
