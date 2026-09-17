@@ -24,6 +24,8 @@
     "src/js/three-particles-editor/notify.ts",
     "src/js/three-particles-editor/document-events.ts",
     "src/js/three-particles-editor/schema.ts",
+    "src/js/three-particles-editor/saved-configs.ts",
+    "src/js/three-particles-editor/presets.ts",
     "src/js/three-particles-editor/perf-hud.ts",
     "src/js/three-particles-editor/gyro-hud.ts",
     "src/js/three-particles-editor/presentation.ts",

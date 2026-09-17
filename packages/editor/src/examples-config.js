@@ -1,3 +1,5 @@
+import { examples, DEFAULT_EXAMPLE } from './js/three-particles-editor/presets';
+
 const COLLECT_ITEM =
   '{"transform":{"rotation":{"x":-90}},"duration":0.2,"looping":false,"startLifetime":{"min":0.3,"max":0.8},"startSpeed":{"min":0.5,"max":0},"startSize":{"min":0.1,"max":1.5},"startOpacity":{"min":1,"max":1},"startColor":{"min":{"r":0.596078431372549,"g":0.08235294117647059,"b":0.9372549019607843},"max":{"g":0,"b":0.8666666666666667}},"maxParticles":30,"emission":{"rateOverTime":200},"shape":{"sphere":{"radius":0.4},"cone":{"angle":17.5967,"radius":0.1}},"renderer":{"blending":"THREE.NormalBlending"},"velocityOverLifetime":{"isActive":true,"orbital":{"y":{"min":0,"max":5}}},"sizeOverLifetime":{"lifetimeCurve":{"bezierPoints":[{"x":0,"y":0,"percentage":0},{"x":0.3333,"y":0},{"x":0.1666,"y":1},{"x":0.5,"y":1,"percentage":0.5},{"x":0.8333,"y":1},{"x":0.6666,"y":0},{"x":1,"y":0,"percentage":1}]}},"colorOverLifetime":{"r":{"bezierPoints":[{"x":0,"y":1,"percentage":0},{"x":1,"y":1,"percentage":1}]},"g":{"bezierPoints":[{"x":0,"y":1,"percentage":0},{"x":1,"y":1,"percentage":1}]},"b":{"bezierPoints":[{"x":0,"y":1,"percentage":0},{"x":1,"y":1,"percentage":1}]}},"opacityOverLifetime":{"isActive":true,"lifetimeCurve":{"bezierPoints":[{"x":0,"y":0,"percentage":0},{"x":0,"y":1},{"x":0,"y":1},{"x":0.5,"y":1,"percentage":0.5},{"x":1,"y":1},{"x":1,"y":1},{"x":1,"y":0,"percentage":1}]}},"_editorData":{"textureId":"POINT","simulation":{"movements":"DISABLED","movementSpeed":1,"rotation":"DISABLED","rotationSpeed":1},"showLocalAxes":false,"showWorldAxes":false,"frustumCulled":true,"terrain":{"textureId":"WIREFRAME","movements":"DISABLED","movementSpeed":1,"rotation":"DISABLED","rotationSpeed":1},"gradientStops":[{"position":0,"color":{"r":255,"g":255,"b":255,"a":255}},{"position":1,"color":{"r":255,"g":255,"b":255,"a":0}}],"metadata":{"name":"Untitled-2","createdAt":1769121194106,"modifiedAt":1769121194106,"editorVersion":"2.1.0"}}}';
 
@@ -61,32 +63,8 @@ const SNOWFALL =
 const SMOKE =
   '{"transform":{"rotation":{"x":-90}},"startLifetime":{"min":4.23,"max":7.25},"startSpeed":{"min":0.31,"max":0.58},"startSize":{"min":28.71,"max":36.02},"startOpacity":{"min":0.141,"max":0.296},"startRotation":{"min":-360,"max":360},"shape":{"shape":"CONE","sphere":{"radius":0.4687},"cone":{"angle":0,"radius":0.3813}},"renderer":{"blending":"THREE.NormalBlending"},"sizeOverLifetime":{"isActive":true,"lifetimeCurve":{"bezierPoints":[{"x":0,"y":0.625,"percentage":0},{"x":0.2666,"y":0.845},{"x":0.3596,"y":0.4551},{"x":0.5066,"y":0.49,"percentage":0.5066},{"x":0.6966,"y":0.5349},{"x":0.6366,"y":0.99},{"x":1,"y":1,"percentage":1}]}},"colorOverLifetime":{"r":{"bezierPoints":[{"x":0,"y":1,"percentage":0},{"x":1,"y":1,"percentage":1}]},"g":{"bezierPoints":[{"x":0,"y":1,"percentage":0},{"x":1,"y":1,"percentage":1}]},"b":{"bezierPoints":[{"x":0,"y":1,"percentage":0},{"x":1,"y":1,"percentage":1}]}},"opacityOverLifetime":{"isActive":true,"lifetimeCurve":{"bezierPoints":[{"x":0,"y":0.0799,"percentage":0},{"x":0.0666,"y":0.85},{"x":0.1674,"y":1.0337},{"x":0.5,"y":1,"percentage":0.5},{"x":0.9933,"y":0.95},{"x":0.9966,"y":0.96},{"x":1,"y":0,"percentage":1}]}},"rotationOverLifetime":{"isActive":true,"min":-22.4,"max":24.3},"noise":{"isActive":true,"useRandomOffset":true,"strength":0.09,"positionAmount":0.191,"rotationAmount":1.677},"_editorData":{"textureId":"CLOUD","simulation":{"movements":"DISABLED","movementSpeed":1,"rotation":"DISABLED","rotationSpeed":1},"showLocalAxes":false,"showWorldAxes":false,"frustumCulled":true,"terrain":{"textureId":"WIREFRAME","movements":"DISABLED","movementSpeed":1,"rotation":"DISABLED","rotationSpeed":1},"gradientStops":[{"position":0,"color":{"r":255,"g":255,"b":255,"a":255}},{"position":1,"color":{"r":255,"g":255,"b":255,"a":0}}],"metadata":{"name":"Untitled-2","createdAt":1769121491665,"modifiedAt":1769121491665,"editorVersion":"2.1.0"}}}';
 
-export const particleExamples = [
-  {
-    // The first real example (2026-09-16): the piece with the built-in
-    // DEFAULT_TEXTURE picture as its colour source — no embedded image, so the
-    // config is small and the same file serves it on every device. Frame, a
-    // shadowing directional light, the iPhone 17 Pro Max output camera with
-    // SSR and SSAO, four BOUNCE walls, touch on. Since 2026-09-17 its colour
-    // source is the site's video, named by URL, and the editor boots into it
-    // (DEFAULT_EXAMPLE below).
-    name: 'example-1-1',
-  },
-  {
-    // The piece: a frame, a point light and a top-down output camera with
-    // reflections on, a video as the colour source. The video is served from
-    // ./assets/videos and the config names it by URL, so it plays on any
-    // device that can reach the site — nothing has to be uploaded first.
-    // Kept as a spare; example-1-1 is the piece.
-    name: 'WIP-Test-2',
-  },
-  {
-    // Working scene: a frame, an emissive sphere, a point light and a top-down
-    // output camera with reflections on. Lives here rather than in a browser's
-    // localStorage so it survives a restart and is one click from loaded.
-    name: 'WIP-Test',
-  },
-];
+// The list itself lives in the engine now (presets.ts), for the studio's Examples panel too.
+export const particleExamples = examples;
 
 /**
  * Examples kept but not shown (2026-09-16): the upstream game effects and the
@@ -300,4 +278,4 @@ export const hiddenExamples = [
 ];
 
 /** The example the editor opens on boot — the piece itself, no example to pick. */
-export const DEFAULT_EXAMPLE = 'example-1-1';
+export { DEFAULT_EXAMPLE };

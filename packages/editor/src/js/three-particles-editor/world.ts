@@ -710,6 +710,8 @@ export const createWorld = async (targetQuery: string): Promise<THREE.Scene> => 
     setViewportInsets,
     getPreviewScale,
     setPreviewScale,
+    getPreviewOffset,
+    setPreviewOffset,
     previewRect,
     overPreviewHandle,
     canvasBounds,
@@ -1129,9 +1131,38 @@ export const renderPlayer = (
 
 const PREVIEW_MARGIN = 16;
 const PREVIEW_BORDER = 2;
-/** Side of the square grab area in the preview's bottom-left corner. */
-const PREVIEW_HANDLE = 20;
+/** How far either side of the border line still counts as grabbing an edge. */
+const PREVIEW_GRAB = 8;
 const PREVIEW_MIN_RATIO = 0.15;
+const PREVIEW_OFFSET_KEY = 'particle-system-editor/preview-offset';
+
+/**
+ * Where the preview sits relative to its anchor, the top-right of the free
+ * viewport: dragged anywhere, and remembered. (0, 0) is the corner.
+ */
+let previewOffset = ((): { dx: number; dy: number } => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PREVIEW_OFFSET_KEY) || 'null');
+    if (stored && Number.isFinite(stored.dx) && Number.isFinite(stored.dy)) return stored;
+  } catch {
+    /* fresh */
+  }
+  return { dx: 0, dy: 0 };
+})();
+
+export const getPreviewOffset = (): { dx: number; dy: number } => ({ ...previewOffset });
+
+export const setPreviewOffset = (dx: number, dy: number): void => {
+  previewOffset = { dx, dy };
+  try {
+    localStorage.setItem(PREVIEW_OFFSET_KEY, JSON.stringify(previewOffset));
+  } catch {
+    /* quota — the position still applies for this session */
+  }
+};
+
+/** Whether the pointer is on the preview (an edge or inside), for the cursor and the border. */
+let previewHover: 'edge' | 'inside' | null = null;
 /**
  * Lets the preview fill the free area edge to edge. That clears half the screen
  * with both panels open, and collapsing the left one takes it well past that.
@@ -1247,45 +1278,75 @@ export const previewRect = (): { x: number; y: number; w: number; h: number } =>
     w = Math.round(h * aspect);
   }
 
-  return { x: Math.round(free.right - w - PREVIEW_MARGIN), y: PREVIEW_MARGIN + free.top, w, h };
+  const canvasH = canvasBounds().height;
+  // Anchored to the top-right corner, moved by the stored offset, and never
+  // pushed out of the free area.
+  const x = THREE.MathUtils.clamp(
+    Math.round(free.right - w - PREVIEW_MARGIN + previewOffset.dx),
+    free.left + PREVIEW_MARGIN,
+    Math.max(free.left + PREVIEW_MARGIN, free.right - w - PREVIEW_MARGIN)
+  );
+  const y = THREE.MathUtils.clamp(
+    Math.round(PREVIEW_MARGIN + free.top + previewOffset.dy),
+    free.top + PREVIEW_MARGIN,
+    Math.max(free.top + PREVIEW_MARGIN, canvasH - h - PREVIEW_MARGIN)
+  );
+  return { x, y, w, h };
 };
 
 /** True when a point in canvas coordinates is inside the resize grip. */
+type PreviewHit = { edges: { l: boolean; r: boolean; t: boolean; b: boolean }; inside: boolean } | null;
+
+/** What the pointer is over: an edge band (to resize), the inside (to move), or nothing. */
+const hitPreview = (px: number, py: number): PreviewHit => {
+  if (!outputCamera || !previewVisible) return null;
+  const { x, y, w, h } = previewRect();
+  const g = PREVIEW_GRAB;
+  if (px < x - g || px > x + w + g || py < y - g || py > y + h + g) return null;
+  const edges = { l: Math.abs(px - x) <= g, r: Math.abs(px - (x + w)) <= g, t: Math.abs(py - y) <= g, b: Math.abs(py - (y + h)) <= g };
+  const onEdge = edges.l || edges.r || edges.t || edges.b;
+  return { edges, inside: !onEdge };
+};
+
+const previewCursor = (hit: PreviewHit): string => {
+  if (!hit) return '';
+  if (hit.inside) return 'move';
+  const { l, r, t: top, b } = hit.edges;
+  if ((l && top) || (r && b)) return 'nwse-resize';
+  if ((r && top) || (l && b)) return 'nesw-resize';
+  if (l || r) return 'ew-resize';
+  return 'ns-resize';
+};
+
+/** Kept for the harness and the old name: true on any edge. */
 const overPreviewHandle = (px: number, py: number): boolean => {
-  if (!outputCamera || !previewVisible) return false;
-  const { x, y, h } = previewRect();
-  return (
-    px >= x - PREVIEW_BORDER &&
-    px <= x + PREVIEW_HANDLE &&
-    py >= y + h - PREVIEW_HANDLE &&
-    py <= y + h + PREVIEW_BORDER
-  );
+  const hit = hitPreview(px, py);
+  return !!hit && !hit.inside;
 };
 
 /**
- * Lets the preview be dragged to any size from a corner thumbnail up to most of
- * the viewport, because judging reflections in a 200px box is guesswork.
- *
- * The grip is at the bottom-left because the box is pinned to the top-right:
- * dragging away from the anchor grows it, which is the direction that reads as
- * "bigger". Orbit controls are suspended for the duration so the scene does not
- * spin while resizing.
+ * The preview is a window you can take hold of: drag an edge and that edge
+ * follows the pointer (the opposite edge stays; the frame keeps the camera's
+ * aspect, so a top or bottom edge sizes it through its height); drag the
+ * inside and the whole window moves. Orbit controls are suspended for the
+ * duration so the scene does not spin under it.
  */
 const installPreviewResize = (canvas: HTMLCanvasElement): void => {
-  let dragging = false;
-  let startX = 0;
-  let startRatio = 0;
+  let drag: { hit: NonNullable<PreviewHit>; start: { x: number; y: number }; rect: { x: number; y: number; w: number; h: number }; offset: { dx: number; dy: number }; ratio: number } | null = null;
 
   canvas.addEventListener(
     'pointerdown',
     (event) => {
       const point = toCanvasSpace(event);
-      if (!overPreviewHandle(point.x, point.y)) return;
-      dragging = true;
-      startX = point.x;
-      startRatio = previewWidthRatio;
+      const hit = hitPreview(point.x, point.y);
+      if (!hit) return;
+      drag = { hit, start: point, rect: previewRect(), offset: { ...previewOffset }, ratio: previewWidthRatio };
       controls.enabled = false;
-      canvas.setPointerCapture(event.pointerId);
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch {
+        /* a synthetic pointer has nothing to capture */
+      }
       event.stopPropagation();
       event.preventDefault();
     },
@@ -1294,22 +1355,52 @@ const installPreviewResize = (canvas: HTMLCanvasElement): void => {
 
   canvas.addEventListener('pointermove', (event) => {
     const point = toCanvasSpace(event);
-    if (!dragging) {
-      canvas.style.cursor = overPreviewHandle(point.x, point.y) ? 'nesw-resize' : '';
+    if (!drag) {
+      const hit = hitPreview(point.x, point.y);
+      previewHover = hit ? (hit.inside ? 'inside' : 'edge') : null;
+      canvas.style.cursor = previewCursor(hit);
       return;
     }
-    const free = freeViewportBounds();
-    const available = free.right - free.left - PREVIEW_MARGIN * 2;
-    // Dragging left is away from the top-right anchor, so it enlarges.
-    setPreviewScale(startRatio + (startX - point.x) / available);
+    const dx = point.x - drag.start.x;
+    const dy = point.y - drag.start.y;
+    if (drag.hit.inside) {
+      setPreviewOffset(drag.offset.dx + dx, drag.offset.dy + dy);
+    } else {
+      const free = freeViewportBounds();
+      const available = free.right - free.left - PREVIEW_MARGIN * 2;
+      const aspect = outputAspect();
+      const { l, r, t: top, b } = drag.hit.edges;
+      // The new width the pointer asks for, whichever edge it holds.
+      let w = drag.rect.w;
+      if (l) w = drag.rect.w - dx;
+      else if (r) w = drag.rect.w + dx;
+      else if (top) w = (drag.rect.h - dy) * aspect;
+      else if (b) w = (drag.rect.h + dy) * aspect;
+      w = Math.max(160, w);
+      const ratio = THREE.MathUtils.clamp(w / available, PREVIEW_MIN_RATIO, PREVIEW_MAX_RATIO);
+      w = Math.round(available * ratio);
+      const h = Math.round(w / aspect);
+      // Keep the edge opposite the one being dragged where it was.
+      const anchorRight = free.right - PREVIEW_MARGIN;
+      const anchorTop = free.top + PREVIEW_MARGIN;
+      const newX = l || (!r && !top && !b) ? drag.rect.x + drag.rect.w - w : drag.rect.x;
+      const newY = top ? drag.rect.y + drag.rect.h - h : drag.rect.y;
+      previewWidthRatio = ratio;
+      setPreviewOffset(newX - (anchorRight - w), newY - anchorTop);
+      setPreviewScale(ratio);
+    }
     event.stopPropagation();
   });
 
   const end = (event: PointerEvent): void => {
-    if (!dragging) return;
-    dragging = false;
+    if (!drag) return;
+    drag = null;
     controls.enabled = true;
-    canvas.releasePointerCapture?.(event.pointerId);
+    try {
+      canvas.releasePointerCapture?.(event.pointerId);
+    } catch {
+      /* see above */
+    }
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
@@ -1353,7 +1444,7 @@ const renderPreview = (): void => {
   const b = PREVIEW_BORDER;
   renderer.setScissor(x - b, y - b, w + b * 2, h + b * 2);
   renderer.setViewport(x - b, y - b, w + b * 2, h + b * 2);
-  renderer.setClearColor(0x555555, 1);
+  renderer.setClearColor(previewHover ? 0x9a9a9a : 0x555555, 1);
   renderer.clear(true, false, false);
 
   renderer.setScissor(x, y, w, h);
@@ -1364,22 +1455,6 @@ const renderPreview = (): void => {
   } else {
     renderer.render(scene, outputCamera);
   }
-
-  // The grip, drawn last so it sits on top of the rendered frame.
-  renderer.setScissor(
-    x - PREVIEW_BORDER,
-    y + h - PREVIEW_HANDLE,
-    PREVIEW_HANDLE,
-    PREVIEW_HANDLE + PREVIEW_BORDER
-  );
-  renderer.setViewport(
-    x - PREVIEW_BORDER,
-    y + h - PREVIEW_HANDLE,
-    PREVIEW_HANDLE,
-    PREVIEW_HANDLE + PREVIEW_BORDER
-  );
-  renderer.setClearColor(0xb34a2c, 1);
-  renderer.clear(true, false, false);
 
   renderer.setScissorTest(false);
   renderer.setViewport(0, 0, size.x, size.y);

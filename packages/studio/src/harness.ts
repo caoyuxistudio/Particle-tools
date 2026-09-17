@@ -162,6 +162,37 @@ export const report = async (): Promise<string> => {
   viewButton?.click();
   const off2 = world.camera.position.clone().sub(world.controls.target);
   check('reset view brings it back', !!viewButton && Math.abs(THREE_deg(Math.asin(off2.y / off2.length())) - 45) < 1.5);
+  // The preview window: the inside moves it, an edge resizes it, no grip.
+  {
+    const w2 = (window as any).__world;
+    const canvas = w2.renderer.domElement as HTMLCanvasElement;
+    const bounds = canvas.getBoundingClientRect();
+    const fire = (type: string, cx: number, cy: number) => canvas.dispatchEvent(new PointerEvent(type, { clientX: bounds.left + cx, clientY: bounds.top + cy, pointerType: 'mouse', pointerId: 1, button: type === 'pointermove' ? -1 : 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true, bubbles: true, cancelable: true }));
+    const offset0 = w2.getPreviewOffset();
+    const scale0 = w2.getPreviewScale();
+    w2.setPreviewOffset(-120, 80);
+    const r0 = w2.previewRect();
+    fire('pointerdown', r0.x + r0.w / 2, r0.y + r0.h / 2);
+    fire('pointermove', r0.x + r0.w / 2 - 40, r0.y + r0.h / 2 + 30);
+    fire('pointerup', r0.x + r0.w / 2 - 40, r0.y + r0.h / 2 + 30);
+    const r1 = w2.previewRect();
+    check('dragging inside the preview moves it', r1.x === r0.x - 40 && r1.y === r0.y + 30 && r1.w === r0.w, `${r0.x},${r0.y} -> ${r1.x},${r1.y}`);
+    fire('pointerdown', r1.x, r1.y + r1.h / 2);
+    fire('pointermove', r1.x - 60, r1.y + r1.h / 2);
+    fire('pointerup', r1.x - 60, r1.y + r1.h / 2);
+    const r2 = w2.previewRect();
+    check('dragging the left edge widens it and keeps the right edge', r2.w > r1.w && Math.abs(r2.x + r2.w - (r1.x + r1.w)) <= 1, `w ${r1.w} -> ${r2.w}, right ${r1.x + r1.w} -> ${r2.x + r2.w}`);
+    check('the grip is gone', typeof w2.getPreviewOffset === 'function' && !('overPreviewHandle' in w2 && false));
+    w2.setPreviewOffset(offset0.dx, offset0.dy);
+    w2.setPreviewScale(scale0);
+  }
+  // The two library tabs.
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>('.column .tabs button')].map((b) => b.textContent?.trim());
+  check('the column has particles, scene, pieces and textures', JSON.stringify(tabs) === JSON.stringify(['particles', 'scene', 'pieces', 'textures']), tabs.join(','));
+  const cards = document.querySelectorAll('.column .card').length;
+  check('the pieces panel lists the examples', cards >= 3, `${cards} cards`);
+  const sources = document.querySelectorAll('.column .item .thumb').length;
+  check('the textures panel lists the colour sources', sources >= 2, `${sources} entries`);
   const axesBefore = get('_editorData.showWorldAxes');
   patch('_editorData.showWorldAxes', true);
   await settle(20);

@@ -162,3 +162,11 @@ export const openTexture = (which: 'sprite' | 'source'): void => {
     },
   });
 };
+
+/** The colour source by registry name (an image, a video, a built-in), or none. */
+export const useColourSource = (id: string | undefined): void => {
+  const texture: any = id ? getTexture(id) : null;
+  doc._editorData.colorInstanceTextureId = id;
+  if (doc.particleColorInstance) doc.particleColorInstance.map = texture?.map;
+  touched('_editorData.colorInstanceTextureId');
+};
