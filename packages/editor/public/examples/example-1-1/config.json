@@ -236,21 +236,15 @@
   },
   "particleColorInstance": {
     "isActive": true,
-    "scale": {
-      "x": 0.35,
-      "y": 0.75
-    },
-    "offset": {
-      "y": 0.64,
-      "z": -0.17
-    },
-    "useAlphaForOpacity": true,
     "useLuminanceForNoise": true,
     "luminanceNoiseAmount": 1,
     "colorTweak": {
-      "saturation": 2,
-      "contrast": 2,
-      "hue": -8
+      "saturation": 1.88,
+      "contrast": 1.05,
+      "hue": -3
+    },
+    "luminanceMap": {
+      "white": 0.71
     },
     "sampleSize": 0
   },
@@ -361,13 +355,9 @@
     "useLiveUpdate": false,
     "enableBigNumbers": true,
     "terrain": {
-      "textureId": "WIREFRAME",
-      "movements": "DISABLED",
-      "movementSpeed": 1,
-      "rotation": "DISABLED",
-      "rotationSpeed": 1
+      "textureId": "WIREFRAME"
     },
-    "colorInstanceTextureId": "DEFAULT_TEXTURE",
+    "colorInstanceTextureId": "VideoTexture-mtvccoy8m7hk",
     "gradientStops": [
       {
         "position": 0,
@@ -391,7 +381,7 @@
     "metadata": {
       "name": "example-1-1",
       "createdAt": 1787000000000,
-      "modifiedAt": 1789551783072,
+      "modifiedAt": 1789627111499,
       "editorVersion": "2.10.0"
     },
     "sceneObjects": [
@@ -513,7 +503,15 @@
           "intensity": 1
         }
       }
-    ]
+    ],
+    "embeddedVideos": {
+      "VideoTexture-mtvccoy8m7hk": {
+        "url": "./assets/videos/wechat-20240829.mp4",
+        "width": 1000,
+        "height": 1000,
+        "duration": 53.133333
+      }
+    }
   },
   "subEmitters": []
 }

@@ -9,7 +9,7 @@
  * clicks and screenshots.
  */
 (() => {
-  const FIXTURE = 'WIP-Test';
+  const FIXTURE = 'example-1-1';
   const KEY_SAVED = 'three-particles-saved-configs';
   const KEY_SCENE = 'particle-system-editor/scene-objects';
 
@@ -26,7 +26,7 @@
    * `public/examples/<name>/config.json` at load time, so unlike a saved config
    * they owe nothing to localStorage and survive a restart or a wiped profile.
    */
-  const EXAMPLE_URL = './examples/wip-test/config.json';
+  const EXAMPLE_URL = './examples/example-1-1/config.json';
   let cached = null;
 
   const fixture = async () => {
@@ -103,7 +103,7 @@
     const lines = [];
     const check = (label, ok, detail = '') => lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
 
-    check('boots into WIP-Test-2', bootLine.includes('default WIP-Test-2 loaded'), bootLine.replace(/^boot: /, ''));
+    check('boots into example-1-1', bootLine.includes('default example-1-1 loaded'), bootLine.replace(/^boot: /, ''));
     // How the page comes up: fonts must not block the first paint, the
     // page is black before any stylesheet, and the boot goes piece → first
     // frame → panel with nothing built twice.
@@ -146,7 +146,10 @@
     const iTweak = titles.indexOf('Source Image Tweak');
     check('source image tweak sits under the colour source', iSource >= 0 && iTweak === iSource + 1, `${iSource} -> ${iTweak}`);
     const ciCfg = window.editor.getCurrentParticleSystemConfig().particleColorInstance;
-    check('tweak and noise map defaults are in place', ciCfg?.colorTweak?.saturation === 1 && ciCfg?.colorTweak?.contrast === 1 && ciCfg?.colorTweak?.hue === 0 && ciCfg?.luminanceMap?.black === 0 && ciCfg?.luminanceMap?.white === 1, JSON.stringify({ tweak: ciCfg?.colorTweak, map: ciCfg?.luminanceMap }));
+    const fixCi = cfg.particleColorInstance ?? {};
+    const tweakWant = { saturation: 1, contrast: 1, hue: 0, ...(fixCi.colorTweak ?? {}) };
+    const mapWant = { black: 0, white: 1, ...(fixCi.luminanceMap ?? {}) };
+    check('tweak and noise map come in from the piece, defaults filling the rest', JSON.stringify(ciCfg?.colorTweak) === JSON.stringify(tweakWant) && JSON.stringify(ciCfg?.luminanceMap) === JSON.stringify(mapWant), JSON.stringify({ tweak: ciCfg?.colorTweak, map: ciCfg?.luminanceMap }));
     const cfgLive = window.editor.getCurrentParticleSystemConfig();
     const gradientFolder = [...document.querySelectorAll('.lil-gui')].find((g) => g.querySelector(':scope > .title')?.textContent.trim() === 'Color over lifetime (Gradient)');
     const enableBox = gradientFolder?.querySelector('.controller input[type=checkbox]');
@@ -198,19 +201,22 @@
     typeInto('maxParticles', String(maxBefore));
     check('max particles never drops below 1000', maxLow === 1000 && cfgLive.maxParticles === maxBefore, `${maxLow}`);
 
-    // The first real example (2026-09-16): served from disk, its colour source
-    // the built-in DEFAULT_TEXTURE picture — nothing embedded, so the config is
-    // small and every device gets the same file — and the Examples panel lists
-    // it with the two WIP tests and nothing else.
+    // The first real example (2026-09-16; the piece since 2026-09-17): served
+    // from disk, its colour source the site's own video named by URL — nothing
+    // embedded, so the config is small and every device plays the same file —
+    // and the Examples panel lists it with the two WIP tests and nothing else.
+    // The built-in picture stays the colour source of a new system.
     const ex = await (await fetch('./examples/example-1-1/config.json')).json();
-    check('example-1-1 names the built-in picture and embeds none', ex._editorData?.colorInstanceTextureId === 'DEFAULT_TEXTURE' && !ex._editorData?.embeddedTextures && ex._editorData?.metadata?.name === 'example-1-1', `${ex._editorData?.colorInstanceTextureId}`);
+    const exVideoId = ex._editorData?.colorInstanceTextureId ?? '';
+    const exVideo = ex._editorData?.embeddedVideos?.[exVideoId];
+    check('example-1-1 names its video by URL and embeds no image', /^VideoTexture-/.test(exVideoId) && /^\.\/assets\/videos\//.test(exVideo?.url ?? '') && !ex._editorData?.embeddedTextures && ex._editorData?.metadata?.name === 'example-1-1', `${exVideoId} ${exVideo?.url}`);
     const picture = await createImageBitmap(await (await fetch('./assets/textures/default-texture.webp')).blob());
     check('default-texture.webp is the picture at full size', picture.width === 816 && picture.height === 1456, `${picture.width}×${picture.height}`);
     picture.close();
     window.editor.load(ex);
     const exLive = window.editor.getCurrentParticleSystemConfig();
-    const exImage = exLive.particleColorInstance?.map?.image;
-    check('loading it binds the built-in, not an upload', exLive._editorData?.colorInstanceTextureId === 'DEFAULT_TEXTURE' && exImage?.width === 816 && exImage?.height === 1456, `${exLive._editorData?.colorInstanceTextureId} ${exImage?.width}×${exImage?.height}`);
+    const exMap = exLive.particleColorInstance?.map;
+    check('loading it binds the video, not an upload', exLive._editorData?.colorInstanceTextureId === exVideoId && !!window.__videoTextures?.get?.(exVideoId) && (exMap?.image?.tagName === 'VIDEO' || !!exMap?.isVideoTexture), `${exLive._editorData?.colorInstanceTextureId} ${exMap?.image?.tagName ?? exMap?.type}`);
     const tabs = [...document.querySelectorAll('[role=tab]')];
     const previousTab = tabs.find((t) => t.getAttribute('aria-selected') === 'true');
     tabs.find((t) => /examples/i.test(t.textContent))?.click();
@@ -758,8 +764,12 @@
       check('the radius is a share of the view width', Math.abs(touch.radiusAt(centre) - share * viewWidth) < 1e-6, `${touch.radiusAt(centre).toFixed(3)} = ${share} × ${viewWidth.toFixed(3)}`);
     }
 
-    // Off by default: the fixture's system takes no samples.
-    check('the fixture has touch off', !cfgLiveTouch());
+    // The piece has touch on. Off, the system takes no samples.
+    check('the piece has touch on', cfgLiveTouch());
+    const offCfg = window.editor.getCurrentParticleSystemConfig();
+    offCfg.touch = { ...(offCfg.touch ?? {}), isActive: false };
+    window.editor.reset();
+    await new Promise((r) => setTimeout(r, 300));
     check('an inactive system takes no samples', (touch.feed({ x: 0, y: 0, z: 0, radius: 1, vx: 1, vy: 0, vz: 0 }), touch.count()) === 0);
 
     // On: samples reach the live system and can be cleared.
@@ -845,12 +855,12 @@
 
       const cam = want.find((o) => o.type === 'CAMERA');
       check('the camera\'s parallax settings travel', p.getParallax().enabled === !!cam?.parallax?.enabled);
-      check('the touch settings travel', JSON.stringify(p.getConfig().touch ?? null) === JSON.stringify(JSON.parse(json).touch ?? p.getConfig().touch ?? null));
+      check('the touch settings travel', JSON.stringify(back.touch ?? null) === JSON.stringify(JSON.parse(json).touch ?? null), `${JSON.stringify(back.touch)} vs ${JSON.stringify(JSON.parse(json).touch)}`);
       check('nothing was written to storage', writesBefore === 0 && p.storageWrites() === 0, `${p.storageWrites()} writes`);
 
       // A second paste replaces the first: no leftovers from the previous piece.
       const again = JSON.parse(json);
-      again._editorData.sceneObjects = again._editorData.sceneObjects.filter((o) => o.type !== 'SPHERE');
+      again._editorData.sceneObjects = again._editorData.sceneObjects.filter((o) => o.type !== 'FRAME');
       const ok2 = await p.paste(JSON.stringify(again));
       check('a second paste replaces the piece', ok2 && p.getSceneObjects().length === again._editorData.sceneObjects.length, `${p.getSceneObjects().length} objects`);
       check('junk is refused, and the piece stays', (await p.paste('not a config')) === false && p.hasContent());
@@ -920,7 +930,7 @@
         position: { x: 0, y: 0, z: 0 },
         environment: { source: panorama, format: 'ldr', intensity: 1, rotation: 0, blur: 0, showInViewport: false, showInCamera: false },
       });
-      Object.assign(cfg._editorData.sceneObjects.find((o) => o.type === 'SPHERE'), extra);
+      Object.assign(cfg._editorData.sceneObjects.find((o) => o.type === 'FRAME'), extra);
       window.editor.load(cfg);
     };
 
@@ -988,7 +998,7 @@
     const storedAfter = JSON.parse(localStorage.getItem('particle-system-editor/player-snapshot') || 'null')?.savedAt ?? 0;
     check('an emitter change refreshes the stored snapshot', storedAfter > storedBefore, `${storedAfter - storedBefore}ms later`);
     const secondEnv = second?.objects?.find((o) => o.type === 'ENVIRONMENT');
-    check('the next push moves the object', second?.objects?.find((o) => o.type === 'SPHERE')?.position.x === -1.5);
+    check('the next push moves the object', second?.objects?.find((o) => o.type === 'FRAME')?.position.x === -1.5);
     check(
       'an unchanged panorama travels as a sentinel',
       typeof secondEnv?.environment?.source === 'string' &&
@@ -1272,14 +1282,14 @@
     window.editor.resetCamera();
     await frames(2);
 
-    // Select the sphere from the panel, like a user would.
+    // Select the frame from the panel, like a user would.
     const previousTab = [...document.querySelectorAll('[role=tab]')].find((t) => t.getAttribute('aria-selected') === 'true');
     const sceneTab = [...document.querySelectorAll('[role=tab]')].find((t) => /scene/i.test(t.textContent));
     sceneTab?.click();
     await settle(300);
-    const item = [...document.querySelectorAll('.item')].find((el) => /sphere/i.test(el.querySelector('.title')?.textContent || ''));
+    const item = [...document.querySelectorAll('.item')].find((el) => /frame/i.test(el.querySelector('.title')?.textContent || ''));
     const selectButton = item?.querySelector('button[title="Show drag axes in the viewport"]');
-    check('the Scene panel offers a handle toggle for the sphere', !!selectButton);
+    check('the Scene panel offers a handle toggle for the frame', !!selectButton);
     selectButton?.click();
     await frames(2);
 
@@ -1325,7 +1335,7 @@
 
       if (hit) {
         const before = controls.object.position.clone();
-        const stored = () => storedScene().find((o) => o.type === 'SPHERE')?.position;
+        const stored = () => storedScene().find((o) => o.type === 'FRAME')?.position;
         const storedBefore = JSON.stringify(stored());
         const events = [];
         const unwatch = window.editor.watchDocument((e) => events.push(e));
@@ -1462,7 +1472,7 @@
     await settle(700);
     check('the HUD is shown', !!hud && hud.isShown() && !!document.querySelector('.perf-hud') && !document.querySelector('.perf-hud').hidden);
     const text = hud ? hud.report() : '';
-    check('the report names the piece and the pixels', /piece: WIP-Test/.test(text) && /pixels: \d+×\d+/.test(text) && /^fps: /m.test(text));
+    check('the report names the piece and the pixels', /piece: example-1-1/.test(text) && /pixels: \d+×\d+/.test(text) && /^fps: /m.test(text));
     const beforeScale = w.renderer.getPixelRatio();
     const css = [canvas.clientWidth, canvas.clientHeight];
     w.setRenderScale(1);
@@ -2150,10 +2160,15 @@
       c.touch = { ...(c.touch || {}), isActive: false };
       c.velocityOverLifetime = { linear: { x: { min: 0, max: 0 }, y: { min: 0, max: 0 }, z: { min: 0, max: 0 } }, orbital: { x: { min: 0, max: 0 }, y: { min: 0, max: 0 }, z: { min: 0, max: 0 } } };
       c.colorOverLifetime = { r: flat(1), g: flat(1), b: flat(1) };
+      // The reference mapping needs a still: the built-in picture, whatever the piece itself colours from.
+      c._editorData = { ...c._editorData, colorInstanceTextureId: 'DEFAULT_TEXTURE' };
+      delete c._editorData.embeddedVideos;
       c.particleColorInstance = {
         ...(c.particleColorInstance || {}),
         isActive: true,
         plane: 'XZ',
+        offset: { x: 0, y: 0, z: 0 },
+        luminanceMap: { black: 0, white: 1 },
         area: { x: 0, y: 0, z: 0 },
         scale: { x: 1, y: 1 },
         wrap: 'ZERO',

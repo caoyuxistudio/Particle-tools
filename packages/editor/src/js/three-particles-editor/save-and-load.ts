@@ -126,7 +126,9 @@ const collectEmbeddedTextures = (editorData) => {
   const custom = readCustomTextures();
   const embedded: Record<string, string> = {};
   [editorData?.textureId, editorData?.colorInstanceTextureId].forEach((id) => {
-    if (id && custom[id]) embedded[id] = custom[id];
+    // A video is named by URL in embeddedVideos (below); its thumbnail sits in
+    // the custom list too and must not be mistaken for an uploaded picture.
+    if (id && custom[id] && !findVideoEntry(id)) embedded[id] = custom[id];
   });
   return Object.keys(embedded).length > 0 ? embedded : undefined;
 };
