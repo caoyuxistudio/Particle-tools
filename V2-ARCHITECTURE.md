@@ -287,7 +287,7 @@ M2 第一刀查出的两个 V1 bug：`serializeConfig` 的碰撞面 reducer 漏�
 
 ## 8. 明确不做
 
-- 不做云端存储。My Saved Configs、贴图、视频仍在浏览器本地；跨设备靠 JSON 和仓库里的 example。
+- 不做云端存储（V2 的里程碑内）。My Saved Configs、贴图、视频仍在浏览器本地；跨设备靠 JSON 和仓库里的 example。**2026-09-17 补：作者提出以后要账号和云端**（每人自己的作品库，像在线软件）。方向定为 BaaS（Supabase 一类：Postgres + 登录 + 对象存储 + 行级权限），前端仍是 GitHub Pages 上的静态站，只换存储适配层——`saved-configs.ts` 的读写和资产的 URL 化就是为此留的口。M4 之后再做。
 - 不在 V2 里重写三个 canvas 编辑器和任何引擎逻辑。
 - 不引入 UI 组件库、CSS 框架、状态管理库。store 是几十行手写的。
 - 不把 V1 编辑器的 lil-gui 改成读 schema。V1 保持原样直到退役，避免双份重构。

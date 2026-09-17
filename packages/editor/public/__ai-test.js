@@ -227,7 +227,7 @@
     const savedNames = new Set(JSON.parse(localStorage.getItem(KEY_SAVED) || '[]').map((e) => e.name));
     const listed = [...document.querySelectorAll('.mdc-card h4')].map((h) => h.textContent.trim()).filter((n) => !savedNames.has(n));
     previousTab?.click();
-    check('the examples panel lists the three and nothing else', JSON.stringify(listed) === JSON.stringify(['example-1-1', 'WIP-Test-2', 'WIP-Test']), listed.join(', '));
+    check('the examples panel lists the two and nothing else', JSON.stringify(listed) === JSON.stringify(['example-1-1', 'WIP-Test-2']), listed.join(', '));
     check('no runtime errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 
     const failed = lines.filter((s) => s.startsWith('FAIL')).length;

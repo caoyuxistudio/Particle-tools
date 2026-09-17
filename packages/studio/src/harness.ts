@@ -190,7 +190,7 @@ export const report = async (): Promise<string> => {
   const tabs = [...document.querySelectorAll<HTMLButtonElement>('.column .tabs button')].map((b) => b.textContent?.trim());
   check('the column has particles, scene, pieces and textures', JSON.stringify(tabs) === JSON.stringify(['particles', 'scene', 'pieces', 'textures']), tabs.join(','));
   const cards = document.querySelectorAll('.column .card').length;
-  check('the pieces panel lists the examples', cards >= 3, `${cards} cards`);
+  check('the pieces panel lists the examples', cards >= 2, `${cards} cards`);
   const sources = document.querySelectorAll('.column .item .thumb').length;
   check('the textures panel lists the colour sources', sources >= 2, `${sources} entries`);
   const axesBefore = get('_editorData.showWorldAxes');

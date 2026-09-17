@@ -5,7 +5,8 @@
 export type ExampleEntry = { name: string };
 
 /** The pieces the Examples panel lists, in order. */
-export const examples: ExampleEntry[] = [{ name: 'example-1-1' }, { name: 'WIP-Test-2' }, { name: 'WIP-Test' }];
+// WIP-Test (the early test scene) was dropped on 2026-09-17: it crashed on load and nothing needs it.
+export const examples: ExampleEntry[] = [{ name: 'example-1-1' }, { name: 'WIP-Test-2' }];
 
 /** The piece an editor opens into. */
 export const DEFAULT_EXAMPLE = 'example-1-1';
