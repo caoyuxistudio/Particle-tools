@@ -213,6 +213,9 @@ export const serializeConfig = (particleSystemConfig) => {
       if (cp.dampen !== undefined) result.dampen = cp.dampen;
       if (cp.lifetimeLoss !== undefined) result.lifetimeLoss = cp.lifetimeLoss;
       if (cp.recover !== undefined) result.recover = cp.recover;
+      // Per-wall bounce settings (2026-09-16); COPY dropped them until 2026-09-17.
+      if (cp.touchCap !== undefined) result.touchCap = cp.touchCap;
+      if (cp.maxSpeed !== undefined) result.maxSpeed = cp.maxSpeed;
       return result;
     });
   }
