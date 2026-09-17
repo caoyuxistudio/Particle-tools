@@ -249,7 +249,7 @@ const particleSystemConfig = {
   ...editorDefaultConfig(),
   _editorData: {
     ...defaultEditorData,
-    terrain: { ...defaultEditorData.terrain, ...defaultEditorData.simulation },
+    terrain: { ...defaultEditorData.terrain },
     simulation: { ...defaultEditorData.simulation },
   },
 };

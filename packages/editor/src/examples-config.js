@@ -67,7 +67,9 @@ export const particleExamples = [
     // DEFAULT_TEXTURE picture as its colour source — no embedded image, so the
     // config is small and the same file serves it on every device. Frame, a
     // shadowing directional light, the iPhone 17 Pro Max output camera with
-    // SSR and SSAO, four BOUNCE walls, touch on.
+    // SSR and SSAO, four BOUNCE walls, touch on. Since 2026-09-17 its colour
+    // source is the site's video, named by URL, and the editor boots into it
+    // (DEFAULT_EXAMPLE below).
     name: 'example-1-1',
   },
   {
@@ -75,7 +77,7 @@ export const particleExamples = [
     // reflections on, a video as the colour source. The video is served from
     // ./assets/videos and the config names it by URL, so it plays on any
     // device that can reach the site — nothing has to be uploaded first.
-    // The editor boots into this one (see DEFAULT_EXAMPLE below).
+    // Kept as a spare; example-1-1 is the piece.
     name: 'WIP-Test-2',
   },
   {
@@ -298,4 +300,4 @@ export const hiddenExamples = [
 ];
 
 /** The example the editor opens on boot — the piece itself, no example to pick. */
-export const DEFAULT_EXAMPLE = 'WIP-Test-2';
+export const DEFAULT_EXAMPLE = 'example-1-1';
