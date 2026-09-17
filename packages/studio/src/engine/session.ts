@@ -20,6 +20,7 @@ import {
   getRendererDomElement,
   getDepthTexture,
   getOutputCamera,
+  resetCamera,
   getRenderScale,
   setRenderScale,
   getDrawingBufferSize,
@@ -252,6 +253,31 @@ const installInstruments = (): void => {
   };
   (window as any).__perfHud = perfHud;
   (window as any).__gyroHud = gyroHud;
+  // A floating panel must be closable from itself: once it covers the button
+  // that opened it, there is no other way. The HUDs build their DOM on first
+  // show, so the close is added whenever one appears.
+  const closes = () => {
+    addClose('.perf-hud', () => perfHud?.hide());
+    addClose('.gyro-hud', () => gyroHud?.hide());
+  };
+  closes();
+  new MutationObserver(closes).observe(document.body, { childList: true });
+};
+
+const addClose = (selector: string, close: () => void): void => {
+  const root = document.querySelector<HTMLElement>(selector);
+  if (!root || root.querySelector('.hud-close')) return;
+  root.style.position = 'fixed';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'hud-close';
+  button.title = 'Close';
+  button.textContent = '×';
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    close();
+  });
+  root.prepend(button);
 };
 
 export const present = (): void => togglePresentation();
@@ -306,6 +332,8 @@ export const boot = async (options: BootOptions): Promise<void> => {
   if (options.piece) load(options.piece);
   else rebuild();
   mark('piece');
+  // The home view: 45° around and 45° up, framing the installation.
+  resetCamera();
 
   await compileWorld();
   if (particleSystem?.computeNode) {
@@ -319,7 +347,7 @@ export const boot = async (options: BootOptions): Promise<void> => {
   animate();
 };
 
-export { schema, getOutputCamera, syncFurniture, isPresenting };
+export { schema, getOutputCamera, syncFurniture, isPresenting, resetCamera };
 
 // TEMP DEBUG — the studio's seam for its harness, like V1's window.editor.
 (window as any).__studio = {

@@ -116,7 +116,10 @@ const buildMaterial = (): MeshBasicNodeMaterial => {
     float(COLOR_SOURCE_DEBUG_OPACITY)
   );
   material.transparent = true;
-  material.depthTest = false;
+  // In the space, not over it: the frame in front of the plane hides it, the
+  // plane hides what is behind it. It only never writes depth, so particles
+  // and handles still draw through its translucency.
+  material.depthTest = true;
   material.depthWrite = false;
   material.side = THREE.DoubleSide;
   return material;
@@ -183,7 +186,7 @@ const build = (targetScene: THREE.Scene): void => {
     new THREE.LineBasicMaterial({
       color: COLOR_SOURCE_DEBUG_COLOR,
       transparent: true,
-      depthTest: false,
+      depthTest: true,
       depthWrite: false,
     })
   );

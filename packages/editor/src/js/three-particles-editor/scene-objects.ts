@@ -1083,6 +1083,9 @@ export const watchScene = (watcher: () => void): (() => void) => {
 
 export const getSceneObjects = (): SceneObject[] => objects;
 
+/** The THREE object mounted for a stored object, for furniture that decorates it. */
+export const getLiveObject = (id: string): THREE.Object3D | undefined => live.get(id);
+
 const edgeBase = new THREE.Color();
 
 /**

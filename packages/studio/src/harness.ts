@@ -134,7 +134,7 @@ export const report = async (): Promise<string> => {
   check('and carries its tag and arrow', !!helperObj && helperObj.children.some((c: any) => c.isSprite) && helperObj.children.some((c: any) => c.type === 'ArrowHelper'));
   patch('_editorData.showShape', !!shapeBefore2);
   const toolbar = [...document.querySelectorAll<HTMLButtonElement>('.toolbar button')];
-  check('the viewport toolbar carries the furniture switches', toolbar.length === 5 && toolbar.every((b) => b.dataset.switch));
+  check('the viewport toolbar carries the furniture switches', toolbar.filter((b) => b.dataset.switch).length === 5);
   const wallsSwitch = toolbar.find((b) => b.dataset.switch === '_editorData.showCollisionPlanes');
   const wallsWas = get('_editorData.showCollisionPlanes');
   wallsSwitch?.click();
@@ -142,6 +142,26 @@ export const report = async (): Promise<string> => {
   check('a toolbar switch patches the document', get('_editorData.showCollisionPlanes') === !wallsWas);
   wallsSwitch?.click();
   await settle(30);
+  // The scene's objects wear their decor on the furniture layer: wires on meshes, a body on the camera, a lamp and an aim on the sun.
+  const world = (window as any).__world;
+  const furnitureLayer = new T.Layers(); furnitureLayer.set(1);
+  const frameObj = world.scene.children.find((o: any) => o.isMesh && !o.layers.test(furnitureLayer) && o.children.some((c: any) => c.userData.decor === 'wire'));
+  check('scene meshes carry an edge wire on the furniture layer', !!frameObj && frameObj.children.filter((c: any) => c.userData.decor === 'wire').every((c: any) => c.layers.test(furnitureLayer) && c.type === 'LineSegments'));
+  const cam = world.scene.children.find((o: any) => o.isPerspectiveCamera && o.children.some((c: any) => c.userData.decor === 'camera'));
+  check('the camera wears a body', !!cam);
+  const sun = world.scene.children.find((o: any) => o.isDirectionalLight);
+  check('the sun wears a lamp and an aim arrow', !!sun && sun.children.some((c: any) => c.userData.decor === 'lamp') && world.scene.children.some((o: any) => o.userData.decor === 'aim' && o.type === 'ArrowHelper'));
+  const debugPlane = world.scene.getObjectByName('color-source-debug');
+  let planeMesh: any = null; debugPlane?.traverse((c: any) => { if (c.isMesh && !planeMesh) planeMesh = c; });
+  check('the colour-source plane sits in the depth of the space', !!planeMesh && planeMesh.material.depthTest === true && planeMesh.material.depthWrite === false);
+  // The home view: 45° up, the installation framed.
+  const cam0 = world.camera; const off = cam0.position.clone().sub(world.controls.target); const elevation = THREE_deg(Math.asin(off.y / off.length()));
+  check('the editor camera starts at the 45° home view', Math.abs(elevation - 45) < 1.5, `${elevation.toFixed(1)}°`);
+  const viewButton = document.querySelector<HTMLButtonElement>('.toolbar .view');
+  world.camera.position.set(0, 0, 40); world.controls.target.set(0, 0, 0); world.controls.update();
+  viewButton?.click();
+  const off2 = world.camera.position.clone().sub(world.controls.target);
+  check('reset view brings it back', !!viewButton && Math.abs(THREE_deg(Math.asin(off2.y / off2.length())) - 45) < 1.5);
   const axesBefore = get('_editorData.showWorldAxes');
   patch('_editorData.showWorldAxes', true);
   await settle(20);
@@ -207,6 +227,14 @@ export const report = async (): Promise<string> => {
   await settle(400);
   check('presenting hides the studio and draws the output camera', isPresenting() && document.body.classList.contains('presenting') && getComputedStyle(document.querySelector('.studio')!).display === 'none' && getFrames() > fBefore);
   check('the presentation bar and both HUDs are installed', !!document.querySelector('.presentation-bar') && !!(window as any).__perfHud && !!(window as any).__gyroHud);
+  // Every floating panel closes from itself.
+  (window as any).__perfHud.show();
+  (window as any).__gyroHud.show();
+  await settle(50);
+  const closes = [...document.querySelectorAll<HTMLElement>('.perf-hud .hud-close, .gyro-hud .hud-close')];
+  closes.forEach((b) => b.click());
+  await settle(50);
+  check('the HUDs carry a close button that hides them', closes.length === 2 && !(window as any).__perfHud.isShown() && (document.querySelector('.gyro-hud') as HTMLElement).hidden);
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await settle(200);
   check('Escape brings the studio back', !isPresenting() && getComputedStyle(document.querySelector('.studio')!).display !== 'none');

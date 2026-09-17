@@ -1,0 +1,82 @@
+/*
+ * The runtime HUDs (perf-hud.ts, gyro-hud.ts, presentation.ts) style
+ * themselves for any page; here they wear the studio's tokens instead: one
+ * face, greys, 1px lines, no radius. Their own rules load first (a <style>
+ * they inject), so these win by coming later at equal or higher specificity.
+ */
+.perf-hud,
+.gyro-hud {
+  border-radius: 0 !important;
+  background: rgba(8, 8, 8, 0.92) !important;
+  border: 1px solid var(--line);
+  color: var(--fg) !important;
+  font: 400 var(--fs-2) / var(--lh) var(--font) !important;
+  letter-spacing: var(--tracking);
+  padding: var(--sp-3) !important;
+  padding-top: 28px !important;
+  min-width: 260px !important;
+  max-width: min(440px, 92vw) !important;
+  overflow-wrap: anywhere;
+  z-index: 1003;
+}
+.perf-hud__big {
+  font-size: 22px !important;
+  font-weight: 400 !important;
+  color: var(--fg-strong);
+}
+.gyro-hud__title {
+  font-size: var(--fs-3) !important;
+  font-weight: 400 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-strong);
+}
+.perf-hud__label,
+.gyro-hud__label {
+  color: var(--fg-dim);
+  opacity: 1 !important;
+}
+.perf-hud button,
+.gyro-hud button {
+  height: auto !important;
+  padding: 4px 8px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--fg) !important;
+  font: 400 var(--fs-1) / 1 var(--font) !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.perf-hud button:hover,
+.gyro-hud button:hover {
+  background: var(--panel-2) !important;
+  color: var(--fg-strong) !important;
+}
+.perf-hud button.is-on,
+.gyro-hud button.is-on {
+  background: var(--fg-strong) !important;
+  border-color: var(--fg-strong) !important;
+  color: var(--bg) !important;
+}
+.gyro-hud input[type='range'] {
+  width: auto !important;
+  accent-color: var(--fg) !important;
+}
+/* The close, added by the studio to every floating panel. */
+.hud-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px !important;
+  padding: 0 !important;
+  line-height: 1;
+  border: 1px solid var(--line) !important;
+  color: var(--fg-dim) !important;
+  font-size: var(--fs-3) !important;
+}
+.hud-close:hover {
+  color: var(--fg-strong) !important;
+  border-color: var(--fg-dim) !important;
+}

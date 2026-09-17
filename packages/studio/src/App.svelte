@@ -5,6 +5,7 @@
   import Bottombar from './app/Bottombar.svelte';
   import Modals from './editors/Modals.svelte';
   import '../src/editors/editors.css';
+  import '../src/ui/hud.css';
 </script>
 
 <!--

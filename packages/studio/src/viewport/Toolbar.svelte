@@ -1,5 +1,6 @@
 <script lang="ts">
   import { get, patch, revision } from '../store/document.svelte';
+  import { resetCamera } from '../engine/session';
 
   // The furniture switches, where the furniture is. The same document keys the
   // Helper group edits; this is just a nearer place to reach them.
@@ -17,6 +18,8 @@
   {#each SWITCHES as s (s.path)}
     <button aria-pressed={on(s.path)} title={s.title} data-switch={s.path} onclick={() => patch(s.path, !get(s.path))}>{s.label}</button>
   {/each}
+  <span class="gap"></span>
+  <button class="view" title="Reset the view: 45° around, 45° up, the installation framed" onclick={resetCamera}>reset view</button>
 </nav>
 
 <style>
@@ -36,5 +39,11 @@
   }
   .toolbar button[aria-pressed='true'] {
     background: var(--fg-strong);
+  }
+  .gap {
+    width: var(--sp-2);
+  }
+  .view {
+    border-style: dashed;
   }
 </style>

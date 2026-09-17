@@ -14,6 +14,7 @@ import { updateShapeHelper, SHAPE_HELPER_NAME } from '@engine/shape-helper';
 import { markAsEditorOnly } from '@engine/editor-layers';
 import { showColorSourceDebug, hideColorSourceDebug, syncColorSourceDebug, isColorSourceDebugShown, type ColorSourceDebugState } from '@engine/color-source-debug';
 import type { Doc } from '@engine/schema';
+import { syncSceneDecor } from './scene-decor';
 
 export type FurnitureHost = {
   doc: Doc;
@@ -136,9 +137,10 @@ const debugState = (): ColorSourceDebugState => {
   };
 };
 
-/** Every frame, like V1's onUpdate: the debug plane follows the mapping. */
+/** Every frame, like V1's onUpdate: the debug plane follows the mapping, the scene's objects wear their decor. */
 export const syncFurnitureFrame = (): void => {
   if (!host) return;
+  syncSceneDecor();
   if (host.doc._editorData?.showColorSourceDebug) {
     showColorSourceDebug(getScene(), onSourceDrag);
     syncColorSourceDebug(debugState());
