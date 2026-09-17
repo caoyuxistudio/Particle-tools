@@ -19,7 +19,7 @@ Fork 自 **Istvan Krisztian Somoracz（NewKrok）** 的两个 MIT 项目：
 
 拥有者：曹雨西（Cao Yuxi），新媒体艺术家。这是他自用的创作工具，不是要回馈上游的通用库。
 
-线上：<https://caoyuxistudio.github.io/threeparticle-CAOModed/>（推 main 自动部署）
+线上：<https://caoyuxistudio.github.io/Particle-tools/>（推 main 自动部署；仓库 2026-09-17 从 threeparticle-CAOModed 改名为 **Particle-tools**，V2 的 studio 在 `/Studio/`，由同一个工作流从 v2 分支构建）
 
 ---
 
@@ -303,7 +303,7 @@ three **r182**、`WebGPURenderer`、TSL 节点材质、Svelte 5、Rollup。
 
 **roughness 上限就是 1**，抬滑块上限没有意义（着色模型和 SSR 的 lod 计算都会截断）。要更模糊用相机的 `resolution`（降分辨率追踪，更省不是更费）或 `blur`。
 
-**库的 `npm run build` 分两段，ESM 先成功、DTS 后失败**（2026-09-16 踩过）。tsup 先出 `dist/index.js`（esbuild，不查类型），再另起一个 worker 生成 `.d.ts`（真正的 tsc）。本地 dist 已经更新、编辑器照常能跑，但 DTS 那段可以在**后面**报 `error TS…` 并以非零退出——Pages 的部署工作流里 "Build the particle library" 就是这样连着两次红的（一个只在类型位置用的 `ColorInstanceData` 没导入）。看构建输出要看到最后一行 `DTS ⚡️ Build success`，别 `head` 截前几行；推之前想稳的话按 `.github/workflows/deploy.yml` 的步骤在干净目录里用 node 20 走一遍（`npx -y node@20` 有 node 20 可用），部署状态用 `curl https://api.github.com/repos/caoyuxistudio/threeparticle-CAOModed/actions/runs?per_page=3` 看（日志要 admin 权限，`gh` 这台机器没装）。
+**库的 `npm run build` 分两段，ESM 先成功、DTS 后失败**（2026-09-16 踩过）。tsup 先出 `dist/index.js`（esbuild，不查类型），再另起一个 worker 生成 `.d.ts`（真正的 tsc）。本地 dist 已经更新、编辑器照常能跑，但 DTS 那段可以在**后面**报 `error TS…` 并以非零退出——Pages 的部署工作流里 "Build the particle library" 就是这样连着两次红的（一个只在类型位置用的 `ColorInstanceData` 没导入）。看构建输出要看到最后一行 `DTS ⚡️ Build success`，别 `head` 截前几行；推之前想稳的话按 `.github/workflows/deploy.yml` 的步骤在干净目录里用 node 20 走一遍（`npx -y node@20` 有 node 20 可用），部署状态用 `curl https://api.github.com/repos/caoyuxistudio/Particle-tools/actions/runs?per_page=3` 看（日志要 admin 权限，`gh` 这台机器没装）。
 
 **canvas 读回三件事**：`getContext('2d')` 不显式写 `willReadFrequently: false`，Chrome 会在几次 `getImageData` 之后把整个 canvas 降到 CPU（对视频意味着每帧先在 CPU 上转换整帧）；GPU canvas 的 `getImageData` 是等 GPU 队列的同步停顿，页面渲染越重停得越久，所以读回要么不在主线程做，要么别做；隐藏文档里 rAF 和 `requestVideoFrameCallback` 都不跑，`display:none` 的视频也不触发后者。
 
