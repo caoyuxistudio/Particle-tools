@@ -1,12 +1,12 @@
 <script>
-  import { getTexture, loadCustomAssets } from './../../../js/three-particles-editor/assets';
+  import { getTexture, loadCustomAssets } from '@particle-tools/engine/assets';
   import FileUploader from './file-uploader.svelte';
   import { Svroller } from 'svrollbar';
   import { Input } from '@smui/textfield';
   import Paper from '@smui/paper';
   import { Icon } from '@smui/common';
   import LibraryItem from './library-item.svelte';
-  import { textureConfigs, TextureId } from './../../../js/three-particles-editor/texture-config';
+  import { textureConfigs, TextureId } from '@particle-tools/engine/texture-config';
   import { showErrorSnackbar } from './../../../js/stores/snackbar-store';
 
   const defaultList = Object.keys(TextureId)

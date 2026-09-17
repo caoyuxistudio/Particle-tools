@@ -4,7 +4,7 @@
   import Button, { Icon, Label } from '@smui/button';
   import Textfield from '@smui/textfield';
 
-  import { getVideoBlob } from './../../../js/three-particles-editor/video-textures';
+  import { getVideoBlob } from '@particle-tools/engine/video-textures';
 
   let {
     id,

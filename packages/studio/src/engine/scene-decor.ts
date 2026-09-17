@@ -6,9 +6,9 @@
 // which is cheap for a scene of a few objects.
 
 import * as THREE from 'three';
-import { getScene } from '@engine/world';
-import { getSceneObjects, getLiveObject } from '@engine/scene-objects';
-import { markAsEditorOnly } from '@engine/editor-layers';
+import { getScene } from '@particle-tools/engine/world';
+import { getSceneObjects, getLiveObject } from '@particle-tools/engine/scene-objects';
+import { markAsEditorOnly } from '@particle-tools/engine/editor-layers';
 
 /** The ground wireframe's brightness (world.ts setTerrain), as asked: one grey for all structure. */
 const WIRE = 0x242424;

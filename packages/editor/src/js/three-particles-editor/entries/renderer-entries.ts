@@ -1,7 +1,7 @@
 import { blendingMap } from '@newkrok/three-particles';
-import { getTexture } from '../assets';
-import { getDepthTexture } from '../world';
-import { openTextureSelectorModal } from '../texture-selector/texture-selector';
+import { getTexture } from '@particle-tools/engine/assets';
+import { getDepthTexture } from '@particle-tools/engine/world';
+import { openTextureSelectorModal } from '@particle-tools/engine/texture-selector/texture-selector';
 
 type RendererEntriesParams = {
   parentFolder: any;

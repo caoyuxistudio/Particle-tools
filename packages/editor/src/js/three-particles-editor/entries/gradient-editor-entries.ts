@@ -13,14 +13,14 @@ import {
   createGradientEditor,
   setGradientStops,
   setOnChangeCallback,
-} from '../gradient-editor/gradient-editor';
+} from '@particle-tools/engine/gradient-editor/gradient-editor';
 import {
   gradientToBezierCurves,
   bezierCurvesToGradient,
   getDefaultGradientStops,
   type GradientStop,
   type BezierCurve,
-} from '../gradient-editor/gradient-to-bezier';
+} from '@particle-tools/engine/gradient-editor/gradient-to-bezier';
 
 type GradientEditorEntriesParams = {
   parentFolder: GUI;

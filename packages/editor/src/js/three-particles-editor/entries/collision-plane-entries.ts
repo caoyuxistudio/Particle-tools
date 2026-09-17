@@ -3,13 +3,13 @@ import * as THREE from 'three';
 import {
   createCollisionPlaneHelpers,
   disposeCollisionPlaneHelpers,
-} from '../collision-plane-helper';
+} from '@particle-tools/engine/collision-plane-helper';
 import {
   initCollisionPlaneInteraction,
   deselectCollisionPlane,
   isCollisionPlaneDragging,
   getActiveCollisionPlaneIndex,
-} from '../collision-plane-interaction';
+} from '@particle-tools/engine/collision-plane-interaction';
 
 type CollisionPlaneEntriesParams = {
   parentFolder: any;

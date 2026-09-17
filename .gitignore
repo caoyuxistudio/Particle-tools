@@ -11,3 +11,8 @@ coverage/
 packages/editor/public/assets-local/
 # The test media folder beside the packages (73MB video); never part of the repo
 assets4test/
+
+# Copies of packages/engine/presets made by sync-presets.mjs; the presets folder is the source
+packages/editor/public/assets/
+packages/editor/public/examples/example-1-1/
+packages/editor/public/examples/wip-test-2/

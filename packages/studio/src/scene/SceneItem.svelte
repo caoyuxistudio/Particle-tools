@@ -4,7 +4,7 @@
     CORNER_PRESETS,
     squareCorners,
     defaultLightShadowSettings,
-  } from '@engine/scene-objects';
+  } from '@particle-tools/engine/scene-objects';
   import { glyph } from './glyph';
   import * as THREE from 'three';
   import {
@@ -13,9 +13,9 @@
     defaultAoSettings,
     defaultEnvironmentSettings,
     setOnEnvironmentLoaded,
-  } from '@engine/world';
+  } from '@particle-tools/engine/world';
   import { onMount } from 'svelte';
-  import { defaultParallaxSettings } from '@engine/parallax';
+  import { defaultParallaxSettings } from '@particle-tools/engine/parallax';
 
   let { obj, update, remove, bake, selected = false, select, contextMenu } = $props();
 

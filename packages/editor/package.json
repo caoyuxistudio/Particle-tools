@@ -15,16 +15,15 @@
     "three": "^0.182.0"
   },
   "scripts": {
-    "build": "npm run smui-theme-light && npm run smui-theme-dark && rollup -c",
-    "dev": "rollup -c -w",
-    "start": "sirv public --no-clear",
+    "build": "node ../engine/scripts/sync-presets.mjs && npm run smui-theme-light && npm run smui-theme-dark && rollup -c",
+    "dev": "node ../engine/scripts/sync-presets.mjs && rollup -c -w",
+    "start": "node ../engine/scripts/sync-presets.mjs && sirv public --no-clear",
     "prepare": "husky",
     "smui-theme-light": "node scripts/compile-theme.js public/build/static/smui.css src/theme",
     "smui-theme-dark": "node scripts/compile-theme.js public/build/static/smui-dark.css src/theme --dark",
     "lint": "eslint src/",
-    "check:boundary": "node scripts/check-engine-boundary.mjs",
     "format": "prettier --write \"src/**/*.{js,svelte}\"",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests",
     "release": "semantic-release"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-import { openBezierEditorModal } from '../curve-editor/curve-editor';
+import { openBezierEditorModal } from '@particle-tools/engine/curve-editor/curve-editor';
 
 import { createLifetimeCurveFolderEntry } from './entry-helpers-v2';
 import type { ParticleSystemConfig } from '@newkrok/three-particles';

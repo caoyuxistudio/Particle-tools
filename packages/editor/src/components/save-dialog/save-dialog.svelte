@@ -3,7 +3,7 @@
   import Button, { Label, Icon } from '@smui/button';
   import Dialog, { Title, Content, Actions } from '@smui/dialog';
   import Textfield from '@smui/textfield';
-  import { serializeConfig } from '../../js/three-particles-editor/save-and-load';
+  import { serializeConfig } from '@particle-tools/engine/save-and-load';
   import { generateDefaultName } from '../../js/utils/name-utils';
   import {
     createConfigId,

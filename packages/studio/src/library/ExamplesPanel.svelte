@@ -1,8 +1,8 @@
 <script lang="ts">
   // The pieces: the ones that ship with the engine, and the ones saved in
   // this browser. Loading either goes through the store's one load path.
-  import { examples, exampleConfigUrl, examplePreviewUrl } from '@engine/presets';
-  import { readSavedConfigs, writeSavedConfigs, createConfigId, type SavedConfig } from '@engine/saved-configs';
+  import { examples, exampleConfigUrl, examplePreviewUrl } from '@particle-tools/engine/presets';
+  import { readSavedConfigs, writeSavedConfigs, createConfigId, type SavedConfig } from '@particle-tools/engine/saved-configs';
   import { load, serialize, get, revision } from '../store/document.svelte';
 
   let saved = $state<SavedConfig[]>(readSavedConfigs());

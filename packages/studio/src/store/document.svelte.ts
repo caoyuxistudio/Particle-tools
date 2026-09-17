@@ -8,8 +8,8 @@
 
 import { doc, applyChange, load as sessionLoad, serialize as sessionSerialize, syncFurniture } from '../engine/session';
 import { FURNITURE_PATHS } from '../engine/furniture';
-import { watchDocument, type DocumentChange } from '@engine/document-events';
-import type { ChangeLevel } from '@engine/schema';
+import { watchDocument, type DocumentChange } from '@particle-tools/engine/document-events';
+import type { ChangeLevel } from '@particle-tools/engine/schema';
 
 let rev = $state(0);
 let lastChange = $state<{ path: string; level: ChangeLevel | 'none' } | null>(null);

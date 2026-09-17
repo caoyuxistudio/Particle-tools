@@ -19,7 +19,7 @@
  */
 import * as THREE from 'three';
 
-import { setPlayerSource, setRuntimeMode } from './js/three-particles-editor/runtime-mode';
+import { setPlayerSource, setRuntimeMode } from '@particle-tools/engine/runtime-mode';
 
 // Before anything reads it. Everything downstream checks the mode lazily, at
 // call time, so this only has to happen before the first call — but putting it
@@ -29,7 +29,7 @@ const linked = new URLSearchParams(window.location.search).has('link');
 setPlayerSource(linked ? 'linked' : 'standalone');
 
 import { updateParticleSystems } from '@newkrok/three-particles';
-import { prepareParticleBackend } from './js/three-particles-editor/gpu-support';
+import { prepareParticleBackend } from '@particle-tools/engine/gpu-support';
 
 import {
   createWorld,
@@ -48,16 +48,16 @@ import {
   getAoSettings,
   setAoSettings,
   getRendererDomElement,
-} from './js/three-particles-editor/world';
+} from '@particle-tools/engine/world';
 import {
   ensureTexturesLoaded,
   getTexture,
   initAssets,
   loadCustomAssets,
-} from './js/three-particles-editor/assets';
-import { installPerfHud } from './js/three-particles-editor/perf-hud';
-import { installGyroHud } from './js/three-particles-editor/gyro-hud';
-import { installTouchInput } from './js/three-particles-editor/touch-input';
+} from '@particle-tools/engine/assets';
+import { installPerfHud } from '@particle-tools/engine/perf-hud';
+import { installGyroHud } from '@particle-tools/engine/gyro-hud';
+import { installTouchInput } from '@particle-tools/engine/touch-input';
 import {
   requestParallaxPermission,
   describeParallax,
@@ -65,26 +65,26 @@ import {
   setParallaxSettings,
   recenterParallax,
   resetGyroscope,
-} from './js/three-particles-editor/parallax';
-import { ensureVideoTexture, loadVideoTextures } from './js/three-particles-editor/video-textures';
-import { buildParticleSystem } from './js/three-particles-editor/particle-factory';
-import { loadParticleSystem, serializeConfig } from './js/three-particles-editor/save-and-load';
+} from '@particle-tools/engine/parallax';
+import { ensureVideoTexture, loadVideoTextures } from '@particle-tools/engine/video-textures';
+import { buildParticleSystem } from '@particle-tools/engine/particle-factory';
+import { loadParticleSystem, serializeConfig } from '@particle-tools/engine/save-and-load';
 import {
   getSceneObjects,
   readStoredSceneObjects,
   replaceSceneObjects,
   updateSceneObject,
   tintFrameEdges,
-} from './js/three-particles-editor/scene-objects';
-import { applySimulation, resetSimulation } from './js/three-particles-editor/simulation';
-import { TextureId } from './js/three-particles-editor/texture-config';
+} from '@particle-tools/engine/scene-objects';
+import { applySimulation, resetSimulation } from '@particle-tools/engine/simulation';
+import { TextureId } from '@particle-tools/engine/texture-config';
 import {
   KEEP_EXISTING,
   PING_INTERVAL_MS,
   PLAYER_CHANNEL,
   readPlayerSnapshot,
   type PlayerMessage,
-} from './js/three-particles-editor/player-link';
+} from '@particle-tools/engine/player-link';
 
 type CycleData = {
   pauseStartTime: number;

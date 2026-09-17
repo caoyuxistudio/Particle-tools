@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 
-import { TextureId } from '../texture-config';
-import { setTerrain } from '../world';
+import { TextureId } from '@particle-tools/engine/texture-config';
+import { setTerrain } from '@particle-tools/engine/world';
 import type { ParticleSystem, ParticleSystemConfig } from '@newkrok/three-particles';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
-import { updateShapeHelper } from '../shape-helper';
+import { updateShapeHelper } from '@particle-tools/engine/shape-helper';
 import { updateForceFieldHelperVisibility } from './force-field-entries';
 import { updateCollisionPlaneHelperVisibility } from './collision-plane-entries';
-import { markAsEditorOnly } from '../editor-layers';
+import { markAsEditorOnly } from '@particle-tools/engine/editor-layers';
 import {
   MovementSimulations,
   RotationSimulations,
@@ -15,8 +15,8 @@ import {
   clearMovementTrail,
   resetSimulation,
   seedRandomMovement,
-} from '../simulation';
-import type { MovementSimulationType } from '../simulation';
+} from '@particle-tools/engine/simulation';
+import type { MovementSimulationType } from '@particle-tools/engine/simulation';
 
 const worldAxesHelper = new THREE.AxesHelper(5);
 const localAxesHelper = new THREE.AxesHelper(1);

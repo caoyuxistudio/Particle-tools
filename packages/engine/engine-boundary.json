@@ -1,0 +1,48 @@
+{
+  "$comment": "The engine boundary (V2-ARCHITECTURE.md §1). `engine` lists the modules a front end may import (paths in this package; an entry ending in `/` is a directory). Engine modules import only each other and the packages in `externals`. `roots` are entry points (in other packages) whose whole import graph must stay inside the engine. The studio and V1 import modules as `@particle-tools/engine/<module>`. Checked by scripts/check-engine-boundary.mjs.",
+  "roots": [
+    "../editor/src/player.ts"
+  ],
+  "engine": [
+    "src/world.ts",
+    "src/scene-objects.ts",
+    "src/particle-factory.ts",
+    "src/mesh-geometry.ts",
+    "src/simulation.ts",
+    "src/parallax.ts",
+    "src/touch-input.ts",
+    "src/save-and-load.ts",
+    "src/config-converter.ts",
+    "src/config-util.ts",
+    "src/texture-config.ts",
+    "src/texture-metadata.ts",
+    "src/video-textures.ts",
+    "src/assets.ts",
+    "src/runtime-mode.ts",
+    "src/gpu-support.ts",
+    "src/player-link.ts",
+    "src/notify.ts",
+    "src/document-events.ts",
+    "src/schema.ts",
+    "src/saved-configs.ts",
+    "src/presets.ts",
+    "src/perf-hud.ts",
+    "src/gyro-hud.ts",
+    "src/presentation.ts",
+    "src/editor-layers.ts",
+    "src/shape-helper.ts",
+    "src/force-field-helper.ts",
+    "src/force-field-interaction.ts",
+    "src/collision-plane-helper.ts",
+    "src/collision-plane-interaction.ts",
+    "src/color-source-debug.ts",
+    "src/curve-editor/",
+    "src/gradient-editor/",
+    "src/texture-selector/"
+  ],
+  "externals": [
+    "three",
+    "@newkrok/three-particles",
+    "@newkrok/three-utils"
+  ]
+}

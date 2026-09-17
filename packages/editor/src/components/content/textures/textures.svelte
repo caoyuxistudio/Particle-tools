@@ -1,6 +1,6 @@
 <script>
-  import { loadCustomAssets } from './../../../js/three-particles-editor/assets';
-  import { textureConfigs } from './../../../js/three-particles-editor/texture-config';
+  import { loadCustomAssets } from '@particle-tools/engine/assets';
+  import { textureConfigs } from '@particle-tools/engine/texture-config';
   import {
     VIDEO_TEXTURES_CHANGED,
     addVideoFile,
@@ -9,8 +9,8 @@
     readVideoEntries,
     removeVideo,
     renameVideo,
-  } from './../../../js/three-particles-editor/video-textures';
-  import { getTexture } from './../../../js/three-particles-editor/assets';
+  } from '@particle-tools/engine/video-textures';
+  import { getTexture } from '@particle-tools/engine/assets';
   import FileUploader from './../library/file-uploader.svelte';
   import VideoUploader from './video-uploader.svelte';
   import { Svroller } from 'svrollbar';

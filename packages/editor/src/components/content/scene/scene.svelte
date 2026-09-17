@@ -16,11 +16,11 @@
     allowedTransformModes,
     getSceneObject,
     getOutputCameraId,
-  } from './../../../js/three-particles-editor/scene-objects';
+  } from '@particle-tools/engine/scene-objects';
   import {
     setPreviewVisible,
     isPreviewVisible,
-  } from './../../../js/three-particles-editor/world';
+  } from '@particle-tools/engine/world';
   import { onMount } from 'svelte';
 
   let objects = $state([...getSceneObjects()]);

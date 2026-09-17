@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 
-import { getTexture } from '../assets';
-import { openTextureSelectorModal } from '../texture-selector/texture-selector';
+import { getTexture } from '@particle-tools/engine/assets';
+import { openTextureSelectorModal } from '@particle-tools/engine/texture-selector/texture-selector';
 import {
   hideColorSourceDebug,
   isColorSourceDebugShown,
   showColorSourceDebug,
   syncColorSourceDebug,
   type ColorSourceDebugState,
-} from '../color-source-debug';
+} from '@particle-tools/engine/color-source-debug';
 
 type ParticleColorInstanceEntriesParams = {
   parentFolder: any;

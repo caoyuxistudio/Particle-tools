@@ -2479,7 +2479,7 @@
       const plane = debug.getObjectByName('color-source-debug-plane');
       const frame = debug.getObjectByName('color-source-debug-frame');
       const label = debug.getObjectByName('color-source-debug-label');
-      check('the image plane ignores depth and is see-through', !!plane && plane.material.depthTest === false && plane.material.transparent === true && !!plane.material.opacityNode, plane ? `depthTest ${plane.material.depthTest}` : 'no plane');
+      check('the image plane sits in the depth of the space and is see-through', !!plane && plane.material.depthTest === true && plane.material.depthWrite === false && plane.material.transparent === true && !!plane.material.opacityNode, plane ? `depthTest ${plane.material.depthTest}, depthWrite ${plane.material.depthWrite}` : 'no plane');
       check('a green frame and a label mark it', !!frame && frame.isLineSegments && frame.material.color.getHex() === 0x33ff88 && !!label && label.isSprite, `${frame?.type} ${frame?.material.color.getHexString()} ${label?.type}`);
       const box = debug.getObjectByName('color-source-debug-box');
       check('the frame is the mapped area, 4 × 2', !!box && Math.abs(box.scale.x - 4) < 1e-3 && Math.abs(box.scale.y - 2) < 1e-3, `${box?.scale.x} × ${box?.scale.y}`);

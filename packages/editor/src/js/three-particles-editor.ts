@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 
 import { createHelperEntries } from './three-particles-editor/entries/helper-entries';
-import { MovementSimulations, RotationSimulations } from './three-particles-editor/simulation';
+import { MovementSimulations, RotationSimulations } from '@particle-tools/engine/simulation';
 import {
   copyToClipboard,
   getObjectDiff,
   loadFromClipboard,
   loadParticleSystem,
   serializeConfig,
-} from './three-particles-editor/save-and-load';
+} from '@particle-tools/engine/save-and-load';
 import {
   installPlayerControls,
   isEditorSuspended,
@@ -18,12 +18,12 @@ import {
   shouldSuspendEditor,
   syncPlayerControls,
 } from './three-particles-editor/player-window';
-import { installPresentationControls } from './three-particles-editor/presentation';
-import { installPerfHud } from './three-particles-editor/perf-hud';
-import { installGyroHud } from './three-particles-editor/gyro-hud';
-import { setNotifier } from './three-particles-editor/notify';
-import { watchDocument } from './three-particles-editor/document-events';
-import * as schemaModule from './three-particles-editor/schema';
+import { installPresentationControls } from '@particle-tools/engine/presentation';
+import { installPerfHud } from '@particle-tools/engine/perf-hud';
+import { installGyroHud } from '@particle-tools/engine/gyro-hud';
+import { setNotifier } from '@particle-tools/engine/notify';
+import { watchDocument } from '@particle-tools/engine/document-events';
+import * as schemaModule from '@particle-tools/engine/schema';
 import { showErrorSnackbar, showInfoSnackbar, showSuccessSnackbar } from './stores/snackbar-store';
 import { showLegacyConfigModal } from './stores/legacy-config-modal-store';
 import { DEFAULT_EXAMPLE } from '../examples-config';
@@ -34,10 +34,10 @@ import {
   setParallaxSettings,
   recenterParallax,
   resetGyroscope,
-} from './three-particles-editor/parallax';
+} from '@particle-tools/engine/parallax';
 import { getDefaultParticleSystemConfig, updateParticleSystems } from '@newkrok/three-particles';
-import { prepareParticleBackend } from './three-particles-editor/gpu-support';
-import { buildParticleSystem } from './three-particles-editor/particle-factory';
+import { prepareParticleBackend } from '@particle-tools/engine/gpu-support';
+import { buildParticleSystem } from '@particle-tools/engine/particle-factory';
 import {
   createWorld,
   setStatsContainer,
@@ -60,8 +60,8 @@ import {
   getRendererDomElement,
   getOutputCamera,
   getRenderer,
-} from './three-particles-editor/world';
-import { getTexture, initAssets, loadCustomAssets } from './three-particles-editor/assets';
+} from '@particle-tools/engine/world';
+import { getTexture, initAssets, loadCustomAssets } from '@particle-tools/engine/assets';
 import {
   addVideoFile,
   addVideoUrl,
@@ -69,19 +69,19 @@ import {
   readVideoEntries,
   removeVideo,
   setVideoSourcesPaused,
-} from './three-particles-editor/video-textures';
+} from '@particle-tools/engine/video-textures';
 import {
   initSceneObjects,
   getSceneObjects,
   getOutputCameraId,
   updateSceneObject,
   tintFrameEdges,
-} from './three-particles-editor/scene-objects';
+} from '@particle-tools/engine/scene-objects';
 
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import { Object3D } from 'three';
-import { TextureId } from './three-particles-editor/texture-config';
-import { createCurveEditor } from './three-particles-editor/curve-editor/curve-editor';
+import { TextureId } from '@particle-tools/engine/texture-config';
+import { createCurveEditor } from '@particle-tools/engine/curve-editor/curve-editor';
 import { createGradientEditorEntries } from './three-particles-editor/entries/gradient-editor-entries';
 import {
   createEmissionEntries,
@@ -92,7 +92,7 @@ import { createNoiseEntries } from './three-particles-editor/entries/noise-entri
 import { createParticleColorInstanceEntries } from './three-particles-editor/entries/particle-color-instance-entries';
 import { createSourceImageTweakEntries } from './three-particles-editor/entries/source-image-tweak-entries';
 import { createTouchEntries } from './three-particles-editor/entries/touch-entries';
-import { installTouchInput } from './three-particles-editor/touch-input';
+import { installTouchInput } from '@particle-tools/engine/touch-input';
 import { createRendererEntries } from './three-particles-editor/entries/renderer-entries';
 import { createRotationOverLifeTimeEntries } from './three-particles-editor/entries/rotation-over-lifetime-entries';
 import { createShapeEntries } from './three-particles-editor/entries/shape-entries';

@@ -1,4 +1,4 @@
-import { MeshGeometryType, createGeometry, type MeshGeometryTypeValue } from '../mesh-geometry';
+import { MeshGeometryType, createGeometry, type MeshGeometryTypeValue } from '@particle-tools/engine/mesh-geometry';
 import type { GUI } from 'three/examples/jsm/libs/lil-gui.module.min';
 
 export { MeshGeometryType, createGeometry };

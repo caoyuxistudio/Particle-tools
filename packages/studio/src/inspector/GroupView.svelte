@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Group } from '@engine/schema';
+  import type { Group } from '@particle-tools/engine/schema';
   import FieldView from './FieldView.svelte';
   import { revision, document } from '../store/document.svelte';
   import GroupView from './GroupView.svelte';

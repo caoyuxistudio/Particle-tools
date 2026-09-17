@@ -5,10 +5,9 @@ import { fileURLToPath } from 'node:url';
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 // The studio is a second front end over V1's engine (V2-ARCHITECTURE.md §1):
-// the engine modules are imported in place from packages/editor, through the
-// `@engine` alias, and only the modules in packages/editor/engine-boundary.json
-// may be imported (the boundary script checks V1; the studio is checked by its
-// own harness).
+// the engine is packages/engine, imported as @particle-tools/engine/<module>,
+// and only the modules in packages/engine/engine-boundary.json may be imported
+// (scripts/check-engine-boundary.mjs there checks V1 and the studio alike).
 export default defineConfig(({ command }) => ({
   plugins: [svelte()],
   // Relative asset paths: the built studio works at any path — the site's root
@@ -21,7 +20,7 @@ export default defineConfig(({ command }) => ({
   publicDir: command === 'serve' ? here('../editor/public') : false,
   resolve: {
     alias: [
-      { find: '@engine', replacement: here('../editor/src/js/three-particles-editor') },
+      { find: /^@particle-tools\/engine\/(.*)$/, replacement: here('../engine/src') + '/$1' },
       // V1's rollup does the same: bare `three` is the WebGPU build, so the
       // whole graph — engine, library, studio — shares one three.
       { find: /^three$/, replacement: 'three/webgpu' },

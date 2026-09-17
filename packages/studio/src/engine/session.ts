@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 import { updateParticleSystems } from '@newkrok/three-particles';
-import { prepareParticleBackend } from '@engine/gpu-support';
+import { prepareParticleBackend } from '@particle-tools/engine/gpu-support';
 import {
   createWorld,
   compileWorld,
@@ -31,22 +31,22 @@ import {
   setStatsContainer,
   setViewportInsets,
   type ViewportInsetsProvider,
-} from '@engine/world';
-import { installPerfHud, type PerfHud } from '@engine/perf-hud';
-import { installGyroHud, type GyroHud } from '@engine/gyro-hud';
-import { installPresentationControls, togglePresentation } from '@engine/presentation';
-import { installTouchInput } from '@engine/touch-input';
-import { getParallaxSettings, setParallaxSettings, recenterParallax, resetGyroscope, describeParallax } from '@engine/parallax';
-import { getOutputCameraId, updateSceneObject, getSceneObjects } from '@engine/scene-objects';
-import { getTexture } from '@engine/assets';
-import { initAssets, loadCustomAssets } from '@engine/assets';
-import { loadVideoTextures } from '@engine/video-textures';
-import { initSceneObjects, tintFrameEdges } from '@engine/scene-objects';
-import { loadParticleSystem, serializeConfig } from '@engine/save-and-load';
-import { buildParticleSystem } from '@engine/particle-factory';
-import { applySimulation, resetSimulation } from '@engine/simulation';
-import { setNotifier, type Notifier } from '@engine/notify';
-import { schema, fieldAt, documentDefaults, type ChangeLevel, type Doc } from '@engine/schema';
+} from '@particle-tools/engine/world';
+import { installPerfHud, type PerfHud } from '@particle-tools/engine/perf-hud';
+import { installGyroHud, type GyroHud } from '@particle-tools/engine/gyro-hud';
+import { installPresentationControls, togglePresentation } from '@particle-tools/engine/presentation';
+import { installTouchInput } from '@particle-tools/engine/touch-input';
+import { getParallaxSettings, setParallaxSettings, recenterParallax, resetGyroscope, describeParallax } from '@particle-tools/engine/parallax';
+import { getOutputCameraId, updateSceneObject, getSceneObjects } from '@particle-tools/engine/scene-objects';
+import { getTexture } from '@particle-tools/engine/assets';
+import { initAssets, loadCustomAssets } from '@particle-tools/engine/assets';
+import { loadVideoTextures } from '@particle-tools/engine/video-textures';
+import { initSceneObjects, tintFrameEdges } from '@particle-tools/engine/scene-objects';
+import { loadParticleSystem, serializeConfig } from '@particle-tools/engine/save-and-load';
+import { buildParticleSystem } from '@particle-tools/engine/particle-factory';
+import { applySimulation, resetSimulation } from '@particle-tools/engine/simulation';
+import { setNotifier, type Notifier } from '@particle-tools/engine/notify';
+import { schema, fieldAt, documentDefaults, type ChangeLevel, type Doc } from '@particle-tools/engine/schema';
 import { installFurniture, syncFurniture, syncFurnitureFrame } from './furniture';
 
 export type CycleData = { pauseStartTime: number; totalPauseTime: number; now: number; delta: number; elapsed: number };

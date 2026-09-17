@@ -1,3 +1,39 @@
+# Particle Tools Studio（packages/studio）
+
+V2 的界面。这份文件的前半是它的**运行说明**，后半是 2026-09-14 定案的**架构规划**（原根目录的 V2-ARCHITECTURE.md，2026-09-17 M4 搬到这里，各里程碑的补记都在里面；代码注释里写的 `V2-ARCHITECTURE.md §x` 指的就是本文件后半的那一节）。
+
+## 运行
+
+```bash
+cd packages/three-particles && npm run build   # 库先构建
+cd ../engine && npm install                    # 引擎的依赖（只为它的 jest）
+cd ../studio && npm run dev                    # 5173；先把预设同步进 V1 的 public
+```
+
+- 引擎按 `@particle-tools/engine/<module>` 引用（Vite 别名指到 `../engine/src`），只能引 `packages/engine/engine-boundary.json` 里列的模块；`cd packages/engine && npm run check:boundary` 会扫 studio 的每一处引用。
+- 开发时 Vite 的 publicDir 是 V1 的 `public`（同源拿到 examples、assets、V1 打好的 player）；生产构建 `npm run build` 是可搬的（`base: './'`，`scripts/copy-shared.mjs` 只拷预设和 favicon）。
+- **harness**：只在 dev bundle 里，页面 console 里 `await __st.report()`（51 条：boot、round-trip、schema 覆盖、live / rebuild 代价、家具、三个编辑器、演示、HUD、预览窗、面板）。真实窗口里跑更可靠，方法见 `packages/editor/CLAUDE.md` 的「验证改动」。
+- 调试口：`window.__studio`（doc / serialize / load / rebuild / getFrames …）、`__world`、`__touch`、`__perfHud`、`__gyroHud`。
+- 线上：<https://caoyuxistudio.github.io/Particle-tools/Studio/>，由 main 上的 `deploy.yml` 从 **v2 分支**构建；改了 studio 先推 v2，再推一次 main（空提交即可）触发部署。
+
+## 结构
+
+```
+src/
+├ engine/session.ts    唯一碰引擎的胶水：boot、applyChange（按 schema 的 change 等级）、帧循环、HUD / 演示 / 手指的安装
+├ engine/furniture.ts  家具跟着文档走：碰撞面 / 力场 / 形状 / 坐标轴 / 色源 debug 平面
+├ engine/scene-decor.ts 场景物体的编辑器装饰：结构线、相机机身、灯、太阳箭头
+├ store/document.svelte.ts  单一真相：get / patch / touched / load / serialize，rev 驱动刷新
+├ inspector/           schema 的渲染器（Column 四个 tab：particles / scene / pieces / textures）
+├ scene/               V1 Scene 面板的移植
+├ library/             pieces（examples + 本地保存）和 textures（色源库）
+├ editors/             三个 canvas 编辑器的预埋 DOM、样式、打开它们的包装
+├ viewport/            视口格子、家具工具栏、reset view
+└ ui/                  tokens.css、reset.css、hud.css —— 全部样式
+```
+
+---
+
 # V2 架构规划（讨论稿）
 
 状态：**讨论稿**，2026-09-14。目的是把 V2 的边界、合同和顺序定下来，不是实施说明。定案后本文搬进 V2 的包里做它的 CLAUDE.md。

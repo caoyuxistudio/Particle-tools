@@ -1,4 +1,5 @@
 import autoPreprocess from 'svelte-preprocess';
+import alias from '@rollup/plugin-alias';
 import commonjs from '@rollup/plugin-commonjs';
 import css from 'rollup-plugin-css-only';
 import livereload from 'rollup-plugin-livereload';
@@ -136,11 +137,23 @@ const bundle = ({ input, file, cssFile, withServe }) => ({
     // some cases you'll need additional configuration -
     // consult the documentation for details:
     // https://github.com/rollup/plugins/tree/master/packages/commonjs
+    // The engine lives in packages/engine (V2-ARCHITECTURE.md §6 M4); V1 imports
+    // it as @particle-tools/engine/<module>. Its three and @newkrok packages
+    // resolve from this package's node_modules (dedupe), so the bundle carries
+    // one copy of each.
+    alias({
+      entries: [
+        {
+          find: /^@particle-tools\/engine\/(.*)$/,
+          replacement: fileURLToPath(new URL('../engine/src/$1', import.meta.url)),
+        },
+      ],
+    }),
     dedupeThree(),
 
     resolve({
       browser: true,
-      dedupe: ['svelte'],
+      dedupe: ['svelte', 'three', '@newkrok/three-particles', '@newkrok/three-utils'],
       exportConditions: ['svelte', 'module', 'import', 'default'],
       mainFields: ['module', 'main', 'browser'],
       extensions: ['.ts', '.tsx', '.mjs', '.js', '.jsx', '.json', '.svelte'],

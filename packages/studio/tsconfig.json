@@ -21,8 +21,8 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@engine/*": [
-        "../editor/src/js/three-particles-editor/*"
+      "@particle-tools/engine/*": [
+        "../engine/src/*"
       ]
     },
     "strictNullChecks": false

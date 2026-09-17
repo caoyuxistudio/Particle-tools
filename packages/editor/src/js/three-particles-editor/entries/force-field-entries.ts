@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 
-import { createForceFieldHelpers, disposeForceFieldHelpers } from '../force-field-helper';
+import { createForceFieldHelpers, disposeForceFieldHelpers } from '@particle-tools/engine/force-field-helper';
 import {
   initForceFieldInteraction,
   deselectForceField,
   isForceFieldDragging,
   getActiveForceFieldIndex,
-} from '../force-field-interaction';
+} from '@particle-tools/engine/force-field-interaction';
 
 type ForceFieldEntriesParams = {
   parentFolder: any;

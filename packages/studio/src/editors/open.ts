@@ -3,12 +3,12 @@
 // mutate the document in place and call back; the store is told through
 // touched(path) so the change is applied at its cost and the revision moves.
 
-import { openBezierEditorModal, setPresetPrompts as setCurvePresetPrompts } from '@engine/curve-editor/curve-editor';
-import { createGradientEditor, setGradientStops, setOnChangeCallback, setPresetPrompts as setGradientPresetPrompts } from '@engine/gradient-editor/gradient-editor';
-import type { GradientStop } from '@engine/gradient-editor/gradient-to-bezier';
-import { gradientToBezierCurves, getDefaultGradientStops } from '@engine/gradient-editor/gradient-to-bezier';
-import { openTextureSelectorModal } from '@engine/texture-selector/texture-selector';
-import { getTexture } from '@engine/assets';
+import { openBezierEditorModal, setPresetPrompts as setCurvePresetPrompts } from '@particle-tools/engine/curve-editor/curve-editor';
+import { createGradientEditor, setGradientStops, setOnChangeCallback, setPresetPrompts as setGradientPresetPrompts } from '@particle-tools/engine/gradient-editor/gradient-editor';
+import type { GradientStop } from '@particle-tools/engine/gradient-editor/gradient-to-bezier';
+import { gradientToBezierCurves, getDefaultGradientStops } from '@particle-tools/engine/gradient-editor/gradient-to-bezier';
+import { openTextureSelectorModal } from '@particle-tools/engine/texture-selector/texture-selector';
+import { getTexture } from '@particle-tools/engine/assets';
 import { get, patch, touched, document as doc } from '../store/document.svelte';
 
 // ─── applying on demand ──────────────────────────────────────────────────────

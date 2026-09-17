@@ -5,15 +5,15 @@
 // change that could affect them, and every frame for the debug plane.
 
 import * as THREE from 'three';
-import { getScene } from '@engine/world';
-import { createCollisionPlaneHelpers, disposeCollisionPlaneHelpers } from '@engine/collision-plane-helper';
-import { initCollisionPlaneInteraction, disposeCollisionPlaneInteraction, deselectCollisionPlane } from '@engine/collision-plane-interaction';
-import { createForceFieldHelpers, disposeForceFieldHelpers } from '@engine/force-field-helper';
-import { initForceFieldInteraction, disposeForceFieldInteraction, deselectForceField } from '@engine/force-field-interaction';
-import { updateShapeHelper, SHAPE_HELPER_NAME } from '@engine/shape-helper';
-import { markAsEditorOnly } from '@engine/editor-layers';
-import { showColorSourceDebug, hideColorSourceDebug, syncColorSourceDebug, isColorSourceDebugShown, type ColorSourceDebugState } from '@engine/color-source-debug';
-import type { Doc } from '@engine/schema';
+import { getScene } from '@particle-tools/engine/world';
+import { createCollisionPlaneHelpers, disposeCollisionPlaneHelpers } from '@particle-tools/engine/collision-plane-helper';
+import { initCollisionPlaneInteraction, disposeCollisionPlaneInteraction, deselectCollisionPlane } from '@particle-tools/engine/collision-plane-interaction';
+import { createForceFieldHelpers, disposeForceFieldHelpers } from '@particle-tools/engine/force-field-helper';
+import { initForceFieldInteraction, disposeForceFieldInteraction, deselectForceField } from '@particle-tools/engine/force-field-interaction';
+import { updateShapeHelper, SHAPE_HELPER_NAME } from '@particle-tools/engine/shape-helper';
+import { markAsEditorOnly } from '@particle-tools/engine/editor-layers';
+import { showColorSourceDebug, hideColorSourceDebug, syncColorSourceDebug, isColorSourceDebugShown, type ColorSourceDebugState } from '@particle-tools/engine/color-source-debug';
+import type { Doc } from '@particle-tools/engine/schema';
 import { syncSceneDecor } from './scene-decor';
 
 export type FurnitureHost = {

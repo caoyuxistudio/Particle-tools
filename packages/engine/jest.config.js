@@ -5,21 +5,11 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   testMatch: ['**/__tests__/**/*.test.ts'],
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1',
-    '^@particle-tools/engine/(.*)$': '<rootDir>/../engine/src/$1',
     // The linked library only exports an `import` condition; jest resolves it by path.
     '^@newkrok/three-particles$': '<rootDir>/../three-particles/dist/index.js',
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   transform: {
-    '^.+\\.tsx?$': [
-      'ts-jest',
-      {
-        useESM: true,
-        tsconfig: {
-          verbatimModuleSyntax: false,
-        },
-      },
-    ],
+    '^.+\\.tsx?$': ['ts-jest', { useESM: true, tsconfig: { verbatimModuleSyntax: false } }],
   },
 };

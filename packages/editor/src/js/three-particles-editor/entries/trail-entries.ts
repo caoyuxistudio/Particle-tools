@@ -1,18 +1,18 @@
-import { openBezierEditorModal } from '../curve-editor/curve-editor';
+import { openBezierEditorModal } from '@particle-tools/engine/curve-editor/curve-editor';
 import { createLifetimeCurveFolderEntry } from './entry-helpers-v2';
 import type { GUI } from 'three/examples/jsm/libs/lil-gui.module.min';
 import {
   createGradientEditor,
   setGradientStops,
   setOnChangeCallback,
-} from '../gradient-editor/gradient-editor';
+} from '@particle-tools/engine/gradient-editor/gradient-editor';
 import {
   gradientToBezierCurves,
   bezierCurvesToGradient,
   getDefaultGradientStops,
   type GradientStop,
   type BezierCurve,
-} from '../gradient-editor/gradient-to-bezier';
+} from '@particle-tools/engine/gradient-editor/gradient-to-bezier';
 
 type TrailEntriesParams = {
   parentFolder: GUI;

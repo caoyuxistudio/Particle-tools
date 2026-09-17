@@ -5,7 +5,7 @@
 // listed external packages, and every root's import graph stays inside the
 // engine. Exits 1 with one line per violation.
 //
-//   node scripts/check-engine-boundary.mjs          # from packages/editor
+//   node scripts/check-engine-boundary.mjs          # from packages/engine
 //   node scripts/check-engine-boundary.mjs --list   # also print the engine set
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
@@ -43,6 +43,7 @@ const externals = spec.externals;
 
 // --- import parsing ---------------------------------------------------------
 
+const PKG = '@particle-tools/engine/';
 const IMPORT_RE =
   /(?:^|\n)\s*(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|(?:^|\n)\s*import\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/g;
 
@@ -54,7 +55,9 @@ const importsOf = (relFile) => {
 };
 
 const resolveRelative = (fromRel, specifier) => {
-  const base = resolve(pkgRoot, dirname(fromRel), specifier);
+  const base = specifier.startsWith(PKG)
+    ? resolve(pkgRoot, 'src', specifier.slice(PKG.length))
+    : resolve(pkgRoot, dirname(fromRel), specifier);
   const candidates = [
     base,
     base.replace(/\.js$/, '.ts'),
@@ -80,7 +83,7 @@ const packageOf = (specifier) => {
 const violations = [];
 for (const file of engine) {
   for (const s of importsOf(file)) {
-    if (s.startsWith('.')) {
+    if (s.startsWith('.') || s.startsWith(PKG)) {
       const target = resolveRelative(file, s);
       if (target === null) violations.push(`${file}: cannot resolve '${s}'`);
       else if (!engine.has(target))
@@ -100,7 +103,7 @@ for (const root of roots) {
   while (queue.length) {
     const file = queue.shift();
     for (const s of importsOf(file)) {
-      if (!s.startsWith('.')) continue;
+      if (!s.startsWith('.') && !s.startsWith(PKG)) continue;
       const target = resolveRelative(file, s);
       if (target === null) {
         violations.push(`${file}: cannot resolve '${s}'`);
@@ -121,9 +124,9 @@ for (const root of roots) {
 }
 
 // --- rule 3: the studio imports the engine only through the allowlist ---------
-// packages/studio reaches the engine as `@engine/<module>` (a Vite alias onto
-// src/js/three-particles-editor). Every such import must name a module in the
-// engine set; nothing else under packages/editor may be imported from there.
+// packages/studio reaches the engine as `@particle-tools/engine/<module>`
+// (a Vite alias onto src/). Every such import must name a module in the
+// engine set; nothing else from V1 or the engine may be imported by path.
 
 const studioSrc = join(pkgRoot, '..', 'studio', 'src');
 let studioImports = 0;
@@ -139,13 +142,13 @@ if (existsSync(studioSrc)) {
     for (const m of src.matchAll(IMPORT_RE)) {
       const s = m[1] ?? m[2] ?? m[3];
       if (!s) continue;
-      if (s.startsWith('@engine/')) {
+      if (s.startsWith(PKG)) {
         studioImports += 1;
-        const target = `src/js/three-particles-editor/${s.slice('@engine/'.length)}`;
+        const target = `src/${s.slice(PKG.length)}`;
         const resolved = [target, `${target}.ts`, `${target}/index.ts`].find((c) => engine.has(c));
         if (!resolved) violations.push(`${relFile}: imports '${s}', not in the engine set`);
-      } else if (/(^|\/)editor\/src\//.test(s) || s.includes('three-particles-editor/')) {
-        violations.push(`${relFile}: imports '${s}' from V1 directly — use @engine/<module>`);
+      } else if (/(^|\/)editor\/src\//.test(s) || s.includes('three-particles-editor/') || s.includes('engine/src/')) {
+        violations.push(`${relFile}: imports '${s}' by path — use @particle-tools/engine/<module>`);
       }
     }
   }

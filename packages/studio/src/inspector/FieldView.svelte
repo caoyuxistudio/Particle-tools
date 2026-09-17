@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Field } from '@engine/schema';
+  import type { Field } from '@particle-tools/engine/schema';
   import { get, patch, revision, document } from '../store/document.svelte';
   import NumberRow from './NumberRow.svelte';
   import ListView from './ListView.svelte';

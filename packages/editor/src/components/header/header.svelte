@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { togglePresentation } from '../../js/three-particles-editor/presentation';
+  import { togglePresentation } from '@particle-tools/engine/presentation';
   import Button, { Label, Icon } from '@smui/button';
   import Dialog, { Title, Content, Actions } from '@smui/dialog';
   import AboutModal from '../about-modal/about-modal.svelte';

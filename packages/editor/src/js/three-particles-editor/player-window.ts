@@ -23,9 +23,9 @@ import {
   type PlayerMessage,
   LINK_TIMEOUT_MS,
   LINKED_PLAYER_URL,
-} from './player-link';
+} from '@particle-tools/engine/player-link';
 import { showInfoSnackbar, showSuccessSnackbar } from '../stores/snackbar-store';
-import { togglePresentation } from './presentation';
+import { togglePresentation } from '@particle-tools/engine/presentation';
 import {
   getOutputCamera,
   isPreviewVisible,
@@ -34,8 +34,8 @@ import {
   freeViewportBounds,
   getCanvas,
   isPresenting,
-} from './world';
-import { getSceneObjects, watchScene } from './scene-objects';
+} from '@particle-tools/engine/world';
+import { getSceneObjects, watchScene } from '@particle-tools/engine/scene-objects';
 
 /** How long a burst of edits is collapsed before the display is told. */
 const PUSH_THROTTLE_MS = 120;

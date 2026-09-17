@@ -3,9 +3,9 @@
   // URLs, bounded in size), videos (metadata in localStorage, bytes in
   // IndexedDB, or a URL), and the built-in pictures. Ported from V1's Textures
   // panel: same registries, native controls, the studio's store for "use".
-  import { loadCustomAssets, getTexture } from '@engine/assets';
-  import { textureConfigs } from '@engine/texture-config';
-  import { VIDEO_TEXTURES_CHANGED, addVideoFile, addVideoUrl, ensureVideoTexture, readVideoEntries, removeVideo } from '@engine/video-textures';
+  import { loadCustomAssets, getTexture } from '@particle-tools/engine/assets';
+  import { textureConfigs } from '@particle-tools/engine/texture-config';
+  import { VIDEO_TEXTURES_CHANGED, addVideoFile, addVideoUrl, ensureVideoTexture, readVideoEntries, removeVideo } from '@particle-tools/engine/video-textures';
   import { get, revision } from '../store/document.svelte';
   import { useColourSource } from '../editors/open';
 

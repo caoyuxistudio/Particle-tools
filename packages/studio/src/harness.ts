@@ -3,8 +3,8 @@
 // and the document survives the two round trips of §2.1. Dev bundle only.
 //   await __st.report()
 
-import { schema, fieldsOf, leafPaths, coversLeaf, type Field, type Group } from '@engine/schema';
-import { getSceneObjects, updateSceneObject } from '@engine/scene-objects';
+import { schema, fieldsOf, leafPaths, coversLeaf, type Field, type Group } from '@particle-tools/engine/schema';
+import { getSceneObjects, updateSceneObject } from '@particle-tools/engine/scene-objects';
 import { revision, patch, get, load } from './store/document.svelte';
 import { doc, getParticleSystem, getFrames, rebuildCount, serialize, bootTimeline, present, isPresenting } from './engine/session';
 import { openCurve, openGradient, openTexture, applyPending } from './editors/open';

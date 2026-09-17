@@ -3,7 +3,7 @@
     CORNER_PRESETS,
     squareCorners,
     defaultLightShadowSettings,
-  } from '../../../js/three-particles-editor/scene-objects';
+  } from '@particle-tools/engine/scene-objects';
   import { Icon } from '@smui/common';
   import * as THREE from 'three';
   import {
@@ -12,9 +12,9 @@
     defaultAoSettings,
     defaultEnvironmentSettings,
     setOnEnvironmentLoaded,
-  } from './../../../js/three-particles-editor/world';
+  } from '@particle-tools/engine/world';
   import { onMount } from 'svelte';
-  import { defaultParallaxSettings } from '../../../js/three-particles-editor/parallax';
+  import { defaultParallaxSettings } from '@particle-tools/engine/parallax';
 
   let { obj, update, remove, bake, selected = false, select, contextMenu } = $props();
 

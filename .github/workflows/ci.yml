@@ -20,7 +20,7 @@ jobs:
 
       # No install needed: the checker is dependency-free node.
       - name: Engine boundary
-        working-directory: packages/editor
+        working-directory: packages/engine
         run: npm run check:boundary
 
       - name: Build the particle library
@@ -28,6 +28,12 @@ jobs:
         run: |
           npm install
           npm run build
+
+      - name: Engine unit tests
+        working-directory: packages/engine
+        run: |
+          npm install
+          npm test
 
       - name: Editor unit tests
         working-directory: packages/editor
