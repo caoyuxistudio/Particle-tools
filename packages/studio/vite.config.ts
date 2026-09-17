@@ -26,7 +26,9 @@ export default defineConfig(({ command }) => ({
       // whole graph — engine, library, studio — shares one three.
       { find: /^three$/, replacement: 'three/webgpu' },
     ],
-    dedupe: ['three'],
+    // Resolved from the studio's own node_modules wherever they are imported
+    // from — V1's source tree has no node_modules in CI.
+    dedupe: ['three', '@newkrok/three-particles', '@newkrok/three-utils'],
   },
   optimizeDeps: {
     // Pre-bundling would give the library its own copy of three.

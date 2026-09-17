@@ -8,7 +8,7 @@ const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const from = here('../../editor/public/');
 const to = here('../dist/');
 mkdirSync(to, { recursive: true });
-for (const dir of ['assets', 'examples', 'favicon']) {
+for (const dir of ['assets', 'examples', 'favicon', 'static']) {
   if (!existsSync(from + dir)) continue;
   cpSync(from + dir, to + dir, { recursive: true });
   console.log(`copied ${dir}/`);
