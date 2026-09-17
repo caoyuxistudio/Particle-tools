@@ -6,7 +6,7 @@
   "description": "V2 of the editor: a studio over the same engine and the same document (V2-ARCHITECTURE.md).",
   "scripts": {
     "dev": "vite --port 5173 --strictPort",
-    "build": "vite build",
+    "build": "vite build && node scripts/copy-shared.mjs",
     "preview": "vite preview --port 5174",
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },

@@ -9,12 +9,16 @@ const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 // `@engine` alias, and only the modules in packages/editor/engine-boundary.json
 // may be imported (the boundary script checks V1; the studio is checked by its
 // own harness).
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [svelte()],
-  // V1's public folder is the studio's too: examples, assets, videos, the
-  // fonts — served at the root, exactly as V1 sees them, so a config's
-  // `./assets/...` addresses resolve unchanged.
-  publicDir: here('../editor/public'),
+  // Relative asset paths: the built studio works at any path — the site's root
+  // or /studio/ beside V1 — the way V1's own index.html does.
+  base: './',
+  // In development V1's public folder is the studio's too: examples, assets,
+  // videos, the built player — served at the root, exactly as V1 sees them, so
+  // a config's `./assets/...` addresses resolve unchanged. A production build
+  // copies only what a piece needs (scripts/copy-shared.mjs), not V1's bundles.
+  publicDir: command === 'serve' ? here('../editor/public') : false,
   resolve: {
     alias: [
       { find: '@engine', replacement: here('../editor/src/js/three-particles-editor') },
@@ -31,4 +35,4 @@ export default defineConfig({
   server: {
     fs: { allow: [here('..')] },
   },
-});
+}));
