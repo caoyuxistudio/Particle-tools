@@ -22,6 +22,7 @@
     "smui-theme-light": "node scripts/compile-theme.js public/build/static/smui.css src/theme",
     "smui-theme-dark": "node scripts/compile-theme.js public/build/static/smui-dark.css src/theme --dark",
     "lint": "eslint src/",
+    "check:boundary": "node scripts/check-engine-boundary.mjs",
     "format": "prettier --write \"src/**/*.{js,svelte}\"",
     "test": "jest",
     "release": "semantic-release"

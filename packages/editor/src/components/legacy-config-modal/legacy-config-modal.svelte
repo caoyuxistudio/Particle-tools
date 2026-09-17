@@ -6,7 +6,7 @@
     Actions as DialogActions,
   } from '@smui/dialog';
   import Button from '@smui/button';
-  import { showLegacyConfigModal } from '../../js/three-particles-editor/showLegacyConfigModal';
+  import { showLegacyConfigModal } from '../../js/stores/legacy-config-modal-store';
 
   const closeModal = () => {
     showLegacyConfigModal.set(false);

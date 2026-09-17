@@ -20,7 +20,7 @@ import { getOrbitControls, isPresenting, setPresenting, getRendererDomElement } 
 import { selectSceneObject } from './scene-objects';
 import type { PerfHud } from './perf-hud';
 import type { GyroHud } from './gyro-hud';
-import { showInfoSnackbar } from '../stores/snackbar-store';
+import { notify } from './notify';
 import { requestParallaxPermission, recenterParallax } from './parallax';
 
 const BAR_HIDE_MS = 3000;
@@ -60,7 +60,7 @@ const requestFullscreen = (): void => {
     // the page was opened from the Home Screen. Say so, once.
     if (!isStandalone() && /iPhone|iPod/.test(navigator.userAgent) && !explainedHomeScreen) {
       explainedHomeScreen = true;
-      showInfoSnackbar(
+      notify.info(
         'Safari on iPhone has no full screen. Share → Add to Home Screen, then open it from there.',
         7000
       );

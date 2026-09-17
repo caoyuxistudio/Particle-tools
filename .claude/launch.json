@@ -4,9 +4,26 @@
     {
       "name": "editor",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "cwd": "packages/editor",
       "port": 8080
+    },
+    {
+      "name": "editor-static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "sirv",
+        "public",
+        "--dev",
+        "--no-clear",
+        "--port",
+        "8082"
+      ],
+      "cwd": "packages/editor",
+      "port": 8082
     }
   ]
 }

@@ -1,0 +1,36 @@
+name: CI
+
+# The engine boundary (V2-ARCHITECTURE.md §1) and the editor's unit tests, on
+# every branch. Deployment stays in deploy.yml and only ever runs from main.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  editor:
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: 0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # No install needed: the checker is dependency-free node.
+      - name: Engine boundary
+        working-directory: packages/editor
+        run: npm run check:boundary
+
+      - name: Build the particle library
+        working-directory: packages/three-particles
+        run: |
+          npm install
+          npm run build
+
+      - name: Editor unit tests
+        working-directory: packages/editor
+        run: |
+          npm install
+          npm test

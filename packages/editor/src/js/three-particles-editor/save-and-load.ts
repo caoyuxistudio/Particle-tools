@@ -1,7 +1,6 @@
 import { getDefaultParticleSystemConfig } from '@newkrok/three-particles';
 import { isConfigV2 } from './config-util';
 import { convertToNewFormat } from './config-converter';
-import { showLegacyConfigModal } from './showLegacyConfigModal';
 import { ObjectUtils } from '@newkrok/three-utils';
 import { setTerrain } from './world';
 import { getTexture, loadCustomAssets } from './assets';
@@ -11,7 +10,7 @@ import { getSceneObjects, replaceSceneObjects } from './scene-objects';
 import { findVideoEntry, importVideoEntry } from './video-textures';
 
 const { deepMerge } = ObjectUtils;
-import { showSuccessSnackbar } from '../stores/snackbar-store';
+import { notify } from './notify';
 
 const isPlainObject = (value) =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -335,7 +334,7 @@ const importEmbeddedTextures = (
       localStorage.setItem(KEY, JSON.stringify(stored));
     } catch {
       // Out of quota — the textures still register for this session below.
-      showSuccessSnackbar('Textures imported for this session only (storage full)');
+      notify.success('Textures imported for this session only (storage full)');
     }
   }
 
@@ -394,7 +393,7 @@ export const loadParticleSystem = ({
 
   if (!isV2Config) {
     // Show the legacy config modal to notify the user
-    showLegacyConfigModal.set(true);
+    notify.legacyConfig();
 
     // Convert the old configuration to the new format
     const convertedConfig = convertToNewFormat(config);
@@ -517,5 +516,5 @@ export const loadParticleSystem = ({
   performance.mark('load:panel');
 
   // Show success notification
-  showSuccessSnackbar('Particle system successfully loaded');
+  notify.success('Particle system successfully loaded');
 };

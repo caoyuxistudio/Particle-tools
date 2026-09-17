@@ -15,7 +15,7 @@ import { createParticleSystem } from '@newkrok/three-particles';
 
 import { convertToNewFormat } from './config-converter';
 import { getTexture } from './assets';
-import { createGeometry } from './entries/mesh-entries';
+import { createGeometry } from './mesh-geometry';
 
 /**
  * Sub-emitter configs store a texture *name*; the THREE.Texture itself is not
