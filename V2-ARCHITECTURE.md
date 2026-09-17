@@ -153,6 +153,12 @@ type Group = { id: string; label: string; fields: Field[]; groups?: Group[] };
 
 **覆盖测试**：默认 config 里出现的每个键，schema 里必须有对应字段，反之亦然。这条测试是两条线并行期间防漂移的唯一机械手段：V1 线加了新字段忘了补 schema，CI 直接红。
 
+**2026-09-17 补记（M1 做完时的实际形状）**：表在 `packages/editor/src/js/three-particles-editor/schema.ts`（引擎清单里），21 个顶层 group 按 V1 面板顺序，170 条路径。抽取的方法不是手抄：在真实窗口里用 `window.editor.getPanel().controllersRecursive()` 把 V1 的 lil-gui 树整个导出（每个 controller 的对象身份反查到 config 路径、min / max / step / options），再补上 WIP-Test-2 里没露出来的条件分支（各形状的子组、力场的 POINT / DIRECTIONAL、帧动画的 FPS、TRAIL / MESH 两组、burst 和子发射器的项）。`kind` 比原设想多了两种：`value`（Constant | { min, max }，`allowCurve` 时还可以是曲线——V1 面板一律展开成 min / max，库的默认值是常数，两种表示在文档里都合法）和 `hidden`（在文档里但没有控件：`map`、`renderer.mesh.geometry`、`particleColorInstance.map` 三个运行时对象，以及 `_editorData` 里 Scene 面板、两个渐变编辑器、贴图注册表各自拥有的块）。`when` 挂在 group 或 field 上（形状子组、Trail / Mesh 组、fps、力场按类型）。`displayScale` 只有 trail width 用（存世界单位，显示 ×100）。另外表里带着 `editorAdditions()` / `documentDefaults()`：库默认值之上编辑器补的那些键（rendererType 'POINTS'、blending 的字符串形式、mesh 和 trail 的默认、`sampleSize`、`_editorData` 的开关），这样 node 里不开面板也能造出一份完整文档。
+
+**覆盖测试两层**：jest `__tests__/schema.test.ts` 7 条（库默认 config 的每个叶子有字段、`documentDefaults()` 的每个叶子有字段、每个字段在默认值里解析得到、路径唯一、量程 / 选项 / 列表项齐全、按下标能找到列表项字段、三级 change 都在用）——编辑器的 jest 从此以 ESM 跑（`NODE_OPTIONS=--experimental-vm-modules`，并把 `@newkrok/three-particles` 按路径映射，因为它只导出 `import` 条件）；harness `schemaReport` 9 条，在真实窗口里 `createNew()` 一个系统后：活文档的每个叶子有字段、每个可见字段解析得到、`documentDefaults()` 和编辑器真的造出来的文档逐叶子相等（`value` 字段的常数和 min / max 视为同一个值）、**V1 的 128 个 controller 逐个和它路径上的字段比 kind / min / max / step / options**、烤进 kernel 的开关是 structural、updateConfig 能吃的键是 live。**这两层就是 §7 那条规则的机械化：V1 线加了字段没补表，jest 或 schemaReport 必红。**
+
+抽取时发现的、文档格式里本来就有的事实：`renderer.blending` 在文档里是字符串（`'THREE.NormalBlending'`，V1 面板写的），库的默认是数字 1，两种都吃；`shape.rectangle.rotation` 库里是三维、V1 只给 x / y；V1 的力场和碰撞面 entries 把四个函数（`_recreateParticleSystem` 等）挂在 config 对象上，不进 JSON 但活文档里有，报告里按"函数不是文档数据"跳过；`particleColorInstance.sampleSize` 是编辑器补的键，库默认里没有；`_editorData.trailGradientStops` 只在 trail 的渐变编辑器打开过之后才出现（全套 harness 跑完 trailReport 之后 schemaReport 才报出来的）。
+
 **来源**：从 `entries/*.ts` 逐文件抄。难点已知：四个动态列表（burst、力场、碰撞面、子发射器，代码里查 `domElement.parentNode` 的就是它们）和 `entry-helpers-v2` 里 Constant / Random / Curve 三态切换的 helper。三个 canvas 编辑器（曲线、渐变、贴图）在 schema 里只是 `kind`，渲染时打开对应编辑器。
 
 ### 2.3 Tokens：一份样式变量
@@ -236,8 +242,8 @@ genie（data-dune.vercel.app）**不是库**，是别人的应用，它的 CSS �
 - ✅ 引擎新增 config 变更事件（手柄拖 transform、相机同步至少接上）。（2026-09-17，见 §1.3 补记）
 
 **M1 · Schema**
-- `schema.ts` 覆盖默认 config 的全部键，覆盖测试绿。
-- 三级 `change` 标注完成，与 glue 今天的判断一致（拿 V1 的行为做对照）。
+- ✅ `schema.ts` 覆盖默认 config 的全部键，覆盖测试绿。（2026-09-17，见 §2.2 的补记）
+- ✅ 三级 `change` 标注完成，与 glue 今天的判断一致（拿 V1 的行为做对照）。（同日；harness 抽查烤进 kernel 的 13 个开关是 structural、6 个 updateConfig 能吃的键是 live）
 
 **M2 · 壳与检视器**
 - `packages/studio` 用 Vite 起来，加载 WIP-Test-2，画面与 V1 一致（人眼）。

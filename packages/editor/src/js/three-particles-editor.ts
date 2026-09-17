@@ -23,6 +23,7 @@ import { installPerfHud } from './three-particles-editor/perf-hud';
 import { installGyroHud } from './three-particles-editor/gyro-hud';
 import { setNotifier } from './three-particles-editor/notify';
 import { watchDocument } from './three-particles-editor/document-events';
+import * as schemaModule from './three-particles-editor/schema';
 import { showErrorSnackbar, showInfoSnackbar, showSuccessSnackbar } from './stores/snackbar-store';
 import { showLegacyConfigModal } from './stores/legacy-config-modal-store';
 import { DEFAULT_EXAMPLE } from '../examples-config';
@@ -1441,6 +1442,10 @@ interface EditorInterface {
   serialize: () => string;
   resetCamera: () => void;
   watchDocument: typeof watchDocument;
+  /** The lil-gui root, for the schema extraction (M1) and the harness. */
+  getPanel: () => any;
+  /** The parameter table (V2-ARCHITECTURE.md §2.2), for the harness's schemaReport. */
+  schema: typeof schemaModule;
   reset: () => void;
   play: () => void;
   pause: () => void;
@@ -1508,6 +1513,8 @@ window.editor = {
   resetCamera,
   // Engine → UI change events (V2-ARCHITECTURE.md §1.3a); V1 itself polls.
   watchDocument,
+  getPanel: () => currentPanel,
+  schema: schemaModule,
   play: resumeTime,
   pause: pauseTime,
   updateAssets: () =>

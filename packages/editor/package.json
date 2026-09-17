@@ -24,7 +24,7 @@
     "lint": "eslint src/",
     "check:boundary": "node scripts/check-engine-boundary.mjs",
     "format": "prettier --write \"src/**/*.{js,svelte}\"",
-    "test": "jest",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "release": "semantic-release"
   },
   "devDependencies": {

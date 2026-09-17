@@ -1351,9 +1351,9 @@
         check('the stored scene follows the drag', JSON.stringify(stored()) !== storedBefore);
         check('orbit controls are back after the drag', w.controls.enabled === true);
         unwatch();
-        const sphereId = storedScene().find((o) => o.type === 'SPHERE')?.id;
+        const frameId = storedScene().find((o) => o.type === 'FRAME')?.id;
         const fromGizmo = events.filter((e) => e.scope === 'scene' && e.source === 'gizmo');
-        check('the drag announces a document change (scene, gizmo, position)', fromGizmo.length > 0 && fromGizmo.every((e) => e.id === sphereId && e.keys.includes('position')), `${fromGizmo.length} events, ${JSON.stringify(fromGizmo[0] ?? null)}`);
+        check('the drag announces a document change (scene, gizmo, position)', fromGizmo.length > 0 && fromGizmo.every((e) => e.id === frameId && e.keys.includes('position')), `${fromGizmo.length} events, ${JSON.stringify(fromGizmo[0] ?? null)}`);
       }
     }
 
@@ -1365,6 +1365,128 @@
     check('no runtime errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     const failed = lines.filter((l) => l.startsWith('FAIL')).length;
     return [`gizmo: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
+  };
+
+  /**
+   * The schema against V1's own panel (V2-ARCHITECTURE.md §2.2, M1): on a
+   * fresh system, every leaf of the live document has a field, every field
+   * resolves, and every lil-gui controller agrees with the field at its path —
+   * kind, range, step, options. documentDefaults() is compared with the
+   * document the editor actually builds.
+   */
+  const schemaReport = async () => {
+    const lines = [];
+    const check = (label, ok, detail = '') =>
+      lines.push(`${ok ? 'PASS' : 'FAIL'}  ${label}${detail ? '  — ' + detail : ''}`);
+    const S = window.editor.schema;
+    const resolve = (o, path) => path.split('.').reduce((x, k) => (x == null ? undefined : x[k]), o);
+    check('the schema is exposed', !!S && Array.isArray(S.schema) && S.schema.length > 10, `${S?.schema?.length} groups`);
+
+    const saved = JSON.parse(window.editor.serialize());
+    window.editor.createNew();
+    await new Promise((r) => setTimeout(r, 400));
+    const doc = window.editor.getCurrentParticleSystemConfig();
+    const panel = window.editor.getPanel();
+
+    // Coverage, both ways, on the live document.
+    // Functions V1's entries hang on the config (`_recreateParticleSystem` and friends) are not document data.
+    const leaves = S.leafPaths(doc).filter((p) => typeof resolve(doc, p) !== 'function');
+    const uncovered = leaves.filter((p) => !S.coversLeaf(p));
+    check('every leaf of the live document has a field', uncovered.length === 0, uncovered.slice(0, 8).join(', '));
+    const exempt = new Set(['_editorData.sceneObjects', '_editorData.embeddedTextures', '_editorData.embeddedVideos', 'map', 'renderer.mesh.geometry', 'subEmitters']);
+    const visible = (f, groupWhen) => (!groupWhen || groupWhen(doc)) && (!f.when || f.when(doc));
+    const dangling = [];
+    const walk = (groups, parentWhen) => {
+      for (const g of groups) {
+        const w = g.when ? (d) => (!parentWhen || parentWhen(d)) && g.when(d) : parentWhen;
+        for (const f of g.fields) {
+          if (exempt.has(f.path) || f.kind === 'hidden' || !visible(f, w)) continue;
+          if (resolve(doc, f.path) === undefined) dangling.push(f.path);
+        }
+        if (g.groups) walk(g.groups, w);
+      }
+    };
+    walk(S.schema, null);
+    check('every visible field resolves in the live document', dangling.length === 0, dangling.join(', '));
+
+    // The editor's own defaults against the schema's.
+    const defaults = S.documentDefaults();
+    const skip = (p) => p.startsWith('_editorData.metadata') || p.startsWith('_editorData.embedded') || p.startsWith('_editorData.trailGradientStops') || p === '_editorData.textureId' || p === '_editorData.colorInstanceTextureId' || p === 'map' || p === 'particleColorInstance.map' || p.startsWith('renderer.mesh.geometry') || p === 'maxParticles' || p === 'emission.rateOverTime';
+    // A `value` field may hold a constant or { min, max }: V1's panel expands the library's constants.
+    const same = (p) => {
+      const a = resolve(doc, p);
+      const m = p.match(/^(.*)\.(min|max)$/);
+      const b = m && typeof resolve(defaults, m[1]) === 'number' ? resolve(defaults, m[1]) : resolve(defaults, p);
+      return JSON.stringify(a) === JSON.stringify(b);
+    };
+    const diffs = [];
+    for (const p of leaves) {
+      if (skip(p)) continue;
+      if (!same(p)) diffs.push(`${p}: editor ${JSON.stringify(resolve(doc, p))} vs schema ${JSON.stringify(resolve(defaults, p))}`);
+    }
+    check('documentDefaults() matches the document the editor builds', diffs.length === 0, diffs.slice(0, 6).join(' | '));
+    check('a new system starts at the editor\'s counts, not the library\'s', doc.maxParticles === 10000 && doc.emission.rateOverTime === 1000, `${doc.maxParticles}, ${doc.emission.rateOverTime}`);
+
+    // Every controller of V1's panel against the field at its path.
+    const paths = new Map();
+    const index = (o, p) => {
+      if (!o || typeof o !== 'object' || paths.has(o)) return;
+      paths.set(o, p);
+      if (Array.isArray(o)) o.forEach((v, i) => index(v, `${p}.${i}`));
+      else for (const [k, v] of Object.entries(o)) index(v, p ? `${p}.${k}` : k);
+    };
+    index(doc, '');
+    const kindOf = (c) => {
+      const cls = c.constructor.name;
+      if (c._names) return 'enum';
+      if (c.$input?.type === 'checkbox') return 'bool';
+      if (c.$input?.type === 'color' || c.$text && c.$input && cls.length && c.domElement.classList.contains('color')) return 'color';
+      if (c.$slider || c.$input?.type === 'text' && c._min !== undefined) return 'number';
+      return cls;
+    };
+    let compared = 0;
+    const mismatches = [];
+    for (const c of panel.controllersRecursive()) {
+      const base = paths.get(c.object);
+      if (base === undefined) continue; // UI-only helpers (buttons, Size (all axes), info)
+      const path = base ? `${base}.${c.property}` : c.property;
+      const f = S.fieldAt(path) ?? S.fieldAt(path.replace(/\.(min|max|x|y|z|r|g|b|scale)$/, ''));
+      if (!f) { mismatches.push(`${path}: no field`); continue; }
+      compared++;
+      const k = kindOf(c);
+      const numeric = ['number', 'int', 'value', 'vec2', 'vec3', 'curve'];
+      if (k === 'enum') {
+        const want = (f.options ?? []).map((o) => String(o.value)).join(',');
+        const got = c._values.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(',');
+        if (f.kind !== 'enum' || want !== got) mismatches.push(`${path}: options ${got} vs ${want}`);
+      } else if (k === 'bool') {
+        if (f.kind !== 'bool' && !(f.kind === 'gradient' && c.property === 'isActive')) mismatches.push(`${path}: bool vs ${f.kind}`);
+      } else if (k === 'number') {
+        if (!numeric.includes(f.kind)) mismatches.push(`${path}: number vs ${f.kind}`);
+        else if (c._min !== f.min || c._max !== f.max || c._step !== f.step) {
+          // rateOverDistance and burst counts widen with Enable big numbers; the schema carries the wide range.
+          const widened = /rateOverDistance|bursts\.\d+\.count/.test(path);
+          if (!widened) mismatches.push(`${path}: ${c._min}..${c._max}/${c._step} vs ${f.min}..${f.max}/${f.step}`);
+        }
+      } else if (c.domElement.classList.contains('color')) {
+        if (!['color', 'minmaxColor'].includes(f.kind)) mismatches.push(`${path}: color vs ${f.kind}`);
+      }
+    }
+    check('V1 controllers agree with the fields at their paths', mismatches.length === 0, mismatches.slice(0, 8).join(' | '));
+    check('a meaningful number of controllers were compared', compared > 100, `${compared}`);
+
+    // Change levels: the ones the glue bakes are structural in the table.
+    const structural = ['noise.isActive', 'noise.curl', 'noise.type', 'noise.octaves', 'colorOverLifetime.isActive', 'sizeOverLifetime.isActive', 'opacityOverLifetime.isActive', 'rotationOverLifetime.isActive', 'renderer.rendererType', 'maxParticles', 'touch.isActive', 'forceFields', 'collisionPlanes'];
+    const wrong = structural.filter((p) => S.fieldAt(p)?.change !== 'structural');
+    check('kernel-baked switches are marked structural', wrong.length === 0, wrong.join(', '));
+    const live = ['noise.strength', 'particleColorInstance.scale', 'emission.rateOverTime', 'forceFields.0.strength', 'collisionPlanes.0.dampen', 'startLifetime'];
+    const notLive = live.filter((p) => S.fieldAt(p)?.change !== 'live');
+    check('updateConfig-able keys are marked live', notLive.length === 0, notLive.join(', '));
+
+    window.editor.load(saved);
+    await new Promise((r) => setTimeout(r, 400));
+    const failed = lines.filter((l) => l.startsWith('FAIL')).length;
+    return [`schema: ${lines.length - failed}/${lines.length} passed`, ...lines].join('\n');
   };
 
   /**
@@ -2689,6 +2811,7 @@
     touchReport,
     standaloneReport,
     gizmoReport,
+    schemaReport,
     videoReport,
     playerReport,
     frameReport,

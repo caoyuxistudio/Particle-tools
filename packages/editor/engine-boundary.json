@@ -1,6 +1,8 @@
 {
-  "$comment": "The engine boundary (V2-ARCHITECTURE.md §1). `engine` lists the modules V2 may import; an entry ending in `/` means every file in that directory. Engine modules may only import each other and the packages in `externals` — no Svelte, SMUI, lil-gui, stores or components. `roots` are entry points whose whole import graph must stay inside `engine`. Checked by scripts/check-engine-boundary.mjs (npm run check:boundary).",
-  "roots": ["src/player.ts"],
+  "$comment": "The engine boundary (V2-ARCHITECTURE.md \u00a71). `engine` lists the modules V2 may import; an entry ending in `/` means every file in that directory. Engine modules may only import each other and the packages in `externals` \u2014 no Svelte, SMUI, lil-gui, stores or components. `roots` are entry points whose whole import graph must stay inside `engine`. Checked by scripts/check-engine-boundary.mjs (npm run check:boundary).",
+  "roots": [
+    "src/player.ts"
+  ],
   "engine": [
     "src/js/three-particles-editor/world.ts",
     "src/js/three-particles-editor/scene-objects.ts",
@@ -21,6 +23,7 @@
     "src/js/three-particles-editor/player-link.ts",
     "src/js/three-particles-editor/notify.ts",
     "src/js/three-particles-editor/document-events.ts",
+    "src/js/three-particles-editor/schema.ts",
     "src/js/three-particles-editor/perf-hud.ts",
     "src/js/three-particles-editor/gyro-hud.ts",
     "src/js/three-particles-editor/presentation.ts",
@@ -35,5 +38,9 @@
     "src/js/three-particles-editor/gradient-editor/",
     "src/js/three-particles-editor/texture-selector/"
   ],
-  "externals": ["three", "@newkrok/three-particles", "@newkrok/three-utils"]
+  "externals": [
+    "three",
+    "@newkrok/three-particles",
+    "@newkrok/three-utils"
+  ]
 }
