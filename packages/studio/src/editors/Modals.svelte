@@ -24,6 +24,10 @@
         <p><strong>Right-click</strong> a stop to delete (except first/last)</p>
       </div>
       <div class="gradient-editor-presets"></div>
+      <div class="editor-footer gradient-editor-footer">
+        <span class="editor-footer__note gradient-editor-footer__note"></span>
+        <button class="editor-footer__apply gradient-editor-apply">Apply to particles</button>
+      </div>
     </div>
   </div>
 </div>
@@ -48,6 +52,11 @@
         <p><strong>Middle point</strong> can move freely within the canvas</p>
       </div>
       <div class="bezier-editor-presets"></div>
+      <!-- studio: a curve is applied to the running particles on demand, not on every drag. -->
+      <div class="editor-footer bezier-editor-footer">
+        <span class="editor-footer__note bezier-editor-footer__note"></span>
+        <button class="editor-footer__apply bezier-editor-apply">Apply to particles</button>
+      </div>
     </div>
   </div>
 </div>

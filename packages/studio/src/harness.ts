@@ -7,7 +7,7 @@ import { schema, fieldsOf, leafPaths, coversLeaf, type Field, type Group } from 
 import { getSceneObjects, updateSceneObject } from '@engine/scene-objects';
 import { revision, patch, get, load } from './store/document.svelte';
 import { doc, getParticleSystem, getFrames, rebuildCount, serialize, bootTimeline, present, isPresenting } from './engine/session';
-import { openCurve, openGradient, openTexture } from './editors/open';
+import { openCurve, openGradient, openTexture, applyPending } from './editors/open';
 
 type Line = string;
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -133,7 +133,35 @@ export const report = async (): Promise<string> => {
   openCurve('sizeOverLifetime.lifetimeCurve');
   await settle(50);
   check('the curve editor opens on a lifetime curve', modal('.bezier-editor-modal')?.style.display === 'block' && document.querySelectorAll('.draggable-points .bezier-point').length >= 2, `${document.querySelectorAll('.draggable-points .bezier-point').length} points`);
+  // Editing does not rebuild; Apply does. Save Current asks inline, not with window.prompt.
+  const buildsAtOpen = rebuildCount();
+  const curveTarget = get('sizeOverLifetime.lifetimeCurve');
+  const apply = document.querySelector<HTMLButtonElement>('.bezier-editor-apply');
+  check('the curve editor has an Apply button, idle while nothing changed', !!apply && apply.disabled === true);
+  curveTarget.bezierPoints[0].y = Math.min(1, (curveTarget.bezierPoints[0].y ?? 0) + 0.1);
+  // the editor's own change path: drag callbacks mark, they do not apply
+  const presetsBefore = document.querySelectorAll('.bezier-editor-presets .bezier-preset-button').length;
+  (document.querySelector('.bezier-save-button') as HTMLElement)?.click();
+  await settle(50);
+  const namer = document.querySelector<HTMLInputElement>('.bezier-editor-modal .editor-namer input');
+  check('Save Current asks for a name inline', !!namer);
+  if (namer) {
+    namer.value = 'harness-preset';
+    (document.querySelector('.editor-namer__save') as HTMLElement).click();
+    await settle(100);
+  }
+  const presetsAfter = document.querySelectorAll('.bezier-editor-presets .bezier-preset-button').length;
+  check('and the new preset appears on the shelf', presetsAfter === presetsBefore + 1, `${presetsBefore} -> ${presetsAfter}`);
+  // clean up the stored preset
+  try { const key = 'three-particles-editor-custom-bezier-curves'; const list = JSON.parse(localStorage.getItem(key) || '[]').filter((p: any) => p.name !== 'harness-preset'); localStorage.setItem(key, JSON.stringify(list)); } catch { /* no storage */ }
+  // A preset click goes through the editor's own change path, like a drag does.
+  const shelf = [...document.querySelectorAll<HTMLElement>('.bezier-editor-presets .bezier-preset-button')].filter((b) => !/save|reverse/i.test(b.className));
+  shelf[3]?.click();
+  await settle(100);
+  check('editing marks the change and does not rebuild', rebuildCount() === buildsAtOpen && apply?.disabled === false && apply.classList.contains('is-dirty'), `${rebuildCount() - buildsAtOpen} rebuilds, apply ${apply?.disabled ? 'idle' : 'armed'}`);
   (document.querySelector('.bezier-editor-modal__close') as HTMLElement)?.click();
+  await settle(250);
+  check('closing applies the pending edit once', rebuildCount() === buildsAtOpen + 1 && applyPending('bezier') === false, `${rebuildCount() - buildsAtOpen} rebuilds`);
   openGradient();
   await settle(50);
   check('the gradient editor opens with the piece\'s stops', modal('.gradient-editor-modal')?.style.display === 'block' && Array.isArray(doc._editorData.gradientStops) && doc._editorData.gradientStops.length >= 2);

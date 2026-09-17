@@ -9,6 +9,21 @@ import type { GradientStop } from './gradient-to-bezier';
 import type { GradientPreset } from './default-gradients';
 import { defaultGradients } from './default-gradients';
 
+// How a preset gets its name. The default asks the browser; a front end that
+// has no dialogs of its own (or a nicer place to ask) installs its own pair.
+type PresetPrompts = {
+  askName: (message: string) => Promise<string | null>;
+  confirmOverwrite: (message: string) => Promise<boolean>;
+};
+const presetPrompts: PresetPrompts = {
+  askName: async (message) => prompt(message),
+  confirmOverwrite: async (message) => confirm(message),
+};
+export const setPresetPrompts = (next: Partial<PresetPrompts>): void => {
+  Object.assign(presetPrompts, next);
+};
+
+
 type Size = {
   width: number;
   height: number;
@@ -660,8 +675,8 @@ const reverseGradient = (): void => {
 /**
  * Saves the current gradient as a custom preset
  */
-const saveCurrentAsPreset = (): void => {
-  const name = prompt('Enter a name for this gradient preset:');
+const saveCurrentAsPreset = async (): Promise<void> => {
+  const name = await presetPrompts.askName('Enter a name for this gradient preset:');
   if (!name || name.trim() === '') return;
 
   const customPresets = loadCustomPresets();
@@ -669,7 +684,7 @@ const saveCurrentAsPreset = (): void => {
   // Check if name already exists
   const existingIndex = customPresets.findIndex((p) => p.name === name.trim());
   if (existingIndex !== -1) {
-    if (!confirm(`A preset named "${name.trim()}" already exists. Overwrite it?`)) {
+    if (!(await presetPrompts.confirmOverwrite(`A preset named "${name.trim()}" already exists. Overwrite it?`))) {
       return;
     }
     customPresets.splice(existingIndex, 1);
@@ -688,8 +703,8 @@ const saveCurrentAsPreset = (): void => {
 /**
  * Deletes a custom preset
  */
-const deleteCustomPreset = (name: string): void => {
-  if (!confirm(`Delete preset "${name}"?`)) return;
+const deleteCustomPreset = async (name: string): Promise<void> => {
+  if (!(await presetPrompts.confirmOverwrite(`Delete preset "${name}"?`))) return;
 
   const customPresets = loadCustomPresets();
   const filtered = customPresets.filter((p) => p.name !== name);
