@@ -3,6 +3,8 @@
   import Viewport from './viewport/Viewport.svelte';
   import Column from './inspector/Column.svelte';
   import Bottombar from './app/Bottombar.svelte';
+  import Modals from './editors/Modals.svelte';
+  import '../src/editors/editors.css';
 </script>
 
 <!--
@@ -14,6 +16,8 @@
 -->
 <!-- The engine's canvas: the whole window, under the studio. -->
 <div id="studio-stage" class="stage"></div>
+<!-- The frame counter: outside the grid so presentation mode can keep it. -->
+<div id="studio-stats" class="stats"></div>
 <div class="studio">
   <Topbar />
   <div class="workspace">
@@ -22,6 +26,7 @@
   </div>
   <Bottombar />
 </div>
+<Modals />
 
 <style>
   .stage {
@@ -31,6 +36,15 @@
   }
   .stage :global(canvas) {
     display: block;
+  }
+  .stats {
+    position: fixed;
+    left: var(--sp-2);
+    top: calc(var(--topbar-h) + var(--sp-2));
+    z-index: 2;
+  }
+  .stats :global(> div) {
+    position: static !important;
   }
   .studio {
     position: fixed;
@@ -44,6 +58,12 @@
     display: grid;
     grid-template-columns: 1fr var(--inspector-w);
     min-height: 0;
+  }
+  @media (max-width: 760px) {
+    .workspace {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 45svh;
+    }
   }
   /* Panels take the pointer; the workspace and the viewport cell let it through to the canvas. */
   .studio > :global(header),

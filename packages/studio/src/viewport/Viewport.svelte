@@ -4,7 +4,6 @@
   import { connectEvents, refresh, engineChanged } from '../store/document.svelte';
 
   let cell: HTMLDivElement;
-  let stats: HTMLDivElement;
   let note = $state('');
 
   const DEFAULT_PIECE = './examples/example-1-1/config.json';
@@ -21,7 +20,7 @@
     if (!piece) note = 'default system (example-1-1 not found)';
     await boot({
       stage: '#studio-stage',
-      statsContainer: stats,
+      statsContainer: window.document.getElementById('studio-stats'),
       // The free viewport is this cell, measured against the canvas (which is
       // the whole window): left/right/top in canvas pixels.
       viewportInsets: (canvas) => {
@@ -39,7 +38,6 @@
 
 <!-- The canvas is mounted at the app level (the whole window); this cell is only the free area. -->
 <div class="cell" bind:this={cell}>
-  <div class="stats" bind:this={stats}></div>
   {#if note}<div class="note">{note}</div>{/if}
 </div>
 
@@ -48,16 +46,6 @@
     position: relative;
     pointer-events: none;
     z-index: 1;
-  }
-  .stats {
-    position: absolute;
-    left: var(--sp-2);
-    top: var(--sp-2);
-    pointer-events: auto;
-  }
-  /* three's Stats pins itself to the window; here it sits in the cell. */
-  .stats :global(> div) {
-    position: static !important;
   }
   .note {
     position: absolute;

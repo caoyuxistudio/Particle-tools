@@ -3,6 +3,7 @@
   import { get, patch, revision, document } from '../store/document.svelte';
   import NumberRow from './NumberRow.svelte';
   import ListView from './ListView.svelte';
+  import { openCurve, openGradient, resetGradient, openTexture } from '../editors/open';
 
   let { field, prefix, scope = null }: { field: Field; prefix: string; scope?: any } = $props();
 
@@ -57,7 +58,7 @@
     {:else if field.kind === 'value'}
       <div class="sub" title={field.hint}>{field.label}</div>
       {#if isCurve(value)}
-        <div class="note">curve · scale {value.scale ?? 1} (curve editor comes in M3)</div>
+        <div class="row"><span class="label">curve · scale {value.scale ?? 1}</span><button onclick={() => openCurve(path)}>edit curve</button></div>
       {:else}
         {@const mm = minmax(value)}
         <NumberRow label="min" min={field.min!} max={field.max!} step={field.step!} value={mm.min} onchange={(v) => patch(path, { min: v, max: Math.max(v, mm.max) })} />
@@ -69,12 +70,12 @@
       <label class="row"><span class="label">max</span><input type="color" value={toHex(value?.max)} oninput={(e) => patch(`${path}.max`, fromHex((e.currentTarget as HTMLInputElement).value))} /></label>
     {:else if field.kind === 'curve'}
       <NumberRow label={`${field.label} · scale`} min={field.min ?? 0} max={field.max ?? 10} step={field.step ?? 0.1} value={value?.scale ?? 1} onchange={(v) => patch(`${path}.scale`, v)} hint={field.hint} />
-      <div class="note">curve editor comes in M3</div>
+      <div class="row"><span></span><button onclick={() => openCurve(path)}>edit curve</button></div>
     {:else if field.kind === 'gradient'}
-      <div class="row"><span class="label" title={field.hint}>{field.label}</span><span class="note">gradient editor comes in M3</span></div>
+      <div class="row"><span class="label" title={field.hint}>{field.label}</span><span class="pair"><button onclick={openGradient}>edit gradient</button><button onclick={resetGradient} title="Reset to the default gradient">reset</button></span></div>
     {:else if field.kind === 'texture'}
       <div class="row"><span class="label" title={field.hint}>{field.label}</span><span class="mono">{value ?? 'none'}</span></div>
-      <div class="note">texture selector comes in M3</div>
+      <div class="row"><span></span><button onclick={() => openTexture(field.path === '_editorData.textureId' ? 'sprite' : 'source')}>choose…</button></div>
     {:else if field.kind === 'list'}
       <ListView {field} {path} />
     {/if}
@@ -105,6 +106,13 @@
   .note {
     color: var(--fg-dim);
     font-size: var(--fs-1);
+  }
+  .pair {
+    display: flex;
+    gap: var(--sp-1);
+  }
+  .pair button {
+    flex: 1;
   }
   .mono {
     color: var(--fg-dim);

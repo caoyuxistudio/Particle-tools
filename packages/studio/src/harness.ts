@@ -6,7 +6,8 @@
 import { schema, fieldsOf, leafPaths, coversLeaf, type Field, type Group } from '@engine/schema';
 import { getSceneObjects, updateSceneObject } from '@engine/scene-objects';
 import { revision, patch, get, load } from './store/document.svelte';
-import { doc, getParticleSystem, getFrames, rebuildCount, serialize, bootTimeline } from './engine/session';
+import { doc, getParticleSystem, getFrames, rebuildCount, serialize, bootTimeline, present, isPresenting } from './engine/session';
+import { openCurve, openGradient, openTexture } from './editors/open';
 
 type Line = string;
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -126,6 +127,40 @@ export const report = async (): Promise<string> => {
   patch('_editorData.showWorldAxes', !!axesBefore);
   patch('_editorData.showCollisionPlanes', !!planesBefore);
   await settle(50);
+
+  // M3: the three canvas editors open into the pre-embedded DOM and write the document.
+  const modal = (cls: string) => document.querySelector<HTMLElement>(cls);
+  openCurve('sizeOverLifetime.lifetimeCurve');
+  await settle(50);
+  check('the curve editor opens on a lifetime curve', modal('.bezier-editor-modal')?.style.display === 'block' && document.querySelectorAll('.draggable-points .bezier-point').length >= 2, `${document.querySelectorAll('.draggable-points .bezier-point').length} points`);
+  (document.querySelector('.bezier-editor-modal__close') as HTMLElement)?.click();
+  openGradient();
+  await settle(50);
+  check('the gradient editor opens with the piece\'s stops', modal('.gradient-editor-modal')?.style.display === 'block' && Array.isArray(doc._editorData.gradientStops) && doc._editorData.gradientStops.length >= 2);
+  (document.querySelector('.gradient-editor-modal__close') as HTMLElement)?.click();
+  openTexture('source');
+  await settle(150);
+  const tiles = document.querySelectorAll('.texture-selector-grid .texture-selector-item').length;
+  check('the texture selector lists the registry', modal('.texture-selector-modal')?.style.display === 'block' && tiles > 3, `${tiles} textures`);
+  // Picking a texture writes the document and rebuilds (the source is structural).
+  const sourceBefore = doc._editorData.colorInstanceTextureId;
+  const buildsBefore = rebuildCount();
+  const item = [...document.querySelectorAll<HTMLElement>('.texture-selector-grid .texture-selector-item')].find((el) => /default.texture|DEFAULT_TEXTURE/i.test(el.textContent ?? ''));
+  item?.click();
+  await settle(250);
+  check('picking a texture rebinds the colour source and rebuilds', !!item && doc._editorData.colorInstanceTextureId === 'DEFAULT_TEXTURE' && doc.particleColorInstance?.map?.image?.width === 816 && rebuildCount() > buildsBefore, `${sourceBefore} -> ${doc._editorData.colorInstanceTextureId}, ${rebuildCount() - buildsBefore} rebuilds`);
+  (document.querySelector('.texture-selector-modal__close') as HTMLElement)?.click();
+
+  // M3: presentation mode — this window as the display, and back.
+  const fBefore = getFrames();
+  present();
+  await settle(400);
+  check('presenting hides the studio and draws the output camera', isPresenting() && document.body.classList.contains('presenting') && getComputedStyle(document.querySelector('.studio')!).display === 'none' && getFrames() > fBefore);
+  check('the presentation bar and both HUDs are installed', !!document.querySelector('.presentation-bar') && !!(window as any).__perfHud && !!(window as any).__gyroHud);
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await settle(200);
+  check('Escape brings the studio back', !isPresenting() && getComputedStyle(document.querySelector('.studio')!).display !== 'none');
+  check('touch input is installed on the canvas', typeof (window as any).__touch?.state === 'function' && typeof (window as any).__touch?.feed === 'function');
 
   // Every leaf of the live document has a field (schema coverage, live).
   const uncovered = leafPaths(doc).filter((p) => typeof p.split('.').reduce((o: any, k) => (o == null ? undefined : o[k]), doc) !== 'function').filter((p) => !coversLeaf(p));

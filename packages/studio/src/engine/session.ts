@@ -13,14 +13,31 @@ import {
   createWorld,
   compileWorld,
   updateWorld,
+  renderPlayer,
+  isPresenting,
   getScene,
   getRenderer,
+  getRendererDomElement,
   getDepthTexture,
   getOutputCamera,
+  getRenderScale,
+  setRenderScale,
+  getDrawingBufferSize,
+  getSsrSettings,
+  setSsrSettings,
+  getAoSettings,
+  setAoSettings,
   setStatsContainer,
   setViewportInsets,
   type ViewportInsetsProvider,
 } from '@engine/world';
+import { installPerfHud, type PerfHud } from '@engine/perf-hud';
+import { installGyroHud, type GyroHud } from '@engine/gyro-hud';
+import { installPresentationControls, togglePresentation } from '@engine/presentation';
+import { installTouchInput } from '@engine/touch-input';
+import { getParallaxSettings, setParallaxSettings, recenterParallax, resetGyroscope, describeParallax } from '@engine/parallax';
+import { getOutputCameraId, updateSceneObject, getSceneObjects } from '@engine/scene-objects';
+import { getTexture } from '@engine/assets';
 import { initAssets, loadCustomAssets } from '@engine/assets';
 import { loadVideoTextures } from '@engine/video-textures';
 import { initSceneObjects, tintFrameEdges } from '@engine/scene-objects';
@@ -91,7 +108,10 @@ const applyLive = (keys: Iterable<string>): void => {
  */
 export const applyChange = (path: string): ChangeLevel | 'none' => {
   const field = fieldAt(path);
-  if (!field || field.editorOnly) return 'none';
+  if (!field) return 'none';
+  // Editor-only fields cost the engine nothing unless the table says they
+  // rebuild (the texture ids under _editorData do: they change the map).
+  if (field.editorOnly && field.change === 'live') return 'none';
   if (field.change === 'live') {
     const top = path.split('.')[0];
     if (liveTimer) {
@@ -154,10 +174,89 @@ const animate = (): void => {
   }
   tintFrameEdges(particleSystem?.getMeanColor?.(meanColor) ? meanColor : null);
   syncFurnitureFrame();
-  updateWorld(!!doc.renderer?.softParticles?.enabled, container, particleSystem?.computeNode ?? null);
+  const soft = !!doc.renderer?.softParticles?.enabled;
+  const computeNode = particleSystem?.computeNode ?? null;
+  // Presenting: the player's frame, output camera straight to the canvas.
+  if (isPresenting()) renderPlayer(soft, container, computeNode);
+  else updateWorld(soft, container, computeNode);
   if (framesDrawn === 1) mark('first-frame');
   requestAnimationFrame(animate);
 };
+
+// ─── instruments: Perf HUD, Gyro panel, presentation mode, touch ─────────────
+
+let perfHud: PerfHud | null = null;
+let gyroHud: GyroHud | null = null;
+let particleBudget = 1;
+
+const installInstruments = (): void => {
+  const baseBudget = () => ({
+    maxParticles: Math.round(doc.maxParticles / particleBudget),
+    rateOverTime: doc.emission.rateOverTime / particleBudget,
+  });
+  perfHud = installPerfHud({
+    backend: webGPUAvailable ? 'webgpu' : 'webgl',
+    getRenderScale,
+    setRenderScale,
+    getDrawingBufferSize,
+    getSsr: getSsrSettings,
+    setSsr: setSsrSettings,
+    getAo: getAoSettings,
+    setAo: setAoSettings,
+    getParallax: () => getParallaxSettings().enabled,
+    setParallax: (enabled) => setParallaxSettings({ ...getParallaxSettings(), enabled }),
+    getParticles: () => ({ maxParticles: doc.maxParticles, rateOverTime: doc.emission.rateOverTime, budget: particleBudget }),
+    setParticleBudget: (factor) => {
+      const base = baseBudget();
+      particleBudget = factor;
+      doc.maxParticles = Math.round(base.maxParticles * factor);
+      doc.emission.rateOverTime = base.rateOverTime * factor;
+      rebuild();
+    },
+    getVideoReadback: () => {
+      const id = doc._editorData?.colorInstanceTextureId;
+      const texture: any = id ? getTexture(id) : null;
+      return texture?.map?.userData?.colorInstanceReadback ?? null;
+    },
+    getPieceName: () => doc._editorData?.metadata?.name ?? 'Untitled',
+    extra: () => [
+      ['boot', Object.entries(marks).map(([k, v]) => `${k} ${v}`).join(' → ')],
+      ['parallax', describeParallax()],
+      ['scene', `${getSceneObjects().length} objects`],
+    ],
+  });
+  gyroHud = installGyroHud({
+    getSettings: getParallaxSettings,
+    setSettings: (patch) => {
+      const next = { ...getParallaxSettings(), ...patch };
+      const cameraId = getOutputCameraId();
+      if (cameraId) updateSceneObject(cameraId, { parallax: next });
+      else setParallaxSettings(next);
+    },
+    resetCamera: recenterParallax,
+    resetGyroscope,
+  });
+  installPresentationControls(perfHud, gyroHud);
+  // Fingers on the picture while presenting: samples for the touch wake.
+  const touch = installTouchInput(getRendererDomElement(), {
+    getSystem: () => particleSystem,
+    getConfig: () => doc,
+    isEnabled: isPresenting,
+    getCamera: getOutputCamera,
+  });
+  (window as any).__touch = {
+    ...touch,
+    feed: (sample: any) => particleSystem?.feedTouch?.(sample),
+    count: () => particleSystem?.getTouchCount?.() ?? 0,
+    clear: () => particleSystem?.clearTouches?.(),
+  };
+  (window as any).__perfHud = perfHud;
+  (window as any).__gyroHud = gyroHud;
+};
+
+export const present = (): void => togglePresentation();
+export const togglePerfHud = (): void => perfHud?.toggle();
+export const toggleGyroHud = (): void => gyroHud?.toggle();
 
 // ─── boot ────────────────────────────────────────────────────────────────────
 
@@ -192,6 +291,7 @@ export const boot = async (options: BootOptions): Promise<void> => {
   container = new THREE.Object3D();
   getScene().add(container);
   installFurniture({ doc, container: () => container, particleSystem: () => particleSystem, changed: (path) => { applyChange(path); options.onEngineChange?.(path); } });
+  installInstruments();
 
   await new Promise<void>((resolve) => initAssets(resolve));
   await new Promise<void>((resolve) => loadCustomAssets({ textures: [], onComplete: resolve }));
@@ -219,7 +319,7 @@ export const boot = async (options: BootOptions): Promise<void> => {
   animate();
 };
 
-export { schema, getOutputCamera, syncFurniture };
+export { schema, getOutputCamera, syncFurniture, isPresenting };
 
 // TEMP DEBUG — the studio's seam for its harness, like V1's window.editor.
 (window as any).__studio = {

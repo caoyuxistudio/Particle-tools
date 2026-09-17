@@ -260,9 +260,13 @@ genie（data-dune.vercel.app）**不是库**，是别人的应用，它的 CSS �
 M2 第一刀查出的两个 V1 bug：`serializeConfig` 的碰撞面 reducer 漏了 `touchCap` / `maxSpeed`（COPY 一直在丢，example-1-1 里有是因为手写进去的；studio 的 round-trip 第一次跑就报出来，已在 main 修并合回）；Vite 对 `./player/` 这种目录地址回退成 SPA 的 index，iframe 要写 `./player/index.html`。
 
 **M3 · 对等**
-- 三个 canvas 编辑器接上；演示模式、Perf / Gyro HUD、手指尾迹、视差在 studio 里可用。
-- 手机上跑一遍：主屏幕模式、竖屏布局、theme-color。
-- studio 自己的 harness 覆盖 M0 到 M3 的判据。
+- ✅ 三个 canvas 编辑器接上；演示模式、Perf / Gyro HUD、手指尾迹、视差在 studio 里可用。（2026-09-17）
+- ◐ 手机上跑一遍：竖屏布局做了（760px 以下单列，检视器在画布下面占 45svh，浏览器的手机模拟里看过）；主屏幕模式和 theme-color 要等 studio 部署上线后在 iPhone 上验，还没有。
+- ✅ studio 自己的 harness 覆盖 M0 到 M3 的判据（`__st.report()` 29 条）。
+
+**2026-09-17 补记（M3 的实际形状）**：开放问题 4 的答案是"studio 预埋同样的 DOM"——`editors/Modals.svelte` 是 V1 content.svelte 里三个模态框的原样拷贝（只把 Material 的搜索图标换成字形），`editors/editors.css` 是 V1 global.css 里那 676 行编辑器样式按亮度映射成 token（无圆角、无阴影）加 presenting 规则；三个编辑器自己的代码一行没动。`editors/open.ts` 是打开它们的三个薄包装：曲线编辑器直接改文档里那个 LifetimeCurve 对象、回调里 `store.touched(path)`；渐变编辑器的 stops 存 `_editorData.gradientStops`、用引擎的 `gradientToBezierCurves` 写回 `colorOverLifetime.r/g/b` 并把 isActive 打开（和 V1 的 entries 一样，只是那段逻辑从 entries 搬进了 studio，因为 `updateBeziersFromGradient` 在 entries 里不在引擎里）；贴图选择器分 sprite（写 `_editorData.textureId`、`map`、帧动画 tiles）和色源（写 `colorInstanceTextureId`、`particleColorInstance.map`）两种。演示模式、Perf HUD、Gyro 面板、手指输入全部是引擎模块，`session.ts` 的 `installInstruments()` 照 V1 glue 的那段接线安装（Perf 的 actions 里粒子预算的算法原样），帧循环在 `isPresenting()` 时走 `renderPlayer`；presenting 的 CSS 是 `body.presenting .studio { display: none }` + 画布容器居中，帧计数器为此从格子挪到了 app 一级（`#studio-stats`，固定定位）。顶栏多了 perf / gyro / present 三个按钮，键盘 P / G / Esc 照 V1。
+
+**没做、记着的**：Player 显示窗口（`player-window.ts`，V1 的 linked 模式）没接——桌面上一边调一边看的那条路 studio 还没有，演示模式够用；子发射器的 config 还是 `hidden`（开放问题 3 未定）；Helper 里 `useLiveUpdate` / `enableBigNumbers` / `useIndividualUpdate` 三个 V1 专属开关渲染了但不起作用（studio 按 schema 的 change 走，不看它们）。
 
 **M4 · 收口**
 - V1 编辑器降为实验台或删除。

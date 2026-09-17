@@ -41,6 +41,14 @@ export const patch = (path: string, value: unknown): void => {
   rev += 1;
 };
 
+/** Something wrote the document in place (an editor, a gizmo): apply at its cost and move on. */
+export const touched = (path: string): void => {
+  const level = applyChange(path);
+  if (FURNITURE_PATHS.test(path)) syncFurniture();
+  lastChange = { path, level };
+  rev += 1;
+};
+
 /** A gizmo moved something: the document is already written, only the revision moves. */
 export const engineChanged = (path: string): void => {
   lastChange = { path, level: 'live' };
