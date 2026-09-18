@@ -5,7 +5,7 @@
   // animation frame; what it changes goes into the document
   // (`_editorData.timeline`), so it travels with the piece.
   import { patch } from '../store/document.svelte';
-  import { play, pause, stop, seek, getTimelineState, getTimelineSettings, type TimelineState } from '../engine/session';
+  import { play, pause, stop, holdPlayhead, getTimelineState, getTimelineSettings, type TimelineState } from '../engine/session';
 
   const FPS_CHOICES = [24, 25, 30, 50, 60, 120];
 
@@ -38,8 +38,7 @@
 
   let track: HTMLDivElement;
   let dragging: 'start' | 'end' | 'head' | null = null;
-  /** Where the hand has the playhead, while it does: the simulation chases it (session.seek). */
-  let held = $state<number | null>(null);
+
   const frameAt = (clientX: number) => {
     const r = track.getBoundingClientRect();
     return Math.round(Math.min(1, Math.max(0, (clientX - r.left) / r.width)) * extent);
@@ -59,29 +58,24 @@
     event.stopPropagation();
   };
   const inRange = (frame: number) => Math.min(state.end, Math.max(state.start, frame));
-  /** Anywhere on the track that is not an end: take the playhead there and keep hold of it. */
+  /** The playhead itself, taken by the hand: time goes where it is dragged and plays on from there. */
   const grabHead = (event: PointerEvent) => {
     dragging = 'head';
-    capture(track, event.pointerId);
-    held = inRange(frameAt(event.clientX));
-    seek(held);
+    capture(event.currentTarget as HTMLElement, event.pointerId);
+    holdPlayhead(inRange(frameAt(event.clientX)));
     event.preventDefault();
+    event.stopPropagation();
   };
   const drag = (event: PointerEvent) => {
     if (!dragging) return;
     const frame = frameAt(event.clientX);
-    if (dragging === 'head') {
-      const next = inRange(frame);
-      if (next !== held) {
-        held = next;
-        seek(next);
-      }
-    } else if (dragging === 'start') set({ start: Math.min(frame, state.end - 1) });
+    if (dragging === 'head') holdPlayhead(inRange(frame));
+    else if (dragging === 'start') set({ start: Math.min(frame, state.end - 1) });
     else set({ end: Math.max(frame, state.start + 1) });
   };
   const release = () => {
+    if (dragging === 'head') holdPlayhead(null);
     dragging = null;
-    held = null;
   };
 
   const commit = (key: 'start' | 'end', raw: string) => {
@@ -115,10 +109,9 @@
   </div>
 
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="track" class:seeking={state.seeking} bind:this={track} onpointerdown={grabHead} onpointermove={drag} onpointerup={release} onpointercancel={release} title="Drag the playhead: the simulation is brought to that frame — forward from where it is, or from the start of the range when you go back.">
+  <div class="track" bind:this={track} onpointermove={drag} onpointerup={release} onpointercancel={release}>
     <div class="range" style:left={pct(state.start)} style:width={`calc(${pct(state.end)} - ${pct(state.start)})`}></div>
-    {#if held !== null}<div class="head held" style:left={pct(held)}></div>{/if}
-    <div class="head" style:left={pct(state.frame)}></div>
+    <div class="head" style:left={pct(state.frame)} onpointerdown={grabHead} title="Drag the playhead: time goes where you put it and plays on from there. The particles are not re-run."></div>
     <div class="handle" style:left={pct(state.start)} onpointerdown={grab('start')} title="Start of the range: drag, or type it on the right"></div>
     <div class="handle" style:left={pct(state.end)} onpointerdown={grab('end')} title="End of the range: drag, or type it on the right"></div>
   </div>
@@ -200,23 +193,32 @@
     border-left: 1px solid var(--fg-dim);
     border-right: 1px solid var(--fg-dim);
   }
+  /* The playhead: a line to see, a wider strip to take hold of. */
   .head {
     position: absolute;
-    top: -3px;
-    bottom: -3px;
+    top: -4px;
+    bottom: -4px;
+    width: 11px;
+    margin-left: -5px;
+    cursor: grab;
+    z-index: 1;
+  }
+  .head::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 5px;
     width: 1px;
     background: var(--accent);
-    pointer-events: none;
   }
-  .head.held {
-    background: var(--fg-strong);
-    opacity: 0.6;
+  .head:hover::before,
+  .head:active::before {
+    width: 3px;
+    left: 4px;
   }
-  .track {
-    cursor: col-resize;
-  }
-  .track.seeking .head:not(.held) {
-    width: 2px;
+  .head:active {
+    cursor: grabbing;
   }
   .handle {
     position: absolute;

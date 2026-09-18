@@ -226,28 +226,37 @@ export const report = async (): Promise<string> => {
     await settle(100);
     const stopped = st.getTimelineState();
     check('stop goes back to the start with nothing alive', stopped.frame === 0 && !stopped.playing && getParticleSystem()?.getActiveParticleCount?.() === 0, `frame ${stopped.frame}, ${getParticleSystem()?.getActiveParticleCount?.()} alive`);
-    // Dragging the playhead: the simulation is brought to the frame by undrawn
-    // fixed steps — forward from where it is, from the start when going back.
+    // Dragging the playhead moves time and only time: it goes where the hand
+    // puts it, the particles are left as they are, and play carries on from there.
     {
       const track = document.querySelector<HTMLElement>('.timeline .track')!;
+      const head = document.querySelector<HTMLElement>('.timeline .head')!;
       const box = track.getBoundingClientRect();
       const len = st.getTimelineState().length;
       const at = (frame: number) => box.left + (frame / len) * box.width;
-      const ptr = (type: string, x: number) => track.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: box.top + box.height / 2, pointerId: 7, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true, bubbles: true, cancelable: true }));
-      const settleSeek = async () => { const t0 = performance.now(); while (st.isSeeking() && performance.now() - t0 < 20000) await settle(30); };
-      ptr('pointerdown', at(60));
-      ptr('pointermove', at(90));
-      ptr('pointerup', at(90));
-      await settleSeek();
-      const forward = st.getTimelineState();
-      const alive = getParticleSystem()?.getActiveParticleCount?.() ?? 0;
-      check('dragging the playhead brings the simulation to that frame', Math.abs(forward.frame - 90) <= 2 && alive > 0 && !forward.seeking, `frame ${forward.frame}, ${alive} alive, ${st.getSeekSteps()} steps`);
-      ptr('pointerdown', at(30));
-      ptr('pointerup', at(30));
-      await settleSeek();
-      const back = st.getTimelineState();
-      const aliveBack = getParticleSystem()?.getActiveParticleCount?.() ?? 0;
-      check('and back is from the start again: fewer frames, fewer particles', Math.abs(back.frame - 30) <= 2 && aliveBack > 0 && aliveBack < alive, `frame ${back.frame}, ${aliveBack} alive`);
+      const ptr = (el: HTMLElement, type: string, x: number) => el.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: box.top + box.height / 2, pointerId: 7, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true, bubbles: true, cancelable: true }));
+      st.play();
+      await settle(400);
+      const alive0 = getParticleSystem()?.getActiveParticleCount?.() ?? 0;
+      const builds0 = rebuildCount();
+      ptr(track, 'pointerdown', at(200));
+      await settle(50);
+      const ignored = st.getTimelineState().frame;
+      ptr(track, 'pointerup', at(200));
+      check('a click on the bare track does not move time', ignored < 100, `frame ${ignored}`);
+      ptr(head, 'pointerdown', at(st.getTimelineState().frame));
+      ptr(head, 'pointermove', at(200));
+      await settle(200);
+      const heldAt = st.getTimelineState().frame;
+      check('the playhead stays under the hand while it is held', Math.abs(heldAt - 200) <= 2, `frame ${heldAt}`);
+      ptr(head, 'pointerup', at(200));
+      await settle(300);
+      const after = st.getTimelineState().frame;
+      const alive1 = getParticleSystem()?.getActiveParticleCount?.() ?? 0;
+      check('let go, it plays on from there', after > 200 && after < 230, `frame ${after}`);
+      check('and the particles were left as they were: no rebuild, nothing cleared', rebuildCount() === builds0 && alive1 >= alive0, `${alive0} -> ${alive1} alive`);
+      st.pause();
+      await settle(150);
       const r: any = (window as any).__world.renderer;
       const offsets = getParticleSystem()?.instance?.geometry?.attributes?.instanceOffset;
       if (offsets) {
