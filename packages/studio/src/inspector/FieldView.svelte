@@ -8,7 +8,16 @@
   let { field, prefix, scope = null }: { field: Field; prefix: string; scope?: any } = $props();
 
   const path = $derived(prefix + field.path);
-  const value = $derived((revision(), get(path)));
+  // A compound value (vec3, colour, min/max) is written one component at a
+  // time, in place: the object the document holds stays the same object, and
+  // a derived that hands back the same object is "unchanged" — the number
+  // beside a drift or influence slider never followed the drag. A shallow
+  // copy per revision makes the change visible; nothing writes through it.
+  const value = $derived.by(() => {
+    revision();
+    const v = get(path);
+    return v && typeof v === 'object' && !Array.isArray(v) ? { ...v } : v;
+  });
   const shown = $derived((revision(), !field.when || field.when(scope ?? document)));
 
   const toHex = (c: any): string => {
