@@ -59,6 +59,38 @@ describe('color tweak', () => {
   });
 });
 
+describe('tone: brightness, black point, gamma', () => {
+  it('a black point presses the darks down and leaves white alone', () => {
+    const out = apply({ blackPoint: 0.2 }, [0.2, 0.6, 1]);
+    expect(out[0]).toBeCloseTo(0, 6);
+    expect(out[1]).toBeCloseTo(0.5, 6);
+    expect(out[2]).toBeCloseTo(1, 6);
+    expect(apply({ blackPoint: 0.2 }, [0.1, 0.1, 0.1])[0]).toBe(0);
+  });
+
+  it('gamma moves the mid-tones and keeps black and white', () => {
+    const lifted = apply({ gamma: 2 }, [0, 0.25, 1]);
+    expect(lifted[0]).toBe(0);
+    expect(lifted[1]).toBeCloseTo(0.5, 6);
+    expect(lifted[2]).toBeCloseTo(1, 6);
+    expect(apply({ gamma: 0.5 }, [0.5, 0.5, 0.5])[0]).toBeCloseTo(0.25, 6);
+  });
+
+  it('brightness is a multiplier, clamped at white', () => {
+    const out = apply({ brightness: 1.5 }, [0.2, 0.5, 0.8]);
+    expect(out[0]).toBeCloseTo(0.3, 6);
+    expect(out[1]).toBeCloseTo(0.75, 6);
+    expect(out[2]).toBe(1);
+  });
+
+  it('all at their neutral values prepares nothing', () => {
+    expect(
+      buildColorTweak({ brightness: 1, blackPoint: 0, gamma: 1 })
+    ).toBeNull();
+    expect(buildColorTweak({ blackPoint: 0.1 })).not.toBeNull();
+  });
+});
+
 describe('luminosity noise map', () => {
   it('is the identity by default', () => {
     expect(remapLuminance(0.3)).toBeCloseTo(0.3, 9);

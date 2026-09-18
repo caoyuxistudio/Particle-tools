@@ -768,7 +768,14 @@ const DEFAULT_PARTICLE_SYSTEM_CONFIG: ParticleSystemConfig = {
     useAlphaForOpacity: false,
     useLuminanceForNoise: false,
     luminanceNoiseAmount: 0,
-    colorTweak: { saturation: 1, contrast: 1, hue: 0 },
+    colorTweak: {
+      saturation: 1,
+      contrast: 1,
+      hue: 0,
+      brightness: 1,
+      blackPoint: 0,
+      gamma: 1,
+    },
     luminanceMap: { black: 0, white: 1 },
   },
   textureSheetAnimation: {

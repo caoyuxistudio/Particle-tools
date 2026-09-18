@@ -1,8 +1,9 @@
 /**
  * The source's own look, applied to a sampled pixel before it becomes a
- * particle's start colour: hue, saturation and contrast, in display (sRGB)
- * space, the way an image editor applies them. Prepared once per system as a
- * 3x3 matrix and an offset, so a spawn costs nine multiplies.
+ * particle's start colour: hue, saturation and contrast, then brightness, a
+ * black point and a gamma, in display (sRGB) space, the way an image editor
+ * applies them. Prepared once per system as a 3x3 matrix, an offset and three
+ * scalars, so a spawn costs nine multiplies and, at most, three powers.
  *
  * The matrices are the SVG feColorMatrix / CSS filter ones (hue-rotate and
  * saturate), which keep Rec.709 luma where they can.
@@ -14,6 +15,19 @@ export type ColorTweakSettings = {
   contrast?: number;
   /** Hue rotation in degrees; 0 leaves the colour alone. */
   hue?: number;
+  /** A plain multiplier on every channel, after the matrix; 1 leaves the colour alone. */
+  brightness?: number;
+  /**
+   * The value that becomes black: everything at or below it is 0, white stays
+   * white, the range between is stretched — the darks pressed down without
+   * touching the brightest part. 0 leaves the colour alone.
+   */
+  blackPoint?: number;
+  /**
+   * The mid-tones: `value ^ (1 / gamma)`, so above 1 lifts them and below 1
+   * sinks them; black and white stay where they are. 1 leaves the colour alone.
+   */
+  gamma?: number;
 };
 
 export type ColorTweak = {
@@ -21,6 +35,11 @@ export type ColorTweak = {
   m: Float64Array;
   /** Added to every channel after the matrix. */
   offset: number;
+  /** After the matrix, in this order: × brightness, the black point, the gamma. */
+  brightness: number;
+  blackPoint: number;
+  /** 1 / gamma, the exponent itself. */
+  gammaExponent: number;
 };
 
 const LR = 0.2126;
@@ -34,7 +53,18 @@ export const buildColorTweak = (
   const s = settings?.saturation ?? 1;
   const k = settings?.contrast ?? 1;
   const hue = settings?.hue ?? 0;
-  if (s === 1 && k === 1 && hue === 0) return null;
+  const brightness = Math.max(0, settings?.brightness ?? 1);
+  const blackPoint = Math.min(0.999, Math.max(0, settings?.blackPoint ?? 0));
+  const gamma = Math.max(0.01, settings?.gamma ?? 1);
+  if (
+    s === 1 &&
+    k === 1 &&
+    hue === 0 &&
+    brightness === 1 &&
+    blackPoint === 0 &&
+    gamma === 1
+  )
+    return null;
 
   const a = (hue * Math.PI) / 180;
   const c = Math.cos(a);
@@ -72,10 +102,25 @@ export const buildColorTweak = (
       m[row * 3 + col] = sum * k;
     }
   }
-  return { m, offset: 0.5 * (1 - k) };
+  return {
+    m,
+    offset: 0.5 * (1 - k),
+    brightness,
+    blackPoint,
+    gammaExponent: 1 / gamma,
+  };
 };
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/** One channel through the tone steps: × brightness, black point, gamma. */
+const tone = (value: number, tweak: ColorTweak): number => {
+  let v = clamp01(value * tweak.brightness);
+  if (tweak.blackPoint > 0)
+    v = clamp01((v - tweak.blackPoint) / (1 - tweak.blackPoint));
+  if (tweak.gammaExponent !== 1) v = Math.pow(v, tweak.gammaExponent);
+  return v;
+};
 
 /** Applies a prepared tweak to an sRGB colour in 0..1, into `out`. */
 export const applyColorTweak = (
@@ -86,9 +131,9 @@ export const applyColorTweak = (
   out: [number, number, number]
 ): [number, number, number] => {
   const { m, offset } = tweak;
-  out[0] = clamp01(m[0] * r + m[1] * g + m[2] * b + offset);
-  out[1] = clamp01(m[3] * r + m[4] * g + m[5] * b + offset);
-  out[2] = clamp01(m[6] * r + m[7] * g + m[8] * b + offset);
+  out[0] = tone(m[0] * r + m[1] * g + m[2] * b + offset, tweak);
+  out[1] = tone(m[3] * r + m[4] * g + m[5] * b + offset, tweak);
+  out[2] = tone(m[6] * r + m[7] * g + m[8] * b + offset, tweak);
   return out;
 };
 
