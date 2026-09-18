@@ -130,6 +130,14 @@ const OZ = [-231.341, 124.23, -54.34];
 /** The field's own motion, in field units per second, when the config says nothing. */
 export const DEFAULT_DRIFT = { x: 0.15, y: 0.11, z: 0.13 };
 
+/** A {@link NoiseDirection} as the sign the kernel takes: 0 both ways, ±1 one way. */
+export const directionSign = (direction: string | undefined): number =>
+  direction === 'POSITIVE' ? 1 : direction === 'NEGATIVE' ? -1 : 0;
+
+/** One component of a displacement, folded onto the side `sign` names (0 = left alone). */
+export const foldDirection = (value: number, sign: number): number =>
+  sign === 0 ? value : sign * Math.abs(value);
+
 /**
  * Classic Perlin's curl is stronger than this simplex port's (whose gradients
  * peak near ±0.37); Perlin's output is scaled by this so the same `strength`

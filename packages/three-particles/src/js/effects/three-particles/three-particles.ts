@@ -143,7 +143,7 @@ const sampleColorInstance = (
   }
 };
 import { rgbSRGBToLinear, sRGBToLinear } from './color-utils.js';
-import { DEFAULT_DRIFT } from './curl-noise';
+import { DEFAULT_DRIFT, directionSign } from './curl-noise';
 import InstancedParticleFragmentShader from './shaders/instanced-particle-fragment-shader.glsl.js';
 import InstancedParticleVertexShader from './shaders/instanced-particle-vertex-shader.glsl.js';
 import MeshParticleFragmentShader from './shaders/mesh-particle-fragment-shader.glsl.js';
@@ -181,6 +181,7 @@ import {
   TimeMode,
   ColorInstancePlane,
   ColorInstanceWrap,
+  NoiseDirection,
   NoiseType,
 } from './three-particles-enums';
 import { applyForceFields } from './three-particles-forces.js';
@@ -749,6 +750,11 @@ const DEFAULT_PARTICLE_SYSTEM_CONFIG: ParticleSystemConfig = {
     influence: { x: 1.0, y: 1.0, z: 1.0 },
     type: NoiseType.SIMPLEX,
     drift: { x: 0.15, y: 0.11, z: 0.13 },
+    direction: {
+      x: NoiseDirection.BOTH,
+      y: NoiseDirection.BOTH,
+      z: NoiseDirection.BOTH,
+    },
   },
   particleColorInstance: {
     isActive: false,
@@ -1269,6 +1275,11 @@ export const createParticleSystem = (
       x: noise.drift?.x ?? DEFAULT_DRIFT.x,
       y: noise.drift?.y ?? DEFAULT_DRIFT.y,
       z: noise.drift?.z ?? DEFAULT_DRIFT.z,
+    },
+    direction: {
+      x: directionSign(noise.direction?.x),
+      y: directionSign(noise.direction?.y),
+      z: directionSign(noise.direction?.z),
     },
     fbmMax,
     sampler: noise.isActive
@@ -3028,6 +3039,11 @@ export const createParticleSystem = (
           y: n.drift?.y ?? DEFAULT_DRIFT.y,
           z: n.drift?.z ?? DEFAULT_DRIFT.z,
         },
+        direction: {
+          x: directionSign(n.direction?.x),
+          y: directionSign(n.direction?.y),
+          z: directionSign(n.direction?.z),
+        },
         fbmMax: 2 - Math.pow(2, -n.octaves),
         sampler: n.isActive
           ? new FBM({
@@ -3492,6 +3508,13 @@ const updateParticleSystemInstance = (
         noiseData.drift?.x ?? DEFAULT_DRIFT.x,
         noiseData.drift?.y ?? DEFAULT_DRIFT.y,
         noiseData.drift?.z ?? DEFAULT_DRIFT.z
+      );
+    if (cp.uniforms.noiseDirection)
+      setUniformVec3(
+        cp.uniforms.noiseDirection,
+        noiseData.direction?.x ?? 0,
+        noiseData.direction?.y ?? 0,
+        noiseData.direction?.z ?? 0
       );
     if (cp.trailHistoryInfo) {
       // The kernel stamps this on every sample; the ribbon fades by it.

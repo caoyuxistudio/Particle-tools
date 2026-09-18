@@ -5,6 +5,7 @@
 - The v2 branch is merged into `main`; the studio is now the only editor under development (V1 is history). `deploy.yml` builds V1 and the studio from the same checkout.
 - Fix: a piece saved in this browser could not be loaded back — the saved list was a deep `$state` proxy and `structuredClone` threw `DataCloneError`; the list is `$state.raw` now and a failed load says so. Harness +2 (55).
 - Fix: editing one axis of a vec3 (a collision plane's position or normal, a force field's position, noise drift, the colour source's offset, the transform) never reached the engine — the component path named no field, so `applyChange` answered `none`; a plane only moved once toggling it re-sent the list. Fixed in the engine's `fieldAt`. Harness +1 (56).
+- Noise: `direction x / y / z` (BOTH / POSITIVE / NEGATIVE) under the curl noise group, rendered from the schema; live. Harness +2 (58).
 
 ## Unreleased
 

@@ -8,6 +8,7 @@ import {
   ForceFieldFalloff,
   ForceFieldType,
   LifeTimeCurve,
+  NoiseDirection,
   NoiseType,
   RendererType,
   Shape,
@@ -846,6 +847,8 @@ export type Noise = {
   type?: NoiseType;
   /** See {@link NoiseConfig.drift}. */
   drift?: { x: number; y: number; z: number };
+  /** See {@link NoiseConfig.direction}, as signs: 0 both ways, 1 towards +, −1 towards −. */
+  direction?: { x: number; y: number; z: number };
 };
 
 /**
@@ -1047,6 +1050,13 @@ export type NoiseConfig = {
    * had; (0, 0, 0) is a still field the particles flow through.
    */
   drift?: { x?: number; y?: number; z?: number };
+  /**
+   * Per world axis, which way the curl field may push: `BOTH` (default),
+   * `POSITIVE` or `NEGATIVE`. One-way folds that component of the
+   * displacement onto the chosen side — `y: POSITIVE` and the field only
+   * ever lifts, never sinks. A uniform on the GPU: live, no rebuild.
+   */
+  direction?: { x?: NoiseDirection; y?: NoiseDirection; z?: NoiseDirection };
 };
 
 /**

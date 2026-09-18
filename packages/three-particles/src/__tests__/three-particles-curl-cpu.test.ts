@@ -105,4 +105,59 @@ describe('curl noise on the CPU backend', () => {
     expect(Array.from(positions(ps))).toEqual(Array.from(before));
     ps.dispose();
   });
+
+  it('pushes only one way along an axis set to POSITIVE or NEGATIVE', () => {
+    // A wide box: across it the field's y component takes both signs.
+    const run = (direction?: Record<string, string>) => {
+      const startTime = 1000;
+      const ps = createParticleSystem(
+        {
+          maxParticles: 200,
+          duration: 5,
+          looping: true,
+          startLifetime: 10,
+          startSpeed: 0,
+          emission: { rateOverTime: 40000 },
+          shape: { shape: 'BOX', box: { scale: { x: 12, y: 12, z: 12 } } },
+          noise: {
+            isActive: true,
+            curl: true,
+            strength: 1,
+            frequency: 0.5,
+            positionAmount: 1,
+            drift: { x: 0, y: 0, z: 0 },
+            ...(direction ? { direction } : {}),
+          },
+        } as any,
+        startTime
+      );
+      const step = (t: number) =>
+        ps.update({ now: startTime + t, delta: 0.016, elapsed: t / 1000 });
+      step(16);
+      const idx = activeIndices(ps);
+      const before = Float32Array.from(positions(ps));
+      step(32);
+      const after = positions(ps);
+      const dy = idx.map((i) => after[i * 3 + 1] - before[i * 3 + 1]);
+      const dx = idx.map((i) => after[i * 3] - before[i * 3]);
+      ps.dispose();
+      return { dy, dx };
+    };
+
+    const both = run();
+    expect(both.dy.some((v) => v > 1e-7)).toBe(true);
+    expect(both.dy.some((v) => v < -1e-7)).toBe(true);
+
+    const up = run({ y: 'POSITIVE' });
+    expect(up.dy.length).toBeGreaterThan(100);
+    expect(up.dy.every((v) => v >= 0)).toBe(true);
+    expect(up.dy.some((v) => v > 1e-7)).toBe(true);
+    // The other axes keep both signs.
+    expect(up.dx.some((v) => v > 1e-7)).toBe(true);
+    expect(up.dx.some((v) => v < -1e-7)).toBe(true);
+
+    const down = run({ y: 'NEGATIVE' });
+    expect(down.dy.every((v) => v <= 0)).toBe(true);
+    expect(down.dy.some((v) => v < -1e-7)).toBe(true);
+  });
 });

@@ -18,6 +18,7 @@
 import { Vector3 } from 'three';
 import {
   Fn,
+  abs,
   float,
   vec3,
   vec4,
@@ -182,6 +183,7 @@ export type ModifierUniforms = {
   noiseInfluence: ShaderNodeObject<Node>;
   /** How fast the curl field scrolls along each axis, field units per second. */
   noiseDrift: ShaderNodeObject<Node>;
+  noiseDirection: ShaderNodeObject<Node>;
 };
 
 /**
@@ -674,6 +676,8 @@ export function createModifierComputeUpdate(
   const uNoiseSizeAmount = uniform(float(0));
   const uNoiseTime = uniform(float(0));
   const uNoiseDrift = uniform(vec3(0.15, 0.11, 0.13));
+  // Per axis: 0 = the field pushes both ways, ±1 = only towards that side.
+  const uNoiseDirection = uniform(vec3(0, 0, 0));
   const uNoiseInfluence = uniform(new Vector3(1, 1, 1));
   // Trail history: sampling threshold and the clock stamped on each sample.
   const uTrailMinDist = uniform(float(0));
@@ -933,7 +937,8 @@ export function createModifierComputeUpdate(
         // out of the heading and speed below; the collision planes still see
         // it, since a finger can push a particle into a wall.
         const wakeShove =
-          touchWakeNodes && (flags.trackTravelDirection || flags.collisionPlanes)
+          touchWakeNodes &&
+          (flags.trackTravelDirection || flags.collisionPlanes)
             ? vec3(0).toVar()
             : null;
         if (touchWakeNodes) {
@@ -1179,14 +1184,17 @@ export function createModifierComputeUpdate(
             ? sStartColorsExt.element(i).w
             : float(1);
 
+          const flow = curl
+            .mul(uNoiseStrength)
+            .mul(uNoisePosAmount)
+            .mul(uNoiseInfluence)
+            .mul(lumaMul)
+            .mul(uDelta);
+          // One-way axes: the component folded onto the side its sign names
+          // (|flow| × sign), the others left alone — abs(sign) is 0 or 1.
           pos.assign(
             pos.add(
-              curl
-                .mul(uNoiseStrength)
-                .mul(uNoisePosAmount)
-                .mul(uNoiseInfluence)
-                .mul(lumaMul)
-                .mul(uDelta)
+              mix(flow, abs(flow).mul(uNoiseDirection), abs(uNoiseDirection))
             )
           );
 
@@ -1280,7 +1288,9 @@ export function createModifierComputeUpdate(
             vel,
             effVel,
             shove,
-            shoveCap: touchWakeNodes ? touchWakeNodes.maxSpeedUniform : float(0),
+            shoveCap: touchWakeNodes
+              ? touchWakeNodes.maxSpeedUniform
+              : float(0),
             delta: uDelta,
             bounce: bounce!,
             bounceRecover: bounceState!.recover,
@@ -1408,6 +1418,7 @@ export function createModifierComputeUpdate(
       noiseTime: uNoiseTime,
       noiseInfluence: uNoiseInfluence,
       noiseDrift: uNoiseDrift,
+      noiseDirection: uNoiseDirection,
       noiseRotationAmount: uNoiseRotAmount,
       noiseSizeAmount: uNoiseSizeAmount,
     },

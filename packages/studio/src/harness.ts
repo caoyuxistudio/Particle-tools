@@ -90,6 +90,17 @@ export const report = async (): Promise<string> => {
   check('and does not rebuild', rebuildCount() === builds && getParticleSystem() === ps);
   patch('noise.strength', strengthBefore);
   await settle(150);
+  // noise.direction: a uniform — live, no rebuild, and only a one-way axis is written out.
+  {
+    calls.length = 0;
+    patch('noise.direction.y', 'POSITIVE');
+    await settle(50);
+    const out = JSON.parse(serialize()).noise?.direction;
+    check('noise direction is live and travels with the piece', calls.length === 1 && calls[0].noise?.direction?.y === 'POSITIVE' && rebuildCount() === builds && out?.y === 'POSITIVE', `${calls.length} calls, ${JSON.stringify(out)}`);
+    patch('noise.direction.y', 'BOTH');
+    await settle(150);
+    check('and both ways is the default, not written', JSON.parse(serialize()).noise?.direction === undefined);
+  }
   // One axis of a vec3 inside a list item — how the inspector writes a
   // collision plane's position. The path names no field of its own; it must
   // still reach the engine (it once did not: the plane only moved after it

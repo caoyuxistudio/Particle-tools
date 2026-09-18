@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { curlNoise, DEFAULT_DRIFT } from './curl-noise';
+import { curlNoise, DEFAULT_DRIFT, foldDirection } from './curl-noise';
 
 import {
   SCALAR_STRIDE,
@@ -271,11 +271,19 @@ export const applyModifiers = ({
     );
     const lumaMul = noise.lumaMul ? noise.lumaMul[particleIndex] : 1;
     const amount = strength * positionAmount * lumaMul * delta;
-    positionArr[positionIndex] += _curl.x * amount * (noise.influence?.x ?? 1);
-    positionArr[positionIndex + 1] +=
-      _curl.y * amount * (noise.influence?.y ?? 1);
-    positionArr[positionIndex + 2] +=
-      _curl.z * amount * (noise.influence?.z ?? 1);
+    // One-way axes fold the displacement onto their side, as the kernel does.
+    positionArr[positionIndex] += foldDirection(
+      _curl.x * amount * (noise.influence?.x ?? 1),
+      noise.direction?.x ?? 0
+    );
+    positionArr[positionIndex + 1] += foldDirection(
+      _curl.y * amount * (noise.influence?.y ?? 1),
+      noise.direction?.y ?? 0
+    );
+    positionArr[positionIndex + 2] += foldDirection(
+      _curl.z * amount * (noise.influence?.z ?? 1),
+      noise.direction?.z ?? 0
+    );
 
     const power = noisePower / (noise.fbmMax || 1);
     if (rotationAmount !== 0) {

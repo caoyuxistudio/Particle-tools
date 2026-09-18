@@ -348,3 +348,15 @@ export const enum NoiseType {
   SIMPLEX = 'SIMPLEX',
   PERLIN = 'PERLIN',
 }
+
+/**
+ * Which way the noise may push along one axis: both ways (the field as it
+ * is), or only towards + or only towards −. One-way folds the field's
+ * component onto that side (its magnitude kept), so every particle is pushed
+ * that way, faster or slower, never back.
+ */
+export const enum NoiseDirection {
+  BOTH = 'BOTH',
+  POSITIVE = 'POSITIVE',
+  NEGATIVE = 'NEGATIVE',
+}

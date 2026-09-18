@@ -483,6 +483,18 @@ export const schema: Group[] = [
       num('noise.sizeAmount', 'sizeAmount', -5, 5, 0.001, 'live'),
       vec3('noise.drift', 'drift (field motion per axis)', -3, 3, 0.01, 'live'),
       vec3('noise.influence', 'influence', 0, 1, 0.01, 'live'),
+      enumF('noise.direction.x', 'direction x', opts(['BOTH', 'POSITIVE', 'NEGATIVE']), 'live', {
+        hint: 'Which way the curl field may push along this world axis. One way folds the push onto that side: every particle goes that way, faster or slower, never back.',
+        when: (d) => !!d.noise?.curl,
+      }),
+      enumF('noise.direction.y', 'direction y', opts(['BOTH', 'POSITIVE', 'NEGATIVE']), 'live', {
+        hint: 'Which way the curl field may push along this world axis. One way folds the push onto that side: every particle goes that way, faster or slower, never back.',
+        when: (d) => !!d.noise?.curl,
+      }),
+      enumF('noise.direction.z', 'direction z', opts(['BOTH', 'POSITIVE', 'NEGATIVE']), 'live', {
+        hint: 'Which way the curl field may push along this world axis. One way folds the push onto that side: every particle goes that way, faster or slower, never back.',
+        when: (d) => !!d.noise?.curl,
+      }),
     ],
   },
   {

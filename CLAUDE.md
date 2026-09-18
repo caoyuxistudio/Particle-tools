@@ -24,7 +24,7 @@
 
 ## 现状与下一步（2026-09-18）
 
-- 规划里的 M0–M4 全部完成（2026-09-17）：引擎在 `packages/engine`（边界脚本 0 违规、jest 23 条）；schema 覆盖默认 config 的全部键；studio 与 V1 对等（三个 canvas 编辑器、演示模式、Perf / Gyro HUD、手指尾迹、视差、手机布局），harness `__st.report()` 55 条全绿；studio 已上线，仓库改名 Particle-tools，v2 合进 main。细节和判据在 `packages/studio/CLAUDE.md`「现状与下一步」和 §6。
+- 规划里的 M0–M4 全部完成（2026-09-17）：引擎在 `packages/engine`（边界脚本 0 违规、jest 24 条）；schema 覆盖默认 config 的全部键；studio 与 V1 对等（三个 canvas 编辑器、演示模式、Perf / Gyro HUD、手指尾迹、视差、手机布局），harness `__st.report()` 58 条全绿；studio 已上线，仓库改名 Particle-tools，v2 合进 main。细节和判据在 `packages/studio/CLAUDE.md`「现状与下一步」和 §6。
 - **没做的**：studio 里没有 player 显示窗口（V1 的 linked 模式）；子发射器还是 `hidden`；iPhone 真机没验过 studio；账号与云端作品库（BaaS 方向）没开始；弹墙手感作者还不满意（引擎的事）。
 - **下一步由作者定顺序**，候选就是上面那五项。默认在 studio 和引擎里做；改引擎要过 `npm test` 和 `npm run check:boundary`，加 config 字段要补 schema。
 
@@ -39,7 +39,7 @@ cd ../studio && npm run dev      # V2，5173
 
 ## 验证
 
-- studio：dev 页面 console `await __st.report()`（55 条）；真实窗口 + `packages/editor/scripts/cdp-eval.mjs` 更可靠（方法见 `packages/editor/CLAUDE.md`「验证改动」，地址换成 5173）。
+- studio：dev 页面 console `await __st.report()`（58 条）；真实窗口 + `packages/editor/scripts/cdp-eval.mjs` 更可靠（方法见 `packages/editor/CLAUDE.md`「验证改动」，地址换成 5173）。
 - V1（只在作者点名看 V1 时）：`packages/editor/public/__ai-test.js`，console 里 `await __t.<report>()`，一次一个。
 - 引擎：`npm test`（jest）和 `npm run check:boundary`。
 - CI（`.github/workflows/ci.yml`）在所有分支跑边界脚本和两个包的 jest；`deploy.yml` 只在 main 上跑，V1 和 studio 都从这一次 checkout 构建。
