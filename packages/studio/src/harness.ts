@@ -226,10 +226,56 @@ export const report = async (): Promise<string> => {
     await settle(100);
     const stopped = st.getTimelineState();
     check('stop goes back to the start with nothing alive', stopped.frame === 0 && !stopped.playing && getParticleSystem()?.getActiveParticleCount?.() === 0, `frame ${stopped.frame}, ${getParticleSystem()?.getActiveParticleCount?.()} alive`);
+    // Dragging the playhead: the simulation is brought to the frame by undrawn
+    // fixed steps — forward from where it is, from the start when going back.
+    {
+      const track = document.querySelector<HTMLElement>('.timeline .track')!;
+      const box = track.getBoundingClientRect();
+      const len = st.getTimelineState().length;
+      const at = (frame: number) => box.left + (frame / len) * box.width;
+      const ptr = (type: string, x: number) => track.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: box.top + box.height / 2, pointerId: 7, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true, bubbles: true, cancelable: true }));
+      const settleSeek = async () => { const t0 = performance.now(); while (st.isSeeking() && performance.now() - t0 < 20000) await settle(30); };
+      ptr('pointerdown', at(60));
+      ptr('pointermove', at(90));
+      ptr('pointerup', at(90));
+      await settleSeek();
+      const forward = st.getTimelineState();
+      const alive = getParticleSystem()?.getActiveParticleCount?.() ?? 0;
+      check('dragging the playhead brings the simulation to that frame', Math.abs(forward.frame - 90) <= 2 && alive > 0 && !forward.seeking, `frame ${forward.frame}, ${alive} alive, ${st.getSeekSteps()} steps`);
+      ptr('pointerdown', at(30));
+      ptr('pointerup', at(30));
+      await settleSeek();
+      const back = st.getTimelineState();
+      const aliveBack = getParticleSystem()?.getActiveParticleCount?.() ?? 0;
+      check('and back is from the start again: fewer frames, fewer particles', Math.abs(back.frame - 30) <= 2 && aliveBack > 0 && aliveBack < alive, `frame ${back.frame}, ${aliveBack} alive`);
+      const r: any = (window as any).__world.renderer;
+      const offsets = getParticleSystem()?.instance?.geometry?.attributes?.instanceOffset;
+      if (offsets) {
+        const p0 = new Float32Array(await r.getArrayBufferAsync(offsets));
+        await settle(250);
+        const p1 = new Float32Array(await r.getArrayBufferAsync(offsets));
+        let moved = 0;
+        for (let i = 0; i < p0.length; i += 4) if (p0[i] !== p1[i] || p0[i + 1] !== p1[i + 1]) moved += 1;
+        check('paused, the particles themselves hold still', moved === 0, `${moved} moved`);
+      }
+    }
+    // The project length: the range is chosen inside it.
+    {
+      const field = [...document.querySelectorAll<HTMLLabelElement>('.timeline label')].find((l) => /^length/.test(l.textContent ?? ''))?.querySelector('input');
+      if (field) {
+        field.value = '9000';
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+        await settle(100);
+        patch('_editorData.timeline', { ...(get('_editorData.timeline') as object), start: 100, end: 8000 });
+        await settle(100);
+      }
+      const t = st.getTimelineState();
+      check('a project length the range is chosen inside', !!field && t.length === 9000 && t.start === 100 && t.end === 8000, `${t.start}–${t.end} of ${t.length}`);
+    }
     check('the timeline travels with the piece', JSON.parse(serialize())._editorData?.timeline?.fps === 30 && JSON.parse(serialize())._editorData?.timeline?.realtime === false);
     st.play();
     if (before) patch('_editorData.timeline', before);
-    else patch('_editorData.timeline', { fps: 60, start: 0, end: 600, loop: true, realtime: true, restartOnLoop: false });
+    else patch('_editorData.timeline', { fps: 60, length: 1200, start: 0, end: 1200, loop: true, realtime: true, restartOnLoop: false });
     await settle(300);
     check('and play runs it again', st.getTimelineState().playing && st.getTimelineState().fps === 60);
   }

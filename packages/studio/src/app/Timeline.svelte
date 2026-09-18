@@ -5,7 +5,7 @@
   // animation frame; what it changes goes into the document
   // (`_editorData.timeline`), so it travels with the piece.
   import { patch } from '../store/document.svelte';
-  import { play, pause, stop, getTimelineState, getTimelineSettings, type TimelineState } from '../engine/session';
+  import { play, pause, stop, seek, getTimelineState, getTimelineSettings, type TimelineState } from '../engine/session';
 
   const FPS_CHOICES = [24, 25, 30, 50, 60, 120];
 
@@ -22,44 +22,79 @@
 
   /** Writes the whole block: a piece carries a complete timeline or none. */
   const set = (change: Partial<TimelineState>) => {
-    const { fps, start, end, loop, realtime, restartOnLoop } = { ...getTimelineSettings(), ...change };
-    patch('_editorData.timeline', { fps, start, end, loop, realtime, restartOnLoop });
+    const { fps, length, start, end, loop, realtime, restartOnLoop } = { ...getTimelineSettings(), ...change };
+    patch('_editorData.timeline', { fps, length, start, end, loop, realtime, restartOnLoop });
   };
 
-  /** A new frame rate keeps the range's seconds: 0–600 at 60 is 0–300 at 30. */
+  /** A new frame rate keeps the seconds: 1200 frames at 60 are 600 at 30, and the range with them. */
   const setFps = (fps: number) => {
     const k = fps / state.fps;
-    set({ fps, start: Math.round(state.start * k), end: Math.round(state.end * k) });
+    set({ fps, length: Math.round(state.length * k), start: Math.round(state.start * k), end: Math.round(state.end * k) });
   };
 
-  // The track: frame 0 to a little past the end, so the end has room to be dragged out.
-  const extent = $derived(Math.max(state.end * 1.25, state.fps * 10));
+  // The track is the whole project, frame 0 to its length; the range is chosen inside it.
+  const extent = $derived(Math.max(2, state.length));
   const pct = (frame: number) => `${Math.min(100, Math.max(0, (frame / extent) * 100))}%`;
 
   let track: HTMLDivElement;
-  let dragging: 'start' | 'end' | null = null;
+  let dragging: 'start' | 'end' | 'head' | null = null;
+  /** Where the hand has the playhead, while it does: the simulation chases it (session.seek). */
+  let held = $state<number | null>(null);
   const frameAt = (clientX: number) => {
     const r = track.getBoundingClientRect();
     return Math.round(Math.min(1, Math.max(0, (clientX - r.left) / r.width)) * extent);
   };
+  /** A synthetic pointer (the harness's) has nothing to capture. */
+  const capture = (el: HTMLElement, id: number) => {
+    try {
+      el.setPointerCapture(id);
+    } catch {
+      /* not a real pointer */
+    }
+  };
   const grab = (which: 'start' | 'end') => (event: PointerEvent) => {
     dragging = which;
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    capture(event.currentTarget as HTMLElement, event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const inRange = (frame: number) => Math.min(state.end, Math.max(state.start, frame));
+  /** Anywhere on the track that is not an end: take the playhead there and keep hold of it. */
+  const grabHead = (event: PointerEvent) => {
+    dragging = 'head';
+    capture(track, event.pointerId);
+    held = inRange(frameAt(event.clientX));
+    seek(held);
     event.preventDefault();
   };
   const drag = (event: PointerEvent) => {
     if (!dragging) return;
     const frame = frameAt(event.clientX);
-    if (dragging === 'start') set({ start: Math.min(frame, state.end - 1) });
+    if (dragging === 'head') {
+      const next = inRange(frame);
+      if (next !== held) {
+        held = next;
+        seek(next);
+      }
+    } else if (dragging === 'start') set({ start: Math.min(frame, state.end - 1) });
     else set({ end: Math.max(frame, state.start + 1) });
   };
-  const release = () => (dragging = null);
+  const release = () => {
+    dragging = null;
+    held = null;
+  };
 
   const commit = (key: 'start' | 'end', raw: string) => {
     const n = Math.round(Number(raw));
     if (!Number.isFinite(n)) return;
     if (key === 'start') set({ start: Math.max(0, Math.min(n, state.end - 1)) });
-    else set({ end: Math.max(n, state.start + 1) });
+    else set({ end: Math.min(state.length, Math.max(n, state.start + 1)) });
+  };
+  /** A new length keeps the range where it was, as far as it still fits. */
+  const commitLength = (raw: string) => {
+    const n = Math.round(Number(raw));
+    if (!Number.isFinite(n) || n < 2) return;
+    set({ length: n, start: Math.min(state.start, n - 1), end: Math.min(state.end, n) });
   };
   const seconds = (frames: number) => (frames / state.fps).toFixed(frames % state.fps === 0 ? 0 : 2);
 </script>
@@ -80,8 +115,9 @@
   </div>
 
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="track" bind:this={track} onpointermove={drag} onpointerup={release} onpointercancel={release}>
+  <div class="track" class:seeking={state.seeking} bind:this={track} onpointerdown={grabHead} onpointermove={drag} onpointerup={release} onpointercancel={release} title="Drag the playhead: the simulation is brought to that frame — forward from where it is, or from the start of the range when you go back.">
     <div class="range" style:left={pct(state.start)} style:width={`calc(${pct(state.end)} - ${pct(state.start)})`}></div>
+    {#if held !== null}<div class="head held" style:left={pct(held)}></div>{/if}
     <div class="head" style:left={pct(state.frame)}></div>
     <div class="handle" style:left={pct(state.start)} onpointerdown={grab('start')} title="Start of the range: drag, or type it on the right"></div>
     <div class="handle" style:left={pct(state.end)} onpointerdown={grab('end')} title="End of the range: drag, or type it on the right"></div>
@@ -97,6 +133,7 @@
       {/each}
     </select>
   </label>
+  <label title="The whole project in frames: start and end are chosen inside 0 … length.">length <input type="number" min="2" value={state.length} onchange={(e) => commitLength(e.currentTarget.value)} /></label>
   <label class="check" title="At the end of the range: back to the start, or hold on the last frame">
     <input type="checkbox" checked={state.loop} onchange={(e) => set({ loop: e.currentTarget.checked })} /> loop
   </label>
@@ -170,6 +207,16 @@
     width: 1px;
     background: var(--accent);
     pointer-events: none;
+  }
+  .head.held {
+    background: var(--fg-strong);
+    opacity: 0.6;
+  }
+  .track {
+    cursor: col-resize;
+  }
+  .track.seeking .head:not(.held) {
+    width: 2px;
   }
   .handle {
     position: absolute;

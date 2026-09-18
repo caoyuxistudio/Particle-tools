@@ -1,7 +1,7 @@
 import { createTimeline, defaultTimelineSettings, sanitizeTimelineSettings, timecode } from '../timeline';
 
 describe('timeline', () => {
-  it('starts playing at the start of a 0–600 range at 60 fps', () => {
+  it('starts playing at the start of a 1200-frame project at 60 fps, the range the whole of it', () => {
     const t = createTimeline();
     expect(t.settings()).toEqual(defaultTimelineSettings());
     expect(t.isPlaying()).toBe(true);
@@ -91,6 +91,25 @@ describe('timeline', () => {
     expect(sanitizeTimelineSettings({ fps: 29.97 }).fps).toBe(30);
     expect(sanitizeTimelineSettings(null)).toEqual(defaultTimelineSettings());
     expect(sanitizeTimelineSettings({ start: 50, end: 10 }).end).toBe(51);
+  });
+
+  it('keeps the range inside the project length', () => {
+    expect(sanitizeTimelineSettings({ length: 9000, start: 100, end: 8000 })).toMatchObject({ length: 9000, start: 100, end: 8000 });
+    expect(sanitizeTimelineSettings({ length: 300, start: 0, end: 900 }).end).toBe(300);
+    expect(sanitizeTimelineSettings({ length: 300, start: 500, end: 900 })).toMatchObject({ start: 299, end: 300 });
+    // A length alone: the range is the whole of it. A piece from before length existed: long enough for its range.
+    expect(sanitizeTimelineSettings({ length: 9000 })).toMatchObject({ start: 0, end: 9000 });
+    expect(sanitizeTimelineSettings({ start: 0, end: 5000 }).length).toBe(5000);
+  });
+
+  it('setPosition moves time inside the range and nowhere else', () => {
+    const t = createTimeline({ length: 1200, start: 100, end: 500, realtime: false });
+    t.setPosition(300);
+    expect(t.frame()).toBe(300);
+    t.setPosition(5);
+    expect(t.frame()).toBe(100);
+    t.setPosition(9999);
+    expect(t.frame()).toBe(500);
   });
 
   it('writes timecode as mm:ss:ff at the frame rate', () => {

@@ -25,6 +25,8 @@
 export type TimelineSettings = {
   /** Frames a second: the step when real time is off, and what frame numbers mean. */
   fps: number;
+  /** The whole project, in frames: the range is chosen inside 0 … length. */
+  length: number;
   /** First and last frame of the range, inclusive. */
   start: number;
   end: number;
@@ -38,8 +40,9 @@ export type TimelineSettings = {
 
 export const defaultTimelineSettings = (): TimelineSettings => ({
   fps: 60,
+  length: 1200,
   start: 0,
-  end: 600,
+  end: 1200,
   loop: true,
   realtime: true,
   restartOnLoop: false,
@@ -49,12 +52,16 @@ export const defaultTimelineSettings = (): TimelineSettings => ({
 export const sanitizeTimelineSettings = (raw?: Partial<TimelineSettings> | null): TimelineSettings => {
   const d = defaultTimelineSettings();
   const fps = Number.isFinite(raw?.fps) ? Math.min(240, Math.max(1, Math.round(raw!.fps!))) : d.fps;
-  const start = Number.isFinite(raw?.start) ? Math.max(0, Math.round(raw!.start!)) : d.start;
-  const endRaw = Number.isFinite(raw?.end) ? Math.round(raw!.end!) : d.end;
+  const lengthRaw = Number.isFinite(raw?.length) ? Math.round(raw!.length!) : d.length;
+  const endAsked = Number.isFinite(raw?.end) ? Math.round(raw!.end!) : Number.isFinite(raw?.length) ? lengthRaw : d.end;
+  // A piece saved before there was a length: long enough for its range.
+  const length = Math.max(2, Number.isFinite(raw?.length) ? lengthRaw : Math.max(lengthRaw, endAsked));
+  const start = Math.min(length - 1, Number.isFinite(raw?.start) ? Math.max(0, Math.round(raw!.start!)) : d.start);
   return {
     fps,
+    length,
     start,
-    end: Math.max(start + 1, endRaw),
+    end: Math.min(length, Math.max(start + 1, endAsked)),
     loop: raw?.loop ?? d.loop,
     realtime: raw?.realtime ?? d.realtime,
     restartOnLoop: raw?.restartOnLoop ?? d.restartOnLoop,
@@ -82,6 +89,8 @@ export type Timeline = {
   stop: () => true;
   /** Back to the start, playing state kept (a piece was loaded). */
   rewind: () => void;
+  /** Puts the position on a frame of the range. Time only: the caller owns what the simulation does about it. */
+  setPosition: (frame: number) => void;
   isPlaying: () => boolean;
   /** The position, fractional while real time is on. */
   position: () => number;
@@ -143,6 +152,9 @@ export const createTimeline = (initial?: Partial<TimelineSettings> | null): Time
     },
     rewind: () => {
       position = s.start;
+    },
+    setPosition: (frame: number) => {
+      position = Math.min(s.end, Math.max(s.start, frame));
     },
     isPlaying: () => playing,
     position: () => position,

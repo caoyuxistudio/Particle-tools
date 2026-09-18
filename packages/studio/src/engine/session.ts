@@ -229,6 +229,68 @@ export const stop = (): void => {
   restartSimulation();
 };
 
+// ─── seeking ─────────────────────────────────────────────────────────────────
+//
+// A particle simulation is integrated step by step: frame N is what N steps
+// made of frame 0, and there is no way to land on it but to take them. So a
+// seek is a chase — forward from where the simulation is when it can be
+// (it is still in step with the timeline and the target is ahead), otherwise
+// from the start of the range with nothing alive. The steps are fixed ones,
+// 1 / fps, taken without drawing, as many as fit in a slice of each animation
+// frame; the frame is then drawn, so a long seek is a fast-forward you watch
+// rather than a frozen page. A drag re-aims the chase while it runs.
+// (Snapshots would make this instant — BACKLOG.md.)
+
+/** Milliseconds of each animation frame a chase may spend stepping. */
+const SEEK_BUDGET_MS = 14;
+let seekTarget: number | null = null;
+/** Steps taken by the last chase, for the harness and the bar. */
+let seekSteps = 0;
+
+/** Whether the simulation is the one the timeline's position describes (no loop has gone round under it). */
+const inStep = (): boolean => Math.abs(simSeconds - timeline.seconds()) < 0.5 / timeline.settings().fps;
+
+/** Moves time to `frame`: the simulation is brought there, watching. */
+export const seek = (frame: number): void => {
+  const { start, end } = timeline.settings();
+  const target = Math.min(end, Math.max(start, Math.round(frame)));
+  if (seekTarget === null) seekSteps = 0;
+  if (!inStep() || target < timeline.frame()) {
+    timeline.setPosition(start);
+    restartSimulation();
+  }
+  seekTarget = target;
+};
+export const isSeeking = (): boolean => seekTarget !== null;
+export const getSeekSteps = (): number => seekSteps;
+
+/** One fixed step of the simulation, with its compute pass, not drawn. */
+const stepUndrawn = (dt: number): void => {
+  simSeconds += dt;
+  cycleData.now = clockNow();
+  cycleData.delta = dt;
+  cycleData.elapsed = simSeconds;
+  const simulation = doc._editorData?.simulation;
+  if (simulation) applySimulation(container, simulation, cycleData.elapsed);
+  updateParticleSystems(cycleData);
+  const computeNode = particleSystem?.computeNode;
+  if (computeNode) (getRenderer() as any).compute(computeNode);
+};
+
+/** A slice of the chase. Returns true while there is more to do. */
+const chase = (): boolean => {
+  if (seekTarget === null) return false;
+  const dt = 1 / timeline.settings().fps;
+  const until = performance.now() + SEEK_BUDGET_MS;
+  while (timeline.frame() < seekTarget && performance.now() < until) {
+    stepUndrawn(dt);
+    timeline.setPosition(timeline.frame() + 1);
+    seekSteps += 1;
+  }
+  if (timeline.frame() >= seekTarget) seekTarget = null;
+  return seekTarget !== null;
+};
+
 /** The timeline's settings: the piece's own, or the defaults until it has some. */
 export const getTimelineSettings = (): TimelineSettings =>
   sanitizeTimelineSettings(doc._editorData?.timeline ?? defaultTimelineSettings());
@@ -236,6 +298,8 @@ export const getTimelineSettings = (): TimelineSettings =>
 /** What the timeline bar reads: where the piece is in its time. */
 export type TimelineState = TimelineSettings & {
   playing: boolean;
+  /** A seek is bringing the simulation to a frame. */
+  seeking: boolean;
   frame: number;
   seconds: number;
   timecode: string;
@@ -247,6 +311,7 @@ export const getTimelineState = (): TimelineState => {
   return {
     ...t,
     playing: timeline.isPlaying(),
+    seeking: seekTarget !== null,
     frame: timeline.frame(),
     seconds: timeline.seconds(),
     timecode: timecode(timeline.frame(), t.fps),
@@ -262,7 +327,11 @@ const animate = (): void => {
   // exactly one frame while it is off, nothing while paused; a wrap at the end
   // of the range starts the simulation over if the piece asks for that.
   timeline.configure(doc._editorData?.timeline);
-  const step = timeline.advance(clock.getDelta());
+  // A seek in progress owns the frame's stepping; the wall delta it used up is dropped.
+  const chasing = seekTarget !== null;
+  if (chasing) chase();
+  const wall = clock.getDelta();
+  const step = chasing ? { delta: 0, wrapped: false } : timeline.advance(wall);
   paused = !timeline.isPlaying();
   setSteppedFrameDelta(timeline.settings().realtime ? null : step.delta);
   if (step.wrapped && timeline.settings().restartOnLoop) restartSimulation();
@@ -278,7 +347,10 @@ const animate = (): void => {
   tintFrameEdges(particleSystem?.getMeanColor?.(meanColor) ? meanColor : null);
   syncFurnitureFrame();
   const soft = !!doc.renderer?.softParticles?.enabled;
-  const computeNode = particleSystem?.computeNode ?? null;
+  // A chased frame has had its compute passes already, and a frame that did
+  // not step (paused) gets none: the kernel would move the particles again by
+  // the last step's delta, and pause would not hold them.
+  const computeNode = chasing || step.delta === 0 ? null : (particleSystem?.computeNode ?? null);
   // Presenting: the player's frame, output camera straight to the canvas.
   if (isPresenting()) renderPlayer(soft, container, computeNode);
   else updateWorld(soft, container, computeNode);
@@ -461,6 +533,9 @@ export { schema, getOutputCamera, syncFurniture, isPresenting, resetCamera };
   play,
   pause,
   stop,
+  seek,
+  isSeeking,
+  getSeekSteps,
   getTimelineState,
   bootTimeline,
   serialize,
