@@ -533,7 +533,7 @@ export const schema: Group[] = [
       bool('particleColorInstance.useAlphaForOpacity', 'useAlphaForOpacity', 'live'),
       bool('particleColorInstance.useLuminanceForNoise', 'luminance -> curl noise', 'structural'),
       num('particleColorInstance.luminanceNoiseAmount', 'luminance amount', -1, 1, 0.01, 'live'),
-      int('particleColorInstance.sampleSize', 'video sample size (0 = 512)', 0, 1024, 'live', {
+      int('particleColorInstance.sampleSize', 'video sample size (0 = 1024)', 0, 2048, 'live', {
         step: 64,
       }),
       hidden('particleColorInstance.map', 'map', {

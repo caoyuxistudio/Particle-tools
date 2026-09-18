@@ -139,8 +139,8 @@ describe('videos', () => {
     const stats = map.userData[READBACK_STATS_KEY];
     expect(stats).toMatchObject({
       count: 2,
-      width: 512,
-      height: 256,
+      width: DEFAULT_LIVE_SAMPLE_SIZE,
+      height: DEFAULT_LIVE_SAMPLE_SIZE / 2,
       live: true,
     });
   });
@@ -267,7 +267,10 @@ describe('the worker path', () => {
     video.presentFrame();
     const worker = FakeWorker.instances[FakeWorker.instances.length - 1];
     expect(worker.posted).toHaveLength(1);
-    expect(worker.posted[0]).toMatchObject({ width: 512, height: 256 });
+    expect(worker.posted[0]).toMatchObject({
+      width: DEFAULT_LIVE_SAMPLE_SIZE,
+      height: DEFAULT_LIVE_SAMPLE_SIZE / 2,
+    });
     expect(worker.posted[0].frame).toBeInstanceOf(FakeVideoFrame);
 
     // Nothing is read on the main thread while the worker has the frame…
@@ -283,10 +286,12 @@ describe('the worker path', () => {
       count: 2,
       mode: 'worker',
       workerMs: 1.5,
-      width: 512,
-      height: 256,
+      width: DEFAULT_LIVE_SAMPLE_SIZE,
+      height: DEFAULT_LIVE_SAMPLE_SIZE / 2,
     });
-    expect(ci.pixels).toHaveLength(512 * 256 * 4);
+    expect(ci.pixels).toHaveLength(
+      DEFAULT_LIVE_SAMPLE_SIZE * (DEFAULT_LIVE_SAMPLE_SIZE / 2) * 4
+    );
 
     video.presentFrame();
     expect(worker.posted).toHaveLength(2);

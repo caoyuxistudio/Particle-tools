@@ -8,8 +8,8 @@
  * grid no larger than `sampleSize` on its longest edge. That bound is what
  * keeps a video affordable — the decode itself is the browser's hardware path
  * and costs the main thread nothing, so the whole price of a moving source is
- * this readback, and a 512-pixel grid is already finer than a particle cloud
- * can resolve.
+ * this readback (on a worker's thread; see DEFAULT_LIVE_SAMPLE_SIZE for what it
+ * measures).
  *
  * Readbacks happen lazily, from inside emission: a system that is not spawning
  * never pays for a frame it would not have sampled.
@@ -32,7 +32,12 @@ import type { ColorInstanceData, ParticleColorInstanceConfig } from './types';
 import type * as THREE from 'three';
 
 /** Longest edge of the grid a live source is read back into, unless configured. */
-export const DEFAULT_LIVE_SAMPLE_SIZE = 512;
+// 1024 since 2026-09-18: measured on a 1000² video, the worker spends the same
+// ~9 ms a frame at the full 1000² as at 512² (the wait is for the shared GPU
+// queue, not the pixels), and the main thread spends nothing either way —
+// while at 512 a piece that shows a third of its source was drawing from a
+// 171-pixel-wide crop. Sources at or under 1024 are now read at their own size.
+export const DEFAULT_LIVE_SAMPLE_SIZE = 1024;
 
 /** Reads at most this often when the browser cannot tell us about new frames. */
 const FALLBACK_FRAME_INTERVAL_MS = 1000 / 30;
