@@ -188,7 +188,7 @@ export const report = async (): Promise<string> => {
     updateSceneObject(cam.id, { feedback: { enabled: true, mode: 'over', persistence: 0.8, amount: 1 } } as any);
     await settle(600);
     const st = w._ssr();
-    check('feedback on the camera adds a stage to its pipeline', /\|fb$/.test(st.pipelineKey) && !!st.feedbackStage && w.getFeedbackSettings().mode === 'over', st.pipelineKey);
+    check('feedback on the camera adds a stage to its pipeline', /\|fb\|/.test(st.pipelineKey) && !!st.feedbackStage && w.getFeedbackSettings().mode === 'over', st.pipelineKey);
     const material: any = getParticleSystem()?.instance?.material;
     check('the particles carry a trail mask and wear it only inside that pipeline', !!material?.userData?.trailMrt && material.mrtNode === null);
     const saved = JSON.parse(serialize())._editorData.sceneObjects.find((o: any) => o.type === 'CAMERA')?.feedback;
@@ -196,6 +196,48 @@ export const report = async (): Promise<string> => {
     updateSceneObject(cam.id, { feedback: before ?? { enabled: false, mode: 'lighter', persistence: 0.5, amount: 1 } } as any);
     await settle(600);
     check('switched off, the stage is gone', !/fb/.test(w._ssr().pipelineKey) && !w._ssr().feedbackStage, w._ssr().pipelineKey);
+  }
+
+  // The camera's post effect: the last stage, on the camera, all uniforms but the switch.
+  {
+    const w: any = (window as any).__world;
+    const cam = getSceneObjects().find((o) => o.type === 'CAMERA')!;
+    const before = (cam as any).postEffect;
+    const full = { enabled: true, saturation: 2, brightness: 1.1, contrast: 1.2, hue: 30, blackPoint: 0.1, whitePoint: 0.9, gamma: 1.3 };
+    updateSceneObject(cam.id, { postEffect: full } as any);
+    await settle(600);
+    check('the post effect on the camera adds the last stage', /\|pe$/.test(w._ssr().pipelineKey) && !!w._ssr().gradeStage && w.getPostEffectSettings().saturation === 2, w._ssr().pipelineKey);
+    const saved = JSON.parse(serialize())._editorData.sceneObjects.find((o: any) => o.type === 'CAMERA')?.postEffect;
+    check('and it travels with the piece, every lever', JSON.stringify(saved) === JSON.stringify(full), JSON.stringify(saved));
+    updateSceneObject(cam.id, { postEffect: before ?? { ...full, enabled: false } } as any);
+    await settle(600);
+    check('switched off, the stage is gone', !/pe/.test(w._ssr().pipelineKey) && !w._ssr().gradeStage, w._ssr().pipelineKey);
+  }
+
+  // The emitter's source image: the tone levers are live and recolour what is already flying.
+  {
+    const system: any = getParticleSystem();
+    const builds0 = rebuildCount();
+    const label = [...document.querySelectorAll('.column *')].some((e) => e.children.length === 0 && /^emitter source image tweak$/i.test((e.textContent ?? '').trim()));
+    check('the group is called Emitter Source Image Tweak', label);
+    const sat = fieldsOf().find((f) => f.path === 'particleColorInstance.colorTweak.saturation');
+    check('saturation goes up to 5', sat?.max === 5, `${sat?.max}`);
+    const mean = () => { const out = { r: 0, g: 0, b: 0 }; system.getMeanColor(out); return out.r + out.g + out.b; };
+    const bright0 = mean();
+    patch('particleColorInstance.colorTweak.blackPoint', 0.6);
+    await settle(400);
+    const crushed = mean();
+    check('a black point darkens the flying particles without a rebuild', crushed < bright0 * 0.8 && rebuildCount() === builds0 && getParticleSystem() === system, `${bright0.toFixed(3)} -> ${crushed.toFixed(3)}`);
+    patch('particleColorInstance.colorTweak.blackPoint', 0);
+    patch('particleColorInstance.colorTweak.brightness', 2);
+    await settle(400);
+    check('brightness lifts them', mean() > bright0 * 1.1, `${bright0.toFixed(3)} -> ${mean().toFixed(3)}`);
+    patch('particleColorInstance.colorTweak.brightness', 1);
+    patch('particleColorInstance.colorTweak.gamma', 2.5);
+    await settle(400);
+    check('gamma above 1 lifts the mid-tones', mean() > bright0 * 1.05, `${bright0.toFixed(3)} -> ${mean().toFixed(3)}`);
+    patch('particleColorInstance.colorTweak.gamma', 1);
+    await settle(400);
   }
 
   // Furniture follows the document: the walls' helpers appear with the switch, on the furniture layer.
@@ -257,6 +299,9 @@ export const report = async (): Promise<string> => {
     const fire = (type: string, cx: number, cy: number) => canvas.dispatchEvent(new PointerEvent(type, { clientX: bounds.left + cx, clientY: bounds.top + cy, pointerType: 'mouse', pointerId: 1, button: type === 'pointermove' ? -1 : 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true, bubbles: true, cancelable: true }));
     const offset0 = w2.getPreviewOffset();
     const scale0 = w2.getPreviewScale();
+    // From a small window with room on every side: at whatever size the last
+    // session left it, a preview as tall as the viewport cannot move or grow.
+    w2.setPreviewScale(0.12);
     w2.setPreviewOffset(-120, 80);
     const r0 = w2.previewRect();
     fire('pointerdown', r0.x + r0.w / 2, r0.y + r0.h / 2);

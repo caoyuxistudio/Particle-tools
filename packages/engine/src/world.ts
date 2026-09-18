@@ -27,6 +27,12 @@ import {
   type FeedbackSettings,
   type ParticleFeedback,
 } from './feedback-node';
+import {
+  postGrade,
+  defaultPostEffectSettings,
+  type PostEffectSettings,
+  type PostGrade,
+} from './post-grade';
 import { ssr } from 'three/examples/jsm/tsl/display/SSRNode.js';
 import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
 import { denoise } from 'three/examples/jsm/tsl/display/DenoiseNode.js';
@@ -340,15 +346,25 @@ let denoisePass: any = null;
  */
 let feedbackSettings: FeedbackSettings = defaultFeedbackSettings();
 let feedbackStage: ParticleFeedback | null = null;
+/**
+ * The post effect (post-grade.ts): the finished picture graded — saturation,
+ * brightness, contrast, hue, levels. The very last stage, after the feedback,
+ * so the trails are graded with everything else.
+ */
+let postEffectSettings: PostEffectSettings = defaultPostEffectSettings();
+let gradeStage: PostGrade | null = null;
 /** Which stages the current pipeline was compiled with; rebuilt when that changes. */
 let pipelineKey = '';
 const currentPipelineKey = (): string =>
-  `${ssrSettings.enabled ? 'ssr' : ''}|${aoSettings.enabled ? 'ao' : ''}|${feedbackSettings.enabled ? 'fb' : ''}`;
+  `${ssrSettings.enabled ? 'ssr' : ''}|${aoSettings.enabled ? 'ao' : ''}|${feedbackSettings.enabled ? 'fb' : ''}|${postEffectSettings.enabled ? 'pe' : ''}`;
 const pipelineStale = (camera: THREE.PerspectiveCamera): boolean =>
   pipelineCamera !== camera || pipelineKey !== currentPipelineKey();
 /** Whether the output camera goes through the post pipeline at all. */
 const postEnabled = (): boolean =>
-  ssrSettings.enabled || aoSettings.enabled || feedbackSettings.enabled;
+  ssrSettings.enabled ||
+  aoSettings.enabled ||
+  feedbackSettings.enabled ||
+  postEffectSettings.enabled;
 /** The pipeline's render; with feedback on, the particles wear their trail mask for it. */
 const renderPost = (): void => {
   if (feedbackSettings.enabled) withTrailSources(scene, () => postProcessing!.render());
@@ -432,6 +448,12 @@ const buildSsrPipeline = (camera: THREE.PerspectiveCamera): void => {
     composite = feedbackStage.node;
   }
 
+  gradeStage = null;
+  if (postEffectSettings.enabled) {
+    gradeStage = postGrade(composite);
+    composite = gradeStage.node;
+  }
+
   debugNodes = {
     off: composite,
     color: colorNode,
@@ -465,6 +487,7 @@ const buildSsrPipeline = (camera: THREE.PerspectiveCamera): void => {
   applySsrUniforms();
   applyAoUniforms();
   feedbackStage?.apply(feedbackSettings);
+  gradeStage?.apply(postEffectSettings);
 };
 
 /** Compiles the pipeline for the output camera if it is missing or stale. */
@@ -574,6 +597,15 @@ export const setFeedbackSettings = (patch: Partial<FeedbackSettings>): void => {
 };
 
 export const getFeedbackSettings = (): FeedbackSettings => feedbackSettings;
+
+/** `enabled` changes the graph; every adjustment is a uniform. */
+export const setPostEffectSettings = (patch: Partial<PostEffectSettings>): void => {
+  postEffectSettings = { ...postEffectSettings, ...patch };
+  gradeStage?.apply(postEffectSettings);
+};
+
+export const getPostEffectSettings = (): PostEffectSettings => postEffectSettings;
+export { defaultPostEffectSettings, type PostEffectSettings };
 export { defaultFeedbackSettings, type FeedbackSettings };
 
 export const setSsrSettings = (patch: Partial<SsrSettings>): void => {
@@ -767,6 +799,8 @@ export const createWorld = async (targetQuery: string): Promise<THREE.Scene> => 
     setAoSettings,
     setFeedbackSettings,
     getFeedbackSettings,
+    setPostEffectSettings,
+    getPostEffectSettings,
     ensurePostPipeline,
     setRenderScale,
     getRenderScale,
@@ -783,7 +817,7 @@ export const createWorld = async (targetQuery: string): Promise<THREE.Scene> => 
       recenter: recenterParallax,
       setSettings: setParallaxSettings,
     },
-    _ssr: () => ({ postProcessing, ssrPass, aoPass, denoisePass, feedbackStage, previewTarget, previewBlit, pipelineCamera, pipelineKey }),
+    _ssr: () => ({ postProcessing, ssrPass, aoPass, denoisePass, feedbackStage, gradeStage, previewTarget, previewBlit, pipelineCamera, pipelineKey }),
   };
 
   return scene;

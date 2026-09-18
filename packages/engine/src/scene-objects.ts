@@ -22,11 +22,19 @@ import {
   defaultAoSettings,
   setFeedbackSettings,
   defaultFeedbackSettings,
+  setPostEffectSettings,
+  defaultPostEffectSettings,
   setEnvironment,
   defaultEnvironmentSettings,
   getOutputCamera,
 } from './world';
-import type { SsrSettings, AoSettings, FeedbackSettings, EnvironmentSettings } from './world';
+import type {
+  SsrSettings,
+  AoSettings,
+  FeedbackSettings,
+  PostEffectSettings,
+  EnvironmentSettings,
+} from './world';
 import { defaultParallaxSettings, setParallaxSettings, setParallaxPlane } from './parallax';
 import type { ParallaxSettings } from './parallax';
 import { EDITOR_LAYER, markAsEditorOnly } from './editor-layers';
@@ -151,6 +159,8 @@ export type SceneObject = {
   ao?: AoSettings;
   /** The particles' afterimage for this camera (feedback-node.ts). */
   feedback?: FeedbackSettings;
+  /** The finished picture, graded (post-grade.ts). */
+  postEffect?: PostEffectSettings;
   /**
    * CAMERA only: the screen as a window. The phone's tilt moves the eye, the
    * frame's plane stays put and what lies deeper shifts (see parallax.ts).
@@ -471,6 +481,7 @@ const DEFAULTS: Record<SceneObjectType, () => Omit<SceneObject, 'id' | 'name'>> 
       ssr: defaultSsrSettings(),
       ao: defaultAoSettings(),
       feedback: defaultFeedbackSettings(),
+      postEffect: defaultPostEffectSettings(),
       parallax: defaultParallaxSettings(),
     };
   },
@@ -1012,6 +1023,7 @@ const syncOutputCamera = (): void => {
   setSsrSettings({ ...defaultSsrSettings(), ...(active?.ssr ?? {}) });
   setAoSettings({ ...defaultAoSettings(), ...(active?.ao ?? {}) });
   setFeedbackSettings({ ...defaultFeedbackSettings(), ...(active?.feedback ?? {}) });
+  setPostEffectSettings({ ...defaultPostEffectSettings(), ...(active?.postEffect ?? {}) });
   setParallaxSettings({ ...defaultParallaxSettings(), ...(active?.parallax ?? {}) });
   // The plane parallax holds still: the first visible frame's face toward the
   // camera — its glass — measured along the camera's view. A frame has depth,

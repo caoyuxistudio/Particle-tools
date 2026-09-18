@@ -9,6 +9,8 @@
 - Fix: the number beside a vec3 / colour / min–max slider did not follow a drag (noise drift, influence, …) — the value is written one component at a time into the same object, and a `$derived` that returns the same object is unchanged; FieldView now derives a shallow copy per revision.
 - Points group (POINTS and INSTANCED): `velocity stretch (s of travel)` — sprites become streaks along their travel. Harness +5 (63).
 - Scene → camera: a `feedback (trails)` group — enabled, mode (lighter / mix / over), persistence (s), amount — and a `Trail layer only` view. Harness +4 (67).
+- `Emitter Source Image Tweak` (was Source Image Tweak): black point, gamma and brightness under level; saturation up to 5.
+- Scene → camera: a `post effect` group after feedback — saturation, brightness, contrast, hue, level (black / white / gamma), and a reset. Harness +8 (75); the preview drag checks start from a small preview instead of whatever size the last session left.
 
 ## Unreleased
 

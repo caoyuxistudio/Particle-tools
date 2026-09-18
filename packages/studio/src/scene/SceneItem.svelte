@@ -12,6 +12,7 @@
     defaultSsrSettings,
     defaultAoSettings,
     defaultFeedbackSettings,
+    defaultPostEffectSettings,
     defaultEnvironmentSettings,
     setOnEnvironmentLoaded,
   } from '@particle-tools/engine/world';
@@ -46,6 +47,8 @@
   const setAo = (patch) => set({ ao: { ...defaultAoSettings(), ...(obj.ao ?? {}), ...patch } });
   const setFeedback = (patch) =>
     set({ feedback: { ...defaultFeedbackSettings(), ...(obj.feedback ?? {}), ...patch } });
+  const setPostEffect = (patch) =>
+    set({ postEffect: { ...defaultPostEffectSettings(), ...(obj.postEffect ?? {}), ...patch } });
   const setShadow = (patch) =>
     set({ shadow: { ...defaultLightShadowSettings(), ...(obj.shadow ?? {}), ...patch } });
   const setParallax = (patch) =>
@@ -861,6 +864,47 @@
             past; mix is a running average (soft, and fast particles dim); over lays this frame on
             top of the past, each layer fainter, with nothing stacking up under an opaque particle.
             Persistence is the fade's time constant in seconds, the same at any frame rate.
+          </p>
+        {/if}
+
+        <div class="group-label">post effect</div>
+        <label class="row check">
+          <span>enabled</span>
+          <input
+            type="checkbox"
+            checked={obj.postEffect?.enabled ?? false}
+            onchange={(e) => setPostEffect({ enabled: e.target.checked })}
+          />
+        </label>
+
+        {#if obj.postEffect?.enabled}
+          {#each [{ key: 'saturation', label: 'saturation', min: 0, max: 5, step: 0.01, fallback: 1 }, { key: 'brightness', label: 'brightness', min: 0, max: 3, step: 0.01, fallback: 1 }, { key: 'contrast', label: 'contrast', min: 0, max: 3, step: 0.01, fallback: 1 }, { key: 'hue', label: 'hue (deg)', min: -180, max: 180, step: 1, fallback: 0 }, { key: 'blackPoint', label: 'level · black', min: 0, max: 0.9, step: 0.005, fallback: 0 }, { key: 'whitePoint', label: 'level · white', min: 0.1, max: 1, step: 0.005, fallback: 1 }, { key: 'gamma', label: 'level · gamma', min: 0.2, max: 3, step: 0.01, fallback: 1 }] as p}
+            <label class="row">
+              <span>{p.label}</span>
+              <input
+                type="range"
+                min={p.min}
+                max={p.max}
+                step={p.step}
+                value={obj.postEffect?.[p.key] ?? p.fallback}
+                oninput={(e) => setPostEffect({ [p.key]: +e.target.value })}
+              />
+              <input
+                type="number"
+                step={p.step}
+                value={obj.postEffect?.[p.key] ?? p.fallback}
+                oninput={(e) => setPostEffect({ [p.key]: +e.target.value })}
+              />
+            </label>
+          {/each}
+          <button class="wide" onclick={() => setPostEffect({ ...defaultPostEffectSettings(), enabled: true })}>
+            Reset post effect
+          </button>
+          <p class="hint">
+            The finished picture, graded in display space like an image editor would: the very last
+            stage, after reflections, occlusion and the trails. Level is black point, white point and
+            the gamma between them — the black point presses the darks down without touching the
+            brightest part. Every slider is a uniform; only the switch rebuilds the pipeline.
           </p>
         {/if}
 

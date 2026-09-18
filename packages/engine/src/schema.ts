@@ -553,15 +553,24 @@ export const schema: Group[] = [
   },
   {
     id: 'sourceImageTweak',
-    label: 'Source Image Tweak',
+    label: 'Emitter Source Image Tweak',
     fields: [],
     groups: [
       {
         id: 'colorTweak',
         label: 'Color source',
         fields: [
-          num('particleColorInstance.colorTweak.saturation', 'saturation', 0, 2, 0.01, 'live'),
+          num('particleColorInstance.colorTweak.saturation', 'saturation', 0, 5, 0.01, 'live'),
           num('particleColorInstance.colorTweak.contrast', 'level (contrast)', 0, 2, 0.01, 'live'),
+          num('particleColorInstance.colorTweak.blackPoint', 'black point', 0, 0.9, 0.005, 'live', {
+            hint: 'The value that becomes black: the darks are pressed down, white stays where it is.',
+          }),
+          num('particleColorInstance.colorTweak.gamma', 'gamma', 0.2, 3, 0.01, 'live', {
+            hint: 'The mid-tones: above 1 lifts them, below 1 sinks them; black and white stay.',
+          }),
+          num('particleColorInstance.colorTweak.brightness', 'brightness', 0, 3, 0.01, 'live', {
+            hint: 'A plain multiplier on every channel.',
+          }),
           num('particleColorInstance.colorTweak.hue', 'hue (deg)', -180, 180, 1, 'live'),
         ],
       },
