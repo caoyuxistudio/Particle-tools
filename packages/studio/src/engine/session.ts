@@ -30,8 +30,10 @@ import {
   setAoSettings,
   setStatsContainer,
   setViewportInsets,
+  setSteppedFrameDelta,
   type ViewportInsetsProvider,
 } from '@particle-tools/engine/world';
+import { createTimeline, defaultTimelineSettings, sanitizeTimelineSettings, timecode, type TimelineSettings } from '@particle-tools/engine/timeline';
 import { installPerfHud, type PerfHud } from '@particle-tools/engine/perf-hud';
 import { installGyroHud, type GyroHud } from '@particle-tools/engine/gyro-hud';
 import { installPresentationControls, togglePresentation } from '@particle-tools/engine/presentation';
@@ -52,6 +54,24 @@ import { installFurniture, syncFurniture, syncFurnitureFrame } from './furniture
 export type CycleData = { pauseStartTime: number; totalPauseTime: number; now: number; delta: number; elapsed: number };
 
 const cycleData: CycleData = { pauseStartTime: 0, totalPauseTime: 0, now: 0, delta: 0, elapsed: 0 };
+
+// ─── time ────────────────────────────────────────────────────────────────────
+//
+// The piece's clock is the timeline's (engine/timeline.ts), not the wall's:
+// each drawn frame the timeline says how far to step, and `elapsed` — what the
+// noise field, the emitter's own motion and the library's `now` are read from —
+// is the timeline's position in seconds. Pausing is simply not stepping.
+// `now` keeps the magnitude of Date.now() (the library stores creation times
+// in it), counted from the moment the page opened.
+const EPOCH_MS = Date.now();
+const timeline = createTimeline();
+/**
+ * The simulation's own seconds: the steps added up. Not the timeline's
+ * position — a loop that lets the particles carry on sends the position back
+ * to the start, and a noise field read from it would jump with it.
+ */
+let simSeconds = 0;
+const clockNow = (): number => EPOCH_MS + simSeconds * 1000;
 
 /** The document: the particle config plus `_editorData`. One object for the session, as the loader expects. */
 export const doc: Doc = { ...documentDefaults(), _editorData: { ...documentDefaults()._editorData } };
@@ -83,7 +103,7 @@ export const rebuild = (): void => {
     particleSystem = null;
     cycleData.totalPauseTime = 0;
   }
-  particleSystem = buildParticleSystem(doc, { webGPUAvailable, depthTexture: getDepthTexture() });
+  particleSystem = buildParticleSystem(doc, { webGPUAvailable, depthTexture: getDepthTexture(), now: clockNow() });
   container.add(particleSystem.instance);
   rebuilds += 1;
   // The shape helper lives inside the instance and went with the old one.
@@ -147,6 +167,11 @@ export const applyChange = (path: string): ChangeLevel | 'none' => {
 /** The one load path, shared with V1's LOAD and the player's paste. */
 export const load = (config: Doc): void => {
   resetSimulation(container);
+  // A piece without a timeline of its own gets the default one, not the last piece's.
+  if (!config?._editorData?.timeline && doc._editorData) delete doc._editorData.timeline;
+  timeline.configure(config?._editorData?.timeline);
+  timeline.rewind();
+  simSeconds = timeline.seconds();
   loadParticleSystem({ config, particleSystemConfig: doc, recreateParticleSystem: () => rebuild() });
   syncFurniture();
 };
@@ -175,27 +200,77 @@ export const getLiveStats = (): LiveStats => ({
   live: particleSystem?.getActiveParticleCount?.() ?? 0,
   max: Number(doc.maxParticles) || 0,
   rate: Number(doc.emission?.rateOverTime) || 0,
-  elapsed: clock ? clock.getElapsedTime() : 0,
+  elapsed: simSeconds,
   paused,
   backend: particleSystem?.computeNode ? 'GPU' : 'CPU',
   renderer: String(doc.renderer?.rendererType ?? 'POINTS'),
 });
 export const setPaused = (next: boolean): void => {
-  if (next === paused) return;
-  paused = next;
-  if (next) cycleData.pauseStartTime = Date.now();
-  else cycleData.totalPauseTime += Date.now() - cycleData.pauseStartTime;
+  if (next) timeline.pause();
+  else timeline.play();
+  paused = !timeline.isPlaying();
+};
+
+// ─── the transport ───────────────────────────────────────────────────────────
+
+/** Starts the simulation over at the timeline's position: nothing alive, the emitter where it began. */
+const restartSimulation = (): void => {
+  simSeconds = timeline.seconds();
+  resetSimulation(container);
+  rebuild();
+};
+
+export const play = (): void => setPaused(false);
+export const pause = (): void => setPaused(true);
+/** Back to the start of the range, paused, the simulation cleared. */
+export const stop = (): void => {
+  timeline.stop();
+  paused = true;
+  restartSimulation();
+};
+
+/** The timeline's settings: the piece's own, or the defaults until it has some. */
+export const getTimelineSettings = (): TimelineSettings =>
+  sanitizeTimelineSettings(doc._editorData?.timeline ?? defaultTimelineSettings());
+
+/** What the timeline bar reads: where the piece is in its time. */
+export type TimelineState = TimelineSettings & {
+  playing: boolean;
+  frame: number;
+  seconds: number;
+  timecode: string;
+  /** Frames in the range, both ends included. */
+  total: number;
+};
+export const getTimelineState = (): TimelineState => {
+  const t = timeline.settings();
+  return {
+    ...t,
+    playing: timeline.isPlaying(),
+    frame: timeline.frame(),
+    seconds: timeline.seconds(),
+    timecode: timecode(timeline.frame(), t.fps),
+    total: t.end - t.start + 1,
+  };
 };
 
 // ─── the loop ────────────────────────────────────────────────────────────────
 
 const animate = (): void => {
   framesDrawn += 1;
-  if (!paused) {
-    const rawDelta = clock.getDelta();
-    cycleData.now = Date.now() - cycleData.totalPauseTime;
-    cycleData.delta = rawDelta > 0.1 ? 0.1 : rawDelta;
-    cycleData.elapsed = clock.getElapsedTime();
+  // The timeline decides the step: the wall clock's while real time is on,
+  // exactly one frame while it is off, nothing while paused; a wrap at the end
+  // of the range starts the simulation over if the piece asks for that.
+  timeline.configure(doc._editorData?.timeline);
+  const step = timeline.advance(clock.getDelta());
+  paused = !timeline.isPlaying();
+  setSteppedFrameDelta(timeline.settings().realtime ? null : step.delta);
+  if (step.wrapped && timeline.settings().restartOnLoop) restartSimulation();
+  if (step.delta > 0) {
+    simSeconds += step.delta;
+    cycleData.now = clockNow();
+    cycleData.delta = step.delta;
+    cycleData.elapsed = simSeconds;
     const simulation = doc._editorData?.simulation;
     if (simulation) applySimulation(container, simulation, cycleData.elapsed);
     updateParticleSystems(cycleData);
@@ -383,6 +458,10 @@ export { schema, getOutputCamera, syncFurniture, isPresenting, resetCamera };
 // TEMP DEBUG — the studio's seam for its harness, like V1's window.editor.
 (window as any).__studio = {
   doc,
+  play,
+  pause,
+  stop,
+  getTimelineState,
   bootTimeline,
   serialize,
   load,

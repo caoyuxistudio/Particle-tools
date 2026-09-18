@@ -90,6 +90,16 @@ export const withTrailSources = <T>(scene: THREE.Object3D, fn: () => T): T => {
   }
 };
 
+/**
+ * The frame's length when the caller steps time itself (a timeline with real
+ * time off): the fade follows the piece's clock, not the wall's, so a frame
+ * that took a second to draw fades by one frame's worth. null = the wall clock.
+ */
+let steppedDelta: number | null = null;
+export const setFeedbackFrameDelta = (seconds: number | null): void => {
+  steppedDelta = seconds;
+};
+
 const _size = new Vector2();
 const _quad = new QuadMesh();
 let _rendererState: any;
@@ -148,7 +158,8 @@ class FeedbackNode extends (TempNode as any) {
     // The fade for this frame's dt. A long gap (a hidden tab, a suspended
     // editor) would otherwise be one enormous step; it is simply a cleared trail.
     const now = performance.now();
-    const dt = this._last ? Math.min(0.1, (now - this._last) / 1000) : 1 / 60;
+    const wall = this._last ? Math.min(0.1, (now - this._last) / 1000) : 1 / 60;
+    const dt = steppedDelta ?? wall;
     this._last = now;
     this.decay.value = this.persistence > 1e-4 ? Math.exp(-dt / this.persistence) : 0;
 

@@ -14,6 +14,7 @@
 - Fix: number fields clipped their last digit behind the spin buttons — maxParticles 500000 read as "50000", rateOverTime 100000 as "10000", −120.411 as "−120." — which looked like caps ten times lower. Spin buttons off, fields a little wider (inspector and scene panel). Harness +1 (76).
 - Footer, right half: the running system in numbers, read twice a second — `live <alive> / <maxParticles> · %`, `emit <rate>/s`, fps, the simulation clock, backend · renderer; every footer item explains itself on hover. Harness +2 (78).
 - Preview magnifier (engine): wheel to zoom to 5×, middle drag to pan, middle click to reset. Harness +5 (83).
+- Timeline bar above the footer: ▶ / ❙❙ / ■, the current frame and timecode, a track with the range's two ends (drag or type), total frames and seconds, fps (24–120; the range keeps its seconds), loop, restart-on-loop, real time. The session's clock is the timeline's: `elapsed` and the library's `now` are the steps added up, pausing is not stepping, stop clears the simulation. Harness +7 (90).
 
 ## Unreleased
 

@@ -3,6 +3,7 @@
   import Viewport from './viewport/Viewport.svelte';
   import Column from './inspector/Column.svelte';
   import Bottombar from './app/Bottombar.svelte';
+  import Timeline from './app/Timeline.svelte';
   import Modals from './editors/Modals.svelte';
   import '../src/editors/editors.css';
   import '../src/ui/hud.css';
@@ -25,6 +26,7 @@
     <Viewport />
     <Column />
   </div>
+  <Timeline />
   <Bottombar />
 </div>
 <Modals />
@@ -52,7 +54,7 @@
     inset: 0;
     z-index: 1;
     display: grid;
-    grid-template-rows: var(--topbar-h) 1fr var(--bottombar-h);
+    grid-template-rows: var(--topbar-h) 1fr var(--timeline-h) var(--bottombar-h);
     pointer-events: none;
   }
   .workspace {
@@ -69,6 +71,7 @@
   /* Panels take the pointer; the workspace and the viewport cell let it through to the canvas. */
   .studio > :global(header),
   .studio > :global(footer),
+  .studio > :global(section),
   .workspace > :global(aside) {
     pointer-events: auto;
   }

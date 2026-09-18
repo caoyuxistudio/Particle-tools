@@ -57,6 +57,8 @@ export type BuildOptions = {
   webGPUAvailable: boolean;
   /** The scene depth buffer soft particles read, when the config asks for them. */
   depthTexture?: unknown | null;
+  /** The creation timestamp, ms, in the clock the caller will update the system with. Default: Date.now(). */
+  now?: number;
 };
 
 /**
@@ -124,7 +126,8 @@ export const buildParticleSystem = (activeConfig: any, options: BuildOptions): a
     }
   }
 
-  const particleSystem = createParticleSystem(convertedConfig);
+  // `now` is the caller's clock (a timeline's, not the wall's) when it has one.
+  const particleSystem = createParticleSystem(convertedConfig, options.now);
 
   // Only the MESH material is wired into the shadow pass (castShadowPositionNode
   // and receivedShadowPositionNode in the library). The other materials drive

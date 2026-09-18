@@ -7,6 +7,7 @@
     "src/world.ts",
     "src/feedback-node.ts",
     "src/post-grade.ts",
+    "src/timeline.ts",
     "src/scene-objects.ts",
     "src/particle-factory.ts",
     "src/mesh-geometry.ts",

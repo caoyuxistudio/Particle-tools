@@ -5,7 +5,8 @@
 
 import { schema, fieldsOf, leafPaths, coversLeaf, type Field, type Group } from '@particle-tools/engine/schema';
 import { getSceneObjects, updateSceneObject } from '@particle-tools/engine/scene-objects';
-import { revision, patch, get, load } from './store/document.svelte';
+import { revision, patch, get, load, lastApplied } from './store/document.svelte';
+const lastAppliedLevel = () => lastApplied()?.level;
 import { bootProgressState } from './app/boot-progress';
 import { doc, getParticleSystem, getFrames, rebuildCount, serialize, bootTimeline, present, isPresenting } from './engine/session';
 import { openCurve, openGradient, openTexture, applyPending } from './editors/open';
@@ -196,6 +197,41 @@ export const report = async (): Promise<string> => {
     updateSceneObject(cam.id, { feedback: before ?? { enabled: false, mode: 'lighter', persistence: 0.5, amount: 1 } } as any);
     await settle(600);
     check('switched off, the stage is gone', !/fb/.test(w._ssr().pipelineKey) && !w._ssr().feedbackStage, w._ssr().pipelineKey);
+  }
+
+  // The timeline: the piece's clock is a frame position you hold. Real time
+  // off is one frame a draw, whatever the draw took; pause holds; stop goes
+  // back to the start with the simulation cleared; it travels with the piece.
+  {
+    const st: any = (window as any).__studio;
+    const bar = document.querySelector('.timeline');
+    check('there is a timeline bar with a transport, a frame, a timecode and a range', !!bar && bar.querySelectorAll('.transport button').length === 2 && !!bar.querySelector('.frame') && /\d\d:\d\d:\d\d/.test(bar.querySelector('.code')?.textContent ?? '') && bar.querySelectorAll('.handle').length === 2);
+    const before = get('_editorData.timeline');
+    patch('_editorData.timeline', { fps: 30, start: 0, end: 300, loop: true, realtime: false, restartOnLoop: false });
+    await settle(100);
+    const f0 = st.getTimelineState().frame;
+    const drawn0 = getFrames();
+    await settle(700);
+    const f1 = st.getTimelineState().frame;
+    const drawn = getFrames() - drawn0;
+    // Round the loop: the frames counted modulo the range.
+    const stepped = (f1 - f0 + 301) % 301;
+    check('real time off steps exactly one frame a draw', drawn > 0 && Math.abs(stepped - drawn) <= 1, `${stepped} frames in ${drawn} draws`);
+    check('and it costs no rebuild', getParticleSystem() !== null && lastAppliedLevel() === 'none', String(lastAppliedLevel()));
+    st.pause();
+    const held = st.getTimelineState().frame;
+    await settle(300);
+    check('pause holds the frame', st.getTimelineState().frame === held && st.getTimelineState().playing === false);
+    st.stop();
+    await settle(100);
+    const stopped = st.getTimelineState();
+    check('stop goes back to the start with nothing alive', stopped.frame === 0 && !stopped.playing && getParticleSystem()?.getActiveParticleCount?.() === 0, `frame ${stopped.frame}, ${getParticleSystem()?.getActiveParticleCount?.()} alive`);
+    check('the timeline travels with the piece', JSON.parse(serialize())._editorData?.timeline?.fps === 30 && JSON.parse(serialize())._editorData?.timeline?.realtime === false);
+    st.play();
+    if (before) patch('_editorData.timeline', before);
+    else patch('_editorData.timeline', { fps: 60, start: 0, end: 600, loop: true, realtime: true, restartOnLoop: false });
+    await settle(300);
+    check('and play runs it again', st.getTimelineState().playing && st.getTimelineState().fps === 60);
   }
 
   // The footer's right half: the running system in numbers, read twice a second.

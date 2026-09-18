@@ -232,6 +232,12 @@ export const schema: Group[] = [
       }),
       hidden('_editorData.embeddedTextures', 'Embedded textures', { editorOnly: true }),
       hidden('_editorData.embeddedVideos', 'Embedded videos', { editorOnly: true }),
+      hidden('_editorData.timeline', 'Timeline', {
+        editorOnly: true,
+        // Time, not the system: a new range or frame rate rebuilds nothing.
+        change: 'live',
+        hint: 'fps, start, end, loop, realtime (timeline.ts); written only once it differs from the defaults.',
+      }),
     ],
   },
   {

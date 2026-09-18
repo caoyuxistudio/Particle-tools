@@ -27,6 +27,7 @@ import {
   defaultFeedbackSettings,
   TRAIL_MASK,
   withTrailSources,
+  setFeedbackFrameDelta,
   type FeedbackSettings,
   type ParticleFeedback,
 } from './feedback-node';
@@ -637,6 +638,8 @@ export const setFeedbackSettings = (patch: Partial<FeedbackSettings>): void => {
 };
 
 export const getFeedbackSettings = (): FeedbackSettings => feedbackSettings;
+/** Time stepped by the caller (a timeline off real time): stages that fade over time follow it. null = wall clock. */
+export const setSteppedFrameDelta = (seconds: number | null): void => setFeedbackFrameDelta(seconds);
 
 /** `enabled` changes the graph; every adjustment is a uniform. */
 export const setPostEffectSettings = (patch: Partial<PostEffectSettings>): void => {
