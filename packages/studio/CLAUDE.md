@@ -1,6 +1,6 @@
 # Particle Tools Studio（packages/studio）
 
-V2 的界面。这份文件的前半是它的**运行说明**，后半是 2026-09-14 定案的**架构规划**（原根目录的 V2-ARCHITECTURE.md，2026-09-17 M4 搬到这里，各里程碑的补记都在里面；代码注释里写的 `V2-ARCHITECTURE.md §x` 指的就是本文件后半的那一节）。
+V2 的界面，**2026-09-18 起是这个仓库唯一在开发的界面**（在 main 上；V1 是历史，见根目录 CLAUDE.md）。这份文件的前半是它的**运行说明**和**现状**，后半是 2026-09-14 定案的**架构规划**（原根目录的 V2-ARCHITECTURE.md，2026-09-17 M4 搬到这里，各里程碑的补记都在里面；代码注释里写的 `V2-ARCHITECTURE.md §x` 指的就是本文件后半的那一节）。
 
 ## 运行
 
@@ -12,9 +12,10 @@ cd ../studio && npm run dev                    # 5173；先把预设同步进 V1
 
 - 引擎按 `@particle-tools/engine/<module>` 引用（Vite 别名指到 `../engine/src`），只能引 `packages/engine/engine-boundary.json` 里列的模块；`cd packages/engine && npm run check:boundary` 会扫 studio 的每一处引用。
 - 开发时 Vite 的 publicDir 是 V1 的 `public`（同源拿到 examples、assets、V1 打好的 player）；生产构建 `npm run build` 是可搬的（`base: './'`，`scripts/copy-shared.mjs` 只拷预设和 favicon）。
-- **harness**：只在 dev bundle 里，页面 console 里 `await __st.report()`（51 条：boot、round-trip、schema 覆盖、live / rebuild 代价、家具、三个编辑器、演示、HUD、预览窗、面板）。真实窗口里跑更可靠，方法见 `packages/editor/CLAUDE.md` 的「验证改动」。
+- **harness**：只在 dev bundle 里，页面 console 里 `await __st.report()`（53 条：boot、加载条、round-trip、schema 覆盖、live / rebuild 代价、家具、三个编辑器、演示、HUD、预览窗、面板）。真实窗口里跑更可靠，方法见 `packages/editor/CLAUDE.md` 的「验证改动」。
+- **加载条**（2026-09-18）：`index.html` 内联的 `#boot-loader`（全屏 `--bg` 底、2px 细条 + 一行当前阶段），第一帧 paint 就在，bundle 到之前靠 CSS 动画爬到 28%；之后 `session.ts` 的每个 boot mark 经 `BootOptions.onBootPhase` 交给 `app/boot-progress.ts`（界面侧，引擎不碰 DOM），内置贴图串行加载那一段按张数走（引擎 `initAssets` 的 `onProgress`）；`first-frame` 填满、350 ms 淡出、移除。用 `transform: scaleX`，主线程被占住时合成器照样推进。boot 抛错时标签改成失败提示。
 - 调试口：`window.__studio`（doc / serialize / load / rebuild / getFrames …）、`__world`、`__touch`、`__perfHud`、`__gyroHud`。
-- 线上：<https://caoyuxistudio.github.io/Particle-tools/Studio/>，由 main 上的 `deploy.yml` 从 **v2 分支**构建；改了 studio 先推 v2，再推一次 main（空提交即可）触发部署。
+- 线上：<https://caoyuxistudio.github.io/Particle-tools/Studio/>，推 main 就部署（`deploy.yml` 在同一次 checkout 里先构建 V1、再构建这个包，把 `dist` 放到 `packages/editor/public/Studio/`；小写 `/studio/` 转发）。推之前本地 `npm run build` 一遍。
 
 ## 结构
 
@@ -31,6 +32,22 @@ src/
 ├ viewport/            视口格子、家具工具栏、reset view
 └ ui/                  tokens.css、reset.css、hud.css —— 全部样式
 ```
+
+## 现状与下一步（2026-09-18）
+
+M0–M4 都完成了（判据和每步的补记在 §6）。时间线：2026-09-17 M0 边界 → M1 schema → M2 壳与检视器 → M3 对等 → M4 引擎搬进 `packages/engine`、预设随包、文档按包拆；同日上线到 `/Studio/`、仓库改名 Particle-tools、产品名 Particle Tools Studio；2026-09-18 v2 合进 main，从此只有 main 一条线，**默认开发都在这个包和 `packages/engine`**。harness `__st.report()` 51 条、引擎 jest 23 条、边界 0 违规、V1 的真实窗口套件 371/372（差的那条是预览宽度，V1 main 上一样）。
+
+**没做、记着的**（从 §6 各处汇总）：
+- Player 显示窗口（V1 的 linked 模式，`player-window.ts`）没接；桌面上一边调一边看的路只有演示模式。
+- 子发射器的 config 还是 `hidden`（开放问题 3 未定）。
+- Helper 里 `useLiveUpdate` / `enableBigNumbers` / `useIndividualUpdate` 三个 V1 专属开关渲染了但不起作用。
+- 手机：760px 以下的单列布局只在浏览器的手机模拟里看过；iPhone 真机、主屏幕模式、theme-color 没验。
+- 预览窗的语义作者没定：现在拖边缘改大小、拖内部移动，没有把手。
+- 账号与云端作品库（§8 补记的 BaaS 方向）没开始；`saved-configs.ts` 是要换的那一层。
+- 启动加载条：2026-09-18 在做（`src/app/boot-progress.ts`、`index.html` 里内联的条，V1 也有一份），写这句时还没提交。
+- 弹墙的手感作者还不满意（V1 记录「还欠的账」第一条），是引擎的事，改了两边都受益。
+
+**V1 从此怎么对待**：不看、不改，除非作者点名。V1 的 player 还在用（iOS 壳、`/player/`），它 import 的就是引擎，改引擎时 `npm run check:boundary` 会顺带查它。
 
 ---
 
@@ -297,17 +314,19 @@ M2 第一刀查出的两个 V1 bug：`serializeConfig` 的碰撞面 reducer 漏�
 
 **M3 · 对等**
 - ✅ 三个 canvas 编辑器接上；演示模式、Perf / Gyro HUD、手指尾迹、视差在 studio 里可用。（2026-09-17）
-- ◐ 手机上跑一遍：竖屏布局做了（760px 以下单列，检视器在画布下面占 45svh，浏览器的手机模拟里看过）；主屏幕模式和 theme-color 要等 studio 部署上线后在 iPhone 上验，还没有。
+- ◐ 手机上跑一遍：竖屏布局做了（760px 以下单列，检视器在画布下面占 45svh，浏览器的手机模拟里看过）；studio 2026-09-17 已上线，主屏幕模式和 theme-color 在 iPhone 上还没验。
 - ✅ studio 自己的 harness 覆盖 M0 到 M3 的判据（`__st.report()` 29 条）。
 
 **2026-09-17 补记（M3 的实际形状）**：开放问题 4 的答案是"studio 预埋同样的 DOM"——`editors/Modals.svelte` 是 V1 content.svelte 里三个模态框的原样拷贝（只把 Material 的搜索图标换成字形），`editors/editors.css` 是 V1 global.css 里那 676 行编辑器样式按亮度映射成 token（无圆角、无阴影）加 presenting 规则；三个编辑器自己的代码一行没动。`editors/open.ts` 是打开它们的三个薄包装：曲线编辑器直接改文档里那个 LifetimeCurve 对象、回调里 `store.touched(path)`；渐变编辑器的 stops 存 `_editorData.gradientStops`、用引擎的 `gradientToBezierCurves` 写回 `colorOverLifetime.r/g/b` 并把 isActive 打开（和 V1 的 entries 一样，只是那段逻辑从 entries 搬进了 studio，因为 `updateBeziersFromGradient` 在 entries 里不在引擎里）；贴图选择器分 sprite（写 `_editorData.textureId`、`map`、帧动画 tiles）和色源（写 `colorInstanceTextureId`、`particleColorInstance.map`）两种。演示模式、Perf HUD、Gyro 面板、手指输入全部是引擎模块，`session.ts` 的 `installInstruments()` 照 V1 glue 的那段接线安装（Perf 的 actions 里粒子预算的算法原样），帧循环在 `isPresenting()` 时走 `renderPlayer`；presenting 的 CSS 是 `body.presenting .studio { display: none }` + 画布容器居中，帧计数器为此从格子挪到了 app 一级（`#studio-stats`，固定定位）。顶栏多了 perf / gyro / present 三个按钮，键盘 P / G / Esc 照 V1。
 
 **没做、记着的**：Player 显示窗口（`player-window.ts`，V1 的 linked 模式）没接——桌面上一边调一边看的那条路 studio 还没有，演示模式够用；子发射器的 config 还是 `hidden`（开放问题 3 未定）；Helper 里 `useLiveUpdate` / `enableBigNumbers` / `useIndividualUpdate` 三个 V1 专属开关渲染了但不起作用（studio 按 schema 的 change 走，不看它们）。
 
-**M4 · 收口**
-- V1 编辑器降为实验台或删除。
-- 引擎模块物理搬进 `packages/engine`，预设（examples 的 JSON + 资产）随包。
-- 三个包各自 CHANGELOG；根 CLAUDE.md 只留导航。
+**M4 · 收口**（2026-09-17 完成）
+- ✅ V1 编辑器**保留原样、继续在线上根路径**（作者定的：V1 永远可访问、可用、可调），不删；2026-09-18 起是历史，不看不改。
+- ✅ 引擎模块物理搬进 `packages/engine`（`src/`、`__tests__/`、`engine-boundary.json`、边界脚本），预设随包（`presets/examples`、`presets/assets`；`scripts/sync-presets.mjs` 在 V1 和 studio 的 dev / build 前拷进各自的 public，拷贝 gitignore）。两边都按 `@particle-tools/engine/<module>` 引用（rollup / Vite 别名指到 `../engine/src`，three 和 @newkrok 包 dedupe 到各自的 node_modules）。
+- ✅ 每个包一份 CHANGELOG（engine、studio 新建）；根 CLAUDE.md 只留导航，V1 的记录搬到 `packages/editor/CLAUDE.md`，本规划搬到这里。
+- ✅ 上线（同日）：`deploy.yml` 把 studio 的构建放到 `public/Studio/`，小写 `/studio/` 转发；仓库改名 Particle-tools（GitHub 只转发 git 地址，旧的 Pages 地址 404；iOS 壳的地址已改、要重新构建）。
+- ✅ 2026-09-18 v2 合进 main（fast-forward），`deploy.yml` 改成从同一次 checkout 构建 V1 和 studio；v2 分支停用。
 
 ---
 
@@ -316,7 +335,7 @@ M2 第一刀查出的两个 V1 bug：`serializeConfig` 的碰撞面 reducer 漏�
 - **引擎模块里不得出现 DOM / 框架依赖。** 需要界面配合的地方走注入或事件（§1.3）。允许清单脚本会报。
 - **加 config 字段必须同时补 schema。** 覆盖测试会报。在 M1 之前，V1 线加字段时在 commit message 里标 `schema:` 让 V2 线跟进。
 - **作品格式不改。** 要改也是引擎线改 `save-and-load` 的转换，两边同时生效。
-- V1 编辑器在 M3 之前不做界面层的重构，只修 bug；避免两边同时动同一批文件。
+- V1 编辑器在 M3 之前不做界面层的重构，只修 bug；避免两边同时动同一批文件。**2026-09-18 起**：只有 main 一条线，V1 的编辑器不看不改，两条线并行期的规则到此为止；引擎的规则（边界、schema）继续。
 - CHANGELOG：每个包一份（three-particles 和 editor 已有，semantic-release 生成；studio 建包时建）。叙事性的进度记录继续写在 CLAUDE.md。
 
 ---
@@ -330,10 +349,10 @@ M2 第一刀查出的两个 V1 bug：`serializeConfig` 的碰撞面 reducer 漏�
 
 ## 9. 开放问题
 
-1. 框架：Svelte 5、SolidJS 还是 React 19（§5、附录 C）。
-2. `packages/studio` 与 V1 editor 共用 `public/examples` 和 `assets`，软链还是构建时复制。
-3. 子发射器（sub-emitter）在 V1 里是"切进去编辑一个子 config"的模式，V2 用同一模式还是并列显示。
-4. 三个 canvas 编辑器今天依赖 content.svelte 预埋的 DOM，包一层时是让它们自己建 DOM（改引擎侧文件）还是 studio 预埋同样结构（不改）。
+1. 框架：Svelte 5、SolidJS 还是 React 19（§5、附录 C）。**→ Svelte 5（runes），M2 定。**
+2. `packages/studio` 与 V1 editor 共用 `public/examples` 和 `assets`，软链还是构建时复制。**→ 都不是：预设归引擎（`packages/engine/presets`），`sync-presets.mjs` 拷进各前端的 public；开发时 Vite 的 publicDir 另指 V1 的 public 拿 player bundle，M4 定。**
+3. 子发射器（sub-emitter）在 V1 里是"切进去编辑一个子 config"的模式，V2 用同一模式还是并列显示。**→ 未定，config 先 `hidden`。**
+4. 三个 canvas 编辑器今天依赖 content.svelte 预埋的 DOM，包一层时是让它们自己建 DOM（改引擎侧文件）还是 studio 预埋同样结构（不改）。**→ studio 预埋同样的 DOM（`editors/Modals.svelte`），M3 定。**
 
 ---
 

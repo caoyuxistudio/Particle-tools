@@ -8,11 +8,19 @@ extended for Cao Yuxi's (曹雨西) media-art installation work.
 ```
 packages/
   three-particles/   the particle library (fork of NewKrok/three-particles)
-  editor/            the visual editor  (fork of NewKrok/three-particles-editor)
+  engine/            the engine: world, scene objects, particle factory, schema, presets — no UI dependency
+  studio/            Particle Tools Studio (V2), the editor developed from 2026-09-18 on
+  editor/            V1 editor (fork of NewKrok/three-particles-editor) — history — and the player
+apps/
+  ios/ParticlePlayer/  an iOS shell around the player
 ```
 
-The editor depends on the library through `file:../three-particles`, so the two
-always travel together — this is the reason they live in one repository.
+Everything depends on the library through `file:../three-particles`, so the
+packages always travel together — this is the reason they live in one repository.
+
+Live: the studio at <https://caoyuxistudio.github.io/Particle-tools/Studio/>,
+V1 at <https://caoyuxistudio.github.io/Particle-tools/>, the player at
+`/Particle-tools/player/`. A push to `main` deploys all three.
 
 ## What this fork adds
 
@@ -39,15 +47,16 @@ curl-noise flow field is the same field — `curl-noise.ts` is a scalar port of
 the kernel's simplex and curl — and the rest is ignored or falls back to the
 stock behaviour.
 
-## Running the editor
+## Running the studio
 
 ```bash
 cd packages/three-particles && npm install && npm run build
-cd ../editor && npm install && npm run dev
+cd ../engine && npm install && npm test && npm run check:boundary
+cd ../studio && npm install && npm run dev      # http://localhost:5173
 ```
 
-The editor serves on <http://localhost:8080>. `npm run dev` rebuilds on change
-but does not reload the page — refresh manually.
+V1, if it is ever needed again: `cd packages/editor && npm install && npm run dev`
+(<http://localhost:8080>; it rebuilds on change but does not reload the page).
 
 ## A config is not a self-contained artwork
 

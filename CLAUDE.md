@@ -4,21 +4,29 @@
 
 > 这份只是导航。每个包自己的 CLAUDE.md 讲自己的事，Claude Code 进到那个目录会读到它。
 
+> **2026-09-18 起只有一条线：V2** —— Particle Tools Studio（`packages/studio`）加引擎（`packages/engine`），在 **main** 上开发（分支 v2 这天合进了 main，之后停用）。**V1**（`packages/editor` 里 Svelte + SMUI + lil-gui 那套编辑器）**是历史：默认不看、不改**，除非作者点名要看 V1；它的 player（`packages/editor/src/player.ts`，iOS 壳和 `/player/` 用的）和线上根路径照旧保留。
+
 ## 包
 
 | 包 | 是什么 | 文档 |
 |---|---|---|
 | `packages/three-particles` | 粒子库（WebGPU + TSL，CPU 回退） | 上游的 README |
 | `packages/engine` | 引擎：世界、场景物体、粒子工厂、schema、预设；无界面依赖 | `packages/engine/CLAUDE.md` |
-| `packages/editor` | **V1** 编辑器（Svelte + SMUI + lil-gui）和 **player**；保留、只修 bug | `packages/editor/CLAUDE.md`（全部历史都在这） |
-| `packages/studio` | **V2**：Particle Tools Studio，以后主要在这开发 | `packages/studio/CLAUDE.md`（运行说明 + 架构规划） |
+| `packages/editor` | **V1**（历史）编辑器和 **player**；player 还在用，编辑器不看不改，除非作者点名 | `packages/editor/CLAUDE.md`（V1 的全部记录，到 2026-09-17 为止） |
+| `packages/studio` | **V2**：Particle Tools Studio，**默认在这开发** | `packages/studio/CLAUDE.md`（运行说明 + 现状 + 架构规划） |
 | `apps/ios/ParticlePlayer` | iOS 壳，只包 player | `apps/ios/ParticlePlayer/README.md` |
 
 ## 分支与线上
 
-- **main = V1**，线上根路径 <https://caoyuxistudio.github.io/Particle-tools/>；标签 `v1-final` 是 V1 收工时的书签。
-- **v2 = V2 的全部工作**，本机 worktree 在 `../threeparticle-v2`；线上 <https://caoyuxistudio.github.io/Particle-tools/Studio/>，由 main 的 `deploy.yml` 从 v2 分支构建。改 studio：先推 v2，再推一次 main 触发部署。main 的修改只往 v2 合，不反向。
+- **main 是唯一的开发分支**。推 main 自动部署（`deploy.yml`，同一次 checkout 里先构建 V1 再构建 studio）：studio 在 <https://caoyuxistudio.github.io/Particle-tools/Studio/>（小写 `/studio/` 转发），V1 在根路径 <https://caoyuxistudio.github.io/Particle-tools/>，player 在 `/player/`。推之前先在本地把 studio 构建一遍（`cd packages/studio && npm run build`）。
+- 历史书签：标签 `v1-final` = V1 收工（2026-09-17）；分支 `v2` = 2026-09-18 合进 main 前的 V2 线。本机的 `../threeparticle-v2` worktree 就是 v2 分支，合并那天里面还有一批**未提交**的加载条工作（studio 的 `src/app/boot-progress.ts` 等）——提交、合进 main（fast-forward）之后 `git worktree remove` 它，以后只用 main 的工作区。
 - 作品用 **example-1-1**（`packages/engine/presets/examples/example-1-1/`，色源是站点自带的视频）；WIP-Test-2 备用。
+
+## 现状与下一步（2026-09-18）
+
+- 规划里的 M0–M4 全部完成（2026-09-17）：引擎在 `packages/engine`（边界脚本 0 违规、jest 23 条）；schema 覆盖默认 config 的全部键；studio 与 V1 对等（三个 canvas 编辑器、演示模式、Perf / Gyro HUD、手指尾迹、视差、手机布局），harness `__st.report()` 51 条全绿；studio 已上线，仓库改名 Particle-tools，v2 合进 main。细节和判据在 `packages/studio/CLAUDE.md`「现状与下一步」和 §6。
+- **没做的**：studio 里没有 player 显示窗口（V1 的 linked 模式）；子发射器还是 `hidden`；iPhone 真机没验过 studio；账号与云端作品库（BaaS 方向）没开始；弹墙手感作者还不满意（引擎的事）。
+- **下一步由作者定顺序**，候选就是上面那五项。默认在 studio 和引擎里做；改引擎要过 `npm test` 和 `npm run check:boundary`，加 config 字段要补 schema。
 
 ## 跑起来
 
@@ -31,10 +39,10 @@ cd ../studio && npm run dev      # V2，5173
 
 ## 验证
 
-- V1：`packages/editor/public/__ai-test.js`，浏览器 console 里 `await __t.<report>()`，一次一个；真实窗口 + `scripts/cdp-eval.mjs` 更可靠（方法见 `packages/editor/CLAUDE.md`「验证改动」）。
-- studio：dev 页面 console `await __st.report()`。
+- studio：dev 页面 console `await __st.report()`（51 条）；真实窗口 + `packages/editor/scripts/cdp-eval.mjs` 更可靠（方法见 `packages/editor/CLAUDE.md`「验证改动」，地址换成 5173）。
+- V1（只在作者点名看 V1 时）：`packages/editor/public/__ai-test.js`，console 里 `await __t.<report>()`，一次一个。
 - 引擎：`npm test`（jest）和 `npm run check:boundary`。
-- CI（`.github/workflows/ci.yml`）在所有分支跑边界脚本和两个包的 jest；`deploy.yml` 只在 main 上跑。
+- CI（`.github/workflows/ci.yml`）在所有分支跑边界脚本和两个包的 jest；`deploy.yml` 只在 main 上跑，V1 和 studio 都从这一次 checkout 构建。
 
 ## 工作习惯
 

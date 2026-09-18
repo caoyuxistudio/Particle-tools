@@ -2,6 +2,8 @@
 
 给接手这个项目的人 / Agent。这份是 **V1**（Svelte + SMUI + lil-gui 那套编辑器和 player）的全部记录，2026-09-17 从仓库根目录搬到这里；根目录的 CLAUDE.md 只剩导航。
 
+> **2026-09-18 起 V1 是历史**：v2 合进了 main，默认开发在 `packages/studio` + `packages/engine`；这套编辑器**不看、不改**，除非作者点名要看 V1。它的 player（`src/player.ts`）还在用。下面的记录到 2026-09-17 为止，不再续写。
+
 > **读之前知道一件事**：2026-09-17（M4）引擎从 `packages/editor/src/js/three-particles-editor/` 物理搬进了 **`packages/engine/src/`**，V1 改成 `@particle-tools/engine/<module>` 引用；预设（example 的 JSON、贴图、视频）搬进 `packages/engine/presets/`，V1 的 `npm run dev / build` 先跑 `sync-presets` 把它们拷进 `public/`（拷贝是 gitignore 的）。下文里凡是写 `src/js/three-particles-editor/xxx.ts` 的引擎文件，现在都在 `packages/engine/src/xxx.ts`；`entries/` 和 `player-window.ts` 还留在 V1。harness、`?gputime`、CDP 那套量法照旧。
 
 ---

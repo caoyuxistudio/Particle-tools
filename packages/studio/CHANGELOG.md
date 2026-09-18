@@ -1,5 +1,13 @@
 # particle-tools-studio
 
+## Unreleased — 2026-09-18
+
+- The v2 branch is merged into `main`; the studio is now the only editor under development (V1 is history). `deploy.yml` builds V1 and the studio from the same checkout.
+
+## Unreleased
+
+- Loading bar: `#boot-loader` inline in `index.html` (up with the first paint, before the bundle), driven by the boot marks through `BootOptions.onBootPhase` → `app/boot-progress.ts`; follows the built-in textures one by one (`initAssets` gained `onProgress` in the engine); fills and fades on the first frame. Harness +2 (53).
+
 ## 0.1.0 — 2026-09-17
 
 Particle Tools Studio: V2 of the editor over the same engine and the same document, live at `/Studio/` beside V1.
