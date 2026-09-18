@@ -10,9 +10,14 @@ export const getTexture = (id: string) =>
 const loadTextures = ({
   textureConfigs,
   onComplete,
+  onProgress,
+  total = textureConfigs.length,
 }: {
   textureConfigs: any[];
   onComplete: () => void;
+  /** After each texture, loaded or skipped: how many of the chain are done. */
+  onProgress?: (done: number, total: number) => void;
+  total?: number;
 }) => {
   if (textureConfigs.length === 0) {
     onComplete();
@@ -33,8 +38,9 @@ const loadTextures = ({
   const next = () => {
     if (moved) return;
     moved = true;
+    onProgress?.(total - textureConfigs.length + 1, total);
     if (textureConfigs.length > 1)
-      loadTextures({ textureConfigs: textureConfigs.slice(1), onComplete });
+      loadTextures({ textureConfigs: textureConfigs.slice(1), onComplete, onProgress, total });
     else onComplete();
   };
 
@@ -76,8 +82,10 @@ export const loadCustomAssets = ({
   });
 };
 
-export const initAssets = (onComplete: () => void) =>
-  loadTextures({ textureConfigs: [...textureConfigs], onComplete });
+export const initAssets = (
+  onComplete: () => void,
+  onProgress?: (done: number, total: number) => void
+) => loadTextures({ textureConfigs: [...textureConfigs], onComplete, onProgress });
 
 /**
  * Loads just the named textures that are known but not yet decoded — how a

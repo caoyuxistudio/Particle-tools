@@ -6,6 +6,7 @@
 import { schema, fieldsOf, leafPaths, coversLeaf, type Field, type Group } from '@particle-tools/engine/schema';
 import { getSceneObjects, updateSceneObject } from '@particle-tools/engine/scene-objects';
 import { revision, patch, get, load } from './store/document.svelte';
+import { bootProgressState } from './app/boot-progress';
 import { doc, getParticleSystem, getFrames, rebuildCount, serialize, bootTimeline, present, isPresenting } from './engine/session';
 import { openCurve, openGradient, openTexture, applyPending } from './editors/open';
 
@@ -39,6 +40,11 @@ export const report = async (): Promise<string> => {
   // Boot: the shell first, then the piece, then the compile, then frames.
   const t = bootTimeline();
   check('boot ran start → world → scene → piece → compiled → first-frame', ['start', 'world', 'scene', 'piece', 'compiled', 'first-frame'].every((k) => k in t) && t.world < t.piece && t.piece < t.compiled && t.compiled <= t['first-frame'], JSON.stringify(t));
+  // The loading bar: inline in the page (up before the bundle runs), filled and gone by the first frame.
+  // The page's own address: in dev `./index.html` is V1's (the publicDir), not the studio's.
+  const pageHtml = await fetch(location.pathname).then((r) => r.text()).catch(() => '');
+  check('the page ships its loading bar inline', /<div id="boot-loader"/.test(pageHtml) && /#boot-loader\s*\{/.test(pageHtml));
+  check('the loading bar ran to the end and left with the first frame', bootProgressState().finished && bootProgressState().reached === 1 && !document.getElementById('boot-loader'), JSON.stringify(bootProgressState()));
   const f0 = getFrames();
   await settle(600);
   check('frames advance', getFrames() > f0, `${getFrames() - f0} in 600ms`);

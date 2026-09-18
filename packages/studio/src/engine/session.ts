@@ -68,7 +68,10 @@ const marks: Record<string, number> = {};
 const mark = (name: string): void => {
   marks[name] = Math.round(performance.now());
   performance.mark(`boot:${name}`);
+  bootListener?.(name, 1);
 };
+/** The shell's loading bar: told of each boot mark, and of progress inside the long ones. */
+let bootListener: ((phase: string, fraction: number) => void) | null = null;
 export const bootTimeline = (): Record<string, number> => ({ ...marks });
 
 // ─── rebuilding ──────────────────────────────────────────────────────────────
@@ -296,6 +299,8 @@ export type BootOptions = {
   piece: Doc | null;
   /** A gizmo wrote the document (path); the store bumps its revision. */
   onEngineChange?: (path: string) => void;
+  /** Each boot mark as it lands (fraction 1), and the way through a long phase (fraction < 1, named by the mark it leads to). */
+  onBootPhase?: (phase: string, fraction: number) => void;
 };
 
 let booted = false;
@@ -303,6 +308,7 @@ let booted = false;
 export const boot = async (options: BootOptions): Promise<void> => {
   if (booted) return;
   booted = true;
+  bootListener = options.onBootPhase ?? null;
   mark('start');
   clock = new THREE.Clock();
   setNotifier(options.notifier);
@@ -319,7 +325,8 @@ export const boot = async (options: BootOptions): Promise<void> => {
   installFurniture({ doc, container: () => container, particleSystem: () => particleSystem, changed: (path) => { applyChange(path); options.onEngineChange?.(path); } });
   installInstruments();
 
-  await new Promise<void>((resolve) => initAssets(resolve));
+  // The built-ins load one after another — on a cold cache the long stretch of the boot.
+  await new Promise<void>((resolve) => initAssets(resolve, (done, total) => done < total && bootListener?.('scene', done / total)));
   await new Promise<void>((resolve) => loadCustomAssets({ textures: [], onComplete: resolve }));
   await loadVideoTextures();
   initSceneObjects();

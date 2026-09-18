@@ -7,9 +7,66 @@
     <meta name="theme-color" content="#080808" />
     <title>Particle Tools Studio</title>
     <link rel="icon" href="./favicon/favicon.ico" />
+    <!--
+      The loading bar. Inline, so it is up with the first paint — before the
+      bundle has downloaded, let alone run. Until the script takes it over
+      (src/app/boot-progress.ts) the bar creeps on its own; it is scaled with a
+      transform so the compositor keeps it moving while the main thread loads
+      the piece and compiles shaders. The boot fades it out on the first frame.
+    -->
+    <style>
+      #boot-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 100000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #080808;
+        opacity: 1;
+        transition: opacity 350ms ease-out;
+      }
+      #boot-loader.boot-loader--done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .boot-loader__label {
+        color: rgba(255, 255, 255, 0.55);
+        font: 500 11px/1 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .boot-loader__track {
+        width: min(280px, 60vw);
+        height: 2px;
+        overflow: hidden;
+        border-radius: 1px;
+        background: rgba(255, 255, 255, 0.14);
+      }
+      .boot-loader__bar {
+        width: 100%;
+        height: 100%;
+        background: #fff;
+        transform: scaleX(0);
+        transform-origin: left center;
+        transition: transform 450ms ease-out;
+        animation: boot-loader-creep 10s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
+      }
+      @keyframes boot-loader-creep {
+        to {
+          transform: scaleX(0.28);
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="boot-loader" role="progressbar" aria-label="Loading">
+      <div class="boot-loader__label">Loading</div>
+      <div class="boot-loader__track"><div class="boot-loader__bar"></div></div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

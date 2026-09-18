@@ -3,6 +3,7 @@
   import { boot, doc } from '../engine/session';
   import { connectEvents, refresh, engineChanged } from '../store/document.svelte';
   import Toolbar from './Toolbar.svelte';
+  import { bootProgress, bootProgressWithin } from '../app/boot-progress';
 
   let cell: HTMLDivElement;
   let note = $state('');
@@ -31,6 +32,7 @@
       notifier: { info: (m) => (note = m), success: (m) => (note = m), error: (m) => (note = m) },
       piece,
       onEngineChange: engineChanged,
+      onBootPhase: (phase, fraction) => (fraction < 1 ? bootProgressWithin('world', phase, fraction) : bootProgress(phase)),
     });
     refresh();
     void doc;
