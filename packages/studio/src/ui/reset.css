@@ -47,6 +47,20 @@ input[type='number'],
 input[type='text'] {
   width: 100%;
 }
+/* No spin buttons: they reserve a fifth of a narrow field whether or not they
+   show, and 500000 read as "50000" with its last digit clipped behind them
+   (-120.411 as "-120."). Arrow keys and the slider beside it still step. */
+input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+  padding: 0 var(--sp-1);
+}
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+}
 input[type='number']:focus,
 input[type='text']:focus,
 select:focus {

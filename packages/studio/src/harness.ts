@@ -198,6 +198,18 @@ export const report = async (): Promise<string> => {
     check('switched off, the stage is gone', !/fb/.test(w._ssr().pipelineKey) && !w._ssr().feedbackStage, w._ssr().pipelineKey);
   }
 
+  // A number field shows its whole number: 500000 once read as "50000", its
+  // last digit behind the spin buttons, and looked like a cap ten times lower.
+  {
+    const fields = [...document.querySelectorAll<HTMLInputElement>('.column input[type=number]')];
+    const probe = fields.find((f) => f.offsetParent !== null) ?? fields[0];
+    const kept = probe?.value ?? '';
+    if (probe) probe.value = '500000';
+    const clipped = fields.filter((f) => f.offsetParent !== null && f.scrollWidth > f.clientWidth).map((f) => f.value);
+    check('no number field clips its value, six digits included', !!probe && clipped.length === 0, clipped.join(', '));
+    if (probe) probe.value = kept;
+  }
+
   // The camera's post effect: the last stage, on the camera, all uniforms but the switch.
   {
     const w: any = (window as any).__world;

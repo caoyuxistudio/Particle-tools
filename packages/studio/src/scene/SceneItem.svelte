@@ -1282,7 +1282,7 @@
       min-width: 0;
     }
     input[type='number'] {
-      width: 58px;
+      width: 68px;
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid var(--line);
       border-radius: 0;

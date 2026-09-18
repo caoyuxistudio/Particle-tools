@@ -11,6 +11,7 @@
 - Scene → camera: a `feedback (trails)` group — enabled, mode (lighter / mix / over), persistence (s), amount — and a `Trail layer only` view. Harness +4 (67).
 - `Emitter Source Image Tweak` (was Source Image Tweak): black point, gamma and brightness under level; saturation up to 5.
 - Scene → camera: a `post effect` group after feedback — saturation, brightness, contrast, hue, level (black / white / gamma), and a reset. Harness +8 (75); the preview drag checks start from a small preview instead of whatever size the last session left.
+- Fix: number fields clipped their last digit behind the spin buttons — maxParticles 500000 read as "50000", rateOverTime 100000 as "10000", −120.411 as "−120." — which looked like caps ten times lower. Spin buttons off, fields a little wider (inspector and scene panel). Harness +1 (76).
 
 ## Unreleased
 

@@ -19,7 +19,7 @@
 <style>
   .row {
     display: grid;
-    grid-template-columns: 1fr 1fr 64px;
+    grid-template-columns: 1fr 1fr 76px;
     align-items: center;
     gap: var(--sp-2);
     min-height: var(--control-h);
