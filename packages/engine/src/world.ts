@@ -19,6 +19,14 @@ import {
   uniform,
   convertToTexture,
 } from 'three/tsl';
+import {
+  particleFeedback,
+  defaultFeedbackSettings,
+  TRAIL_MASK,
+  withTrailSources,
+  type FeedbackSettings,
+  type ParticleFeedback,
+} from './feedback-node';
 import { ssr } from 'three/examples/jsm/tsl/display/SSRNode.js';
 import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
 import { denoise } from 'three/examples/jsm/tsl/display/DenoiseNode.js';
@@ -237,7 +245,8 @@ export type SsrSettings = {
     | 'roughness'
     | 'depth'
     | 'ao'
-    | 'reflection';
+    | 'reflection'
+    | 'trail';
 };
 
 let postProcessing: PostProcessing | null = null;
@@ -324,14 +333,27 @@ let aoSettings: AoSettings = defaultAoSettings();
 const aoIntensity = uniform(0.7);
 let aoPass: any = null;
 let denoisePass: any = null;
+/**
+ * The particles' afterimage (feedback-node.ts): a property of the camera like
+ * the two above, and the last stage — it trails the finished picture,
+ * reflections and occlusion included. Everything but `enabled` is a uniform.
+ */
+let feedbackSettings: FeedbackSettings = defaultFeedbackSettings();
+let feedbackStage: ParticleFeedback | null = null;
 /** Which stages the current pipeline was compiled with; rebuilt when that changes. */
 let pipelineKey = '';
 const currentPipelineKey = (): string =>
-  `${ssrSettings.enabled ? 'ssr' : ''}|${aoSettings.enabled ? 'ao' : ''}`;
+  `${ssrSettings.enabled ? 'ssr' : ''}|${aoSettings.enabled ? 'ao' : ''}|${feedbackSettings.enabled ? 'fb' : ''}`;
 const pipelineStale = (camera: THREE.PerspectiveCamera): boolean =>
   pipelineCamera !== camera || pipelineKey !== currentPipelineKey();
 /** Whether the output camera goes through the post pipeline at all. */
-const postEnabled = (): boolean => ssrSettings.enabled || aoSettings.enabled;
+const postEnabled = (): boolean =>
+  ssrSettings.enabled || aoSettings.enabled || feedbackSettings.enabled;
+/** The pipeline's render; with feedback on, the particles wear their trail mask for it. */
+const renderPost = (): void => {
+  if (feedbackSettings.enabled) withTrailSources(scene, () => postProcessing!.render());
+  else postProcessing!.render();
+};
 
 /**
  * Compiles the SSR pipeline for a camera.
@@ -349,6 +371,9 @@ const buildSsrPipeline = (camera: THREE.PerspectiveCamera): void => {
       // Normals are signed but the buffer is not, so they travel encoded.
       normal: directionToColor(normalView),
       metalrough: vec2(metalness, roughness),
+      // 1 where a particle material drew (it overrides this through its own
+      // mrtNode), 0 everywhere else: what the feedback stage lets into its trail.
+      ...(feedbackSettings.enabled ? { [TRAIL_MASK]: vec4(0, 0, 0, 0) } : {}),
     })
   );
 
@@ -400,6 +425,13 @@ const buildSsrPipeline = (camera: THREE.PerspectiveCamera): void => {
     composite = blendColor(occluded, reflection);
   }
 
+  feedbackStage?.dispose();
+  feedbackStage = null;
+  if (feedbackSettings.enabled) {
+    feedbackStage = particleFeedback(composite, scenePass.getTextureNode(TRAIL_MASK));
+    composite = feedbackStage.node;
+  }
+
   debugNodes = {
     off: composite,
     color: colorNode,
@@ -413,6 +445,7 @@ const buildSsrPipeline = (camera: THREE.PerspectiveCamera): void => {
     depth: vec3(depthNode),
     reflection: ssrPass ?? vec4(0, 0, 0, 1),
     ao: aoNode ? vec4(vec3(aoNode), 1) : vec4(1),
+    trail: feedbackStage ? vec4(feedbackStage.layer().rgb, 1) : vec4(0, 0, 0, 1),
   };
 
   postProcessing = new PostProcessing(renderer);
@@ -431,6 +464,7 @@ const buildSsrPipeline = (camera: THREE.PerspectiveCamera): void => {
   pipelineKey = currentPipelineKey();
   applySsrUniforms();
   applyAoUniforms();
+  feedbackStage?.apply(feedbackSettings);
 };
 
 /** Compiles the pipeline for the output camera if it is missing or stale. */
@@ -532,6 +566,15 @@ export const setAoSettings = (patch: Partial<AoSettings>): void => {
 };
 
 export const getAoSettings = (): AoSettings => aoSettings;
+
+/** As for AO: `enabled` changes the graph (rebuilt on the next frame), the rest are uniforms. */
+export const setFeedbackSettings = (patch: Partial<FeedbackSettings>): void => {
+  feedbackSettings = { ...feedbackSettings, ...patch };
+  feedbackStage?.apply(feedbackSettings);
+};
+
+export const getFeedbackSettings = (): FeedbackSettings => feedbackSettings;
+export { defaultFeedbackSettings, type FeedbackSettings };
 
 export const setSsrSettings = (patch: Partial<SsrSettings>): void => {
   const previousDebug = ssrSettings.debug;
@@ -722,6 +765,8 @@ export const createWorld = async (targetQuery: string): Promise<THREE.Scene> => 
     setSsrSettings,
     getAoSettings,
     setAoSettings,
+    setFeedbackSettings,
+    getFeedbackSettings,
     ensurePostPipeline,
     setRenderScale,
     getRenderScale,
@@ -738,7 +783,7 @@ export const createWorld = async (targetQuery: string): Promise<THREE.Scene> => 
       recenter: recenterParallax,
       setSettings: setParallaxSettings,
     },
-    _ssr: () => ({ postProcessing, ssrPass, aoPass, denoisePass, previewTarget, previewBlit, pipelineCamera, pipelineKey }),
+    _ssr: () => ({ postProcessing, ssrPass, aoPass, denoisePass, feedbackStage, previewTarget, previewBlit, pipelineCamera, pipelineKey }),
   };
 
   return scene;
@@ -1120,7 +1165,7 @@ export const renderPlayer = (
 
   if (postEnabled()) {
     if (pipelineStale(outputCamera)) buildSsrPipeline(outputCamera);
-    postProcessing!.render();
+    renderPost();
   } else {
     renderer.render(scene, outputCamera);
   }
@@ -1434,7 +1479,7 @@ const renderPreview = (): void => {
     const target = ensurePreviewTarget(w, h);
     renderer.setScissorTest(false);
     renderer.setRenderTarget(target);
-    withDisplaySize(w, h, () => postProcessing!.render());
+    withDisplaySize(w, h, renderPost);
     renderer.setRenderTarget(null);
   }
 

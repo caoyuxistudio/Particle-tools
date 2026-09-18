@@ -178,6 +178,26 @@ export const report = async (): Promise<string> => {
   await settle(20);
   check('an engine change bumps the revision', revision() > revBefore, `${revBefore} -> ${revision()}`);
 
+  // The camera's feedback (the particles' afterimage): a stage of the output
+  // camera's pipeline, on the camera object, travelling with the piece. The
+  // trail mask is only worn inside the pipeline's render.
+  {
+    const w: any = (window as any).__world;
+    const cam = getSceneObjects().find((o) => o.type === 'CAMERA')!;
+    const before = (cam as any).feedback;
+    updateSceneObject(cam.id, { feedback: { enabled: true, mode: 'over', persistence: 0.8, amount: 1 } } as any);
+    await settle(600);
+    const st = w._ssr();
+    check('feedback on the camera adds a stage to its pipeline', /\|fb$/.test(st.pipelineKey) && !!st.feedbackStage && w.getFeedbackSettings().mode === 'over', st.pipelineKey);
+    const material: any = getParticleSystem()?.instance?.material;
+    check('the particles carry a trail mask and wear it only inside that pipeline', !!material?.userData?.trailMrt && material.mrtNode === null);
+    const saved = JSON.parse(serialize())._editorData.sceneObjects.find((o: any) => o.type === 'CAMERA')?.feedback;
+    check('and it travels with the piece', saved?.enabled === true && saved?.mode === 'over' && saved?.persistence === 0.8, JSON.stringify(saved));
+    updateSceneObject(cam.id, { feedback: before ?? { enabled: false, mode: 'lighter', persistence: 0.5, amount: 1 } } as any);
+    await settle(600);
+    check('switched off, the stage is gone', !/fb/.test(w._ssr().pipelineKey) && !w._ssr().feedbackStage, w._ssr().pipelineKey);
+  }
+
   // Furniture follows the document: the walls' helpers appear with the switch, on the furniture layer.
   const furniture = () => { const L = new (window as any).__world.THREE.Layers(); L.set(1); return (window as any).__world.scene.children.filter((o: any) => o.layers.test(L) && !o.isTransformControlsRoot); };
   const planesBefore = get('_editorData.showCollisionPlanes');

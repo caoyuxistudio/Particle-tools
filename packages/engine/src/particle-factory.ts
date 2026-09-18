@@ -16,6 +16,7 @@ import { createParticleSystem } from '@newkrok/three-particles';
 import { convertToNewFormat } from './config-converter';
 import { getTexture } from './assets';
 import { createGeometry } from './mesh-geometry';
+import { markAsTrailSource } from './feedback-node';
 
 /**
  * Sub-emitter configs store a texture *name*; the THREE.Texture itself is not
@@ -133,6 +134,9 @@ export const buildParticleSystem = (activeConfig: any, options: BuildOptions): a
   const shadows = convertedConfig.renderer?.rendererType === 'MESH';
   particleSystem.instance.castShadow = shadows;
   particleSystem.instance.receiveShadow = shadows;
+
+  // What the camera's feedback stage trails: particles, and nothing else.
+  markAsTrailSource((particleSystem.instance as any).material);
 
   return particleSystem;
 };

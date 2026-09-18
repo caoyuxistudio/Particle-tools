@@ -5,6 +5,7 @@
   ],
   "engine": [
     "src/world.ts",
+    "src/feedback-node.ts",
     "src/scene-objects.ts",
     "src/particle-factory.ts",
     "src/mesh-geometry.ts",

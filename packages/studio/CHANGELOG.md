@@ -8,6 +8,7 @@
 - Noise: `direction x / y / z` (BOTH / POSITIVE / NEGATIVE) under the curl noise group, rendered from the schema; live. Harness +2 (58).
 - Fix: the number beside a vec3 / colour / min–max slider did not follow a drag (noise drift, influence, …) — the value is written one component at a time into the same object, and a `$derived` that returns the same object is unchanged; FieldView now derives a shallow copy per revision.
 - Points group (POINTS and INSTANCED): `velocity stretch (s of travel)` — sprites become streaks along their travel. Harness +5 (63).
+- Scene → camera: a `feedback (trails)` group — enabled, mode (lighter / mix / over), persistence (s), amount — and a `Trail layer only` view. Harness +4 (67).
 
 ## Unreleased
 

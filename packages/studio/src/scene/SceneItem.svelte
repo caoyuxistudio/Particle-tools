@@ -11,6 +11,7 @@
     getCamera,
     defaultSsrSettings,
     defaultAoSettings,
+    defaultFeedbackSettings,
     defaultEnvironmentSettings,
     setOnEnvironmentLoaded,
   } from '@particle-tools/engine/world';
@@ -43,6 +44,8 @@
    */
   const setSsr = (patch) => set({ ssr: { ...defaultSsrSettings(), ...(obj.ssr ?? {}), ...patch } });
   const setAo = (patch) => set({ ao: { ...defaultAoSettings(), ...(obj.ao ?? {}), ...patch } });
+  const setFeedback = (patch) =>
+    set({ feedback: { ...defaultFeedbackSettings(), ...(obj.feedback ?? {}), ...patch } });
   const setShadow = (patch) =>
     set({ shadow: { ...defaultLightShadowSettings(), ...(obj.shadow ?? {}), ...patch } });
   const setParallax = (patch) =>
@@ -52,6 +55,7 @@
     { id: 'off', label: 'Final image' },
     { id: 'reflection', label: 'Reflections only' },
     { id: 'ao', label: 'Occlusion only' },
+    { id: 'trail', label: 'Trail layer only' },
     { id: 'color', label: 'Colour buffer' },
     { id: 'normal', label: 'Normals' },
     { id: 'metalness', label: 'Metalness' },
@@ -809,7 +813,58 @@
           </p>
         {/if}
 
-        {#if obj.ssr?.enabled || obj.ao?.enabled}
+        <div class="group-label">feedback (trails)</div>
+        <label class="row check">
+          <span>enabled</span>
+          <input
+            type="checkbox"
+            checked={obj.feedback?.enabled ?? false}
+            onchange={(e) => setFeedback({ enabled: e.target.checked })}
+          />
+        </label>
+
+        {#if obj.feedback?.enabled}
+          <label class="row">
+            <span>mode</span>
+            <select
+              value={obj.feedback?.mode ?? 'lighter'}
+              onchange={(e) => setFeedback({ mode: e.target.value })}
+            >
+              <option value="lighter">lighter</option>
+              <option value="mix">mix</option>
+              <option value="over">over</option>
+            </select>
+          </label>
+          {#each [{ key: 'persistence', label: 'persistence (s)', min: 0, max: 3, step: 0.01, fallback: 0.5 }, { key: 'amount', label: 'amount', min: 0, max: 1, step: 0.01, fallback: 1 }] as p}
+            <label class="row">
+              <span>{p.label}</span>
+              <input
+                type="range"
+                min={p.min}
+                max={p.max}
+                step={p.step}
+                value={obj.feedback?.[p.key] ?? p.fallback}
+                oninput={(e) => setFeedback({ [p.key]: +e.target.value })}
+              />
+              <input
+                type="number"
+                step={p.step}
+                value={obj.feedback?.[p.key] ?? p.fallback}
+                oninput={(e) => setFeedback({ [p.key]: +e.target.value })}
+              />
+            </label>
+          {/each}
+          <p class="hint">
+            The particles' afterimage: last frame's trail, faded, under this frame — one full-screen
+            pass whatever the particle count. Only particle pixels enter the trail; the frame, the
+            walls and the backdrop stay as drawn. Lighter keeps the brighter of now and the fading
+            past; mix is a running average (soft, and fast particles dim); over lays this frame on
+            top of the past, each layer fainter, with nothing stacking up under an opaque particle.
+            Persistence is the fade's time constant in seconds, the same at any frame rate.
+          </p>
+        {/if}
+
+        {#if obj.ssr?.enabled || obj.ao?.enabled || obj.feedback?.enabled}
           <label class="row">
             <span>view</span>
             <select

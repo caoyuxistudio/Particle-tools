@@ -9,6 +9,10 @@
 - **引擎不认识 DOM 里的面板**：视口边界 `setViewportInsets`、帧计数器 `setStatsContainer`、用户提示 `notify.ts`、变更事件 `document-events.ts` 全是注入或事件，界面自己接。
 - **加 config 字段时 commit message 标 `schema:`**，另一条线看得见。
 
+## 坑
+
+- **材质上常驻 `mrtNode` 会让它在别的 render target 里消失**（2026-09-18，feedback）。three 的 NodeMaterial：目标有 pass 的 MRT 时把材质的 mrtNode 合并进去；目标**没有** MRT 时，材质的 mrtNode 就是它的全部输出——粒子在视口那条路里整个不见了，没有报错。所以粒子的 trail mask 只在 feedback 管线渲染那一下戴上（`withTrailSources`），渲完摘掉；program 是按 render context 在第一次用到的那次渲染里编译的，管线的带 mask，别人的不带。
+
 ## 目录
 
 - `src/`：模块；`src/__tests__/`：jest（`npm test`，ESM）。
