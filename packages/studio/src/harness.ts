@@ -90,6 +90,20 @@ export const report = async (): Promise<string> => {
   check('and does not rebuild', rebuildCount() === builds && getParticleSystem() === ps);
   patch('noise.strength', strengthBefore);
   await settle(150);
+  // One axis of a vec3 inside a list item — how the inspector writes a
+  // collision plane's position. The path names no field of its own; it must
+  // still reach the engine (it once did not: the plane only moved after it
+  // was switched off and on, which re-sent the whole list).
+  const planes = get('collisionPlanes') as any[] | undefined;
+  if (planes?.length) {
+    const x0 = planes[0].position.x;
+    calls.length = 0;
+    patch('collisionPlanes.0.position.x', x0 + 0.25);
+    await settle(50);
+    check('one axis of a collision plane goes through updateConfig', calls.length === 1 && Math.abs(calls[0].collisionPlanes?.[0]?.position?.x - (x0 + 0.25)) < 1e-9 && rebuildCount() === builds, `${calls.length} calls`);
+    patch('collisionPlanes.0.position.x', x0);
+    await settle(150);
+  }
   ps.updateConfig = original;
 
   const max = get('maxParticles');

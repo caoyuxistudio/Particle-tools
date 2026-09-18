@@ -1,5 +1,10 @@
 # @particle-tools/engine
 
+## Unreleased
+
+- `initAssets` takes an `onProgress(done, total)` (the studio's loading bar).
+- Fix: `fieldAt` answers a component of a compound field (`position.x` of a vec3, `.min` of a value, a bezier point) with the field itself; such paths used to name no field, so a front end applying changes by the field's level dropped them. jest +1 (24).
+
 ## 0.1.0 — 2026-09-17
 
 The engine as a package of its own (V2 plan §6 M4). Everything here was written inside `packages/editor` between 2026-09-11 and 2026-09-17 and moved on this day; the per-feature history is in `packages/editor/CLAUDE.md`.

@@ -826,7 +826,19 @@ export const allFieldPaths = (): string[] =>
  * item field `position` of the `forceFields` list. Null when the table has
  * nothing at that path.
  */
-export const fieldAt = (path: string): Field | null => {
+/** The primitives one field spans, relative to its path — what `coversLeaf` walks. */
+const SHAPE: Partial<Record<FieldKind, string[]>> = {
+  vec2: ['x', 'y'],
+  vec3: ['x', 'y', 'z'],
+  color: ['r', 'g', 'b'],
+  value: ['min', 'max', 'type', 'scale', 'bezierPoints'],
+  minmaxColor: ['min', 'max'],
+  curve: ['type', 'scale', 'bezierPoints', 'curveFunction'],
+  gradient: ['r', 'g', 'b', 'isActive'],
+};
+
+/** The field written at exactly `path`: a top-level one, or one of a list item's. */
+const fieldExactlyAt = (path: string): Field | null => {
   const flat = fieldsOf();
   const exact = flat.find((f) => f.path === path);
   if (exact) return exact;
@@ -840,15 +852,22 @@ export const fieldAt = (path: string): Field | null => {
   return null;
 };
 
-/** The primitives one field spans, relative to its path — what `coversLeaf` walks. */
-const SHAPE: Partial<Record<FieldKind, string[]>> = {
-  vec2: ['x', 'y'],
-  vec3: ['x', 'y', 'z'],
-  color: ['r', 'g', 'b'],
-  value: ['min', 'max', 'type', 'scale', 'bezierPoints'],
-  minmaxColor: ['min', 'max'],
-  curve: ['type', 'scale', 'bezierPoints', 'curveFunction'],
-  gradient: ['r', 'g', 'b', 'isActive'],
+/**
+ * The field a path belongs to. A component of a compound field — `position.x`
+ * of a vec3, `.min` of a value — answers with the field itself: the inspector
+ * patches compounds one component at a time, and a path that named no field
+ * meant a change the engine never heard of (a collision plane's position only
+ * took once the whole list was re-sent by toggling the plane).
+ */
+export const fieldAt = (path: string): Field | null => {
+  const direct = fieldExactlyAt(path);
+  if (direct) return direct;
+  const segs = path.split('.');
+  for (let i = segs.length - 1; i > 0; i--) {
+    const field = fieldExactlyAt(segs.slice(0, i).join('.'));
+    if (field) return SHAPE[field.kind]?.includes(segs[i]) ? field : null;
+  }
+  return null;
 };
 
 /** Whether a primitive path of a document falls under some field of the table. */

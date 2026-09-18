@@ -84,6 +84,22 @@ describe('schema shape', () => {
     expect(coversLeaf('forceFields.0.position.x')).toBe(true);
     expect(coversLeaf('emission.bursts.3.count.min')).toBe(true);
     expect(fieldAt('nothing.here')).toBeNull();
+  });
+
+  it('answers a component of a compound field with the field itself', () => {
+    // The inspector patches vec3s one axis at a time: a path that named no
+    // field was a change the engine never heard of.
+    expect(fieldAt('collisionPlanes.0.position.x')?.kind).toBe('vec3');
+    expect(fieldAt('collisionPlanes.0.position.x')?.change).toBe('live');
+    expect(fieldAt('collisionPlanes.3.normal.z')?.kind).toBe('vec3');
+    expect(fieldAt('forceFields.1.position.y')?.kind).toBe('vec3');
+    expect(fieldAt('noise.drift.x')?.path).toBe('noise.drift');
+    expect(fieldAt('particleColorInstance.offset.z')?.path).toBe('particleColorInstance.offset');
+    // Not a component of that kind, or of nothing at all.
+    expect(fieldAt('noise.drift.w')).toBeNull();
+    // Deeper paths stay with the field: a value's bezierPoints go several levels down.
+    expect(fieldAt('startSize.bezierPoints.1.y')?.path).toBe('startSize');
+    expect(fieldAt('collisionPlanes.0.bogus')).toBeNull();
     expect(coversLeaf('nothing.here')).toBe(false);
   });
 
