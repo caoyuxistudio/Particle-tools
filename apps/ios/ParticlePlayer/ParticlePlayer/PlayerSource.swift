@@ -10,7 +10,7 @@ import Foundation
 /// `-PlayerURL https://…` (Xcode scheme → Arguments), or a `PlayerURL`
 /// value in UserDefaults.
 enum PlayerSource {
-    static let defaultURL = URL(string: "https://caoyuxistudio.github.io/threeparticle-CAOModed/player/")!
+    static let defaultURL = URL(string: "https://caoyuxistudio.github.io/Particle-tools/player/")!
 
     static var url: URL {
         if let override = UserDefaults.standard.string(forKey: "PlayerURL"),

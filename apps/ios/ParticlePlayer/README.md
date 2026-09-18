@@ -1,7 +1,7 @@
 # Particle Player (iOS)
 
 The iPhone shell around the web player at
-`https://caoyuxistudio.github.io/threeparticle-CAOModed/player/`.
+`https://caoyuxistudio.github.io/Particle-tools/player/`.
 
 The piece itself is the web player — every line of rendering lives in
 `packages/editor` and is deployed with the site. This app only adds what an

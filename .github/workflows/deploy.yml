@@ -49,6 +49,36 @@ jobs:
       - name: Drop source maps
         run: rm -f packages/editor/public/build/*.map
 
+      # V2 — Particle Tools Studio — lives on the v2 branch and is served beside
+      # V1 at /Studio/ (V2-ARCHITECTURE.md §6 M4). Its build is self-contained (a
+      # relative base, its own copy of the pieces and assets), so it is built
+      # from that branch's checkout and dropped into V1's public folder.
+      - name: Check out the v2 branch
+        uses: actions/checkout@v4
+        with:
+          ref: v2
+          path: v2
+
+      - name: Build the particle library (v2)
+        working-directory: v2/packages/three-particles
+        run: |
+          npm install
+          npm run build
+
+      - name: Build the studio
+        working-directory: v2/packages/studio
+        run: |
+          npm install
+          npm run build
+
+      - name: Place the studio at /Studio/
+        run: |
+          rm -rf packages/editor/public/Studio packages/editor/public/studio
+          cp -R v2/packages/studio/dist packages/editor/public/Studio
+          # Pages is case-sensitive; the lowercase address forwards.
+          mkdir -p packages/editor/public/studio
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=../Studio/"><title>Particle Tools Studio</title><a href="../Studio/">Particle Tools Studio</a>' > packages/editor/public/studio/index.html
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
