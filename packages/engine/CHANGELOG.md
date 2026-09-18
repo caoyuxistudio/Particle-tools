@@ -10,6 +10,7 @@
 - schema: `particleColorInstance.colorTweak.blackPoint / gamma / brightness` (the library applies them after the hue–saturation–contrast matrix: × brightness, black point, gamma; live, flying particles recolour); saturation's range is 0–5; the group is `Emitter Source Image Tweak`.
 - Camera `postEffect` block (`post-grade.ts`): the finished picture graded in display space — the library's colour matrix (saturation, contrast, hue) as a mat3 uniform, then brightness and levels (black, white, gamma). The pipeline's last stage, after the feedback; key `ssr|ao|fb|pe`; every lever a uniform.
 - A video colour source is read at up to 1024 px on its long edge by default (was 512), and `sampleSize` goes to 2048: measured on the 1000² piece video, the worker spends ~9 ms a frame either way and the main thread nothing, while the piece's opening shows a third of the source — a 171-pixel-wide crop at 512.
+- schema: `maxParticles` up to 1 000 000, `emission.rateOverTime` up to 200 000. example-1-1 opens at 500 000 particles, 100 000 a second (was 200 000 / 50 000). Measured in a real window on the M3 Ultra, the piece with SSR and AO: 500k / 100k 58.7 fps (worst frame 35 ms), 1M / 200k 45 fps (worst 51 ms, 902k alive), no GPU errors; curveData at a million is 107 MiB of the 128 MiB binding (28 floats a particle), so a million is also about the ceiling.
 
 ## 0.1.0 — 2026-09-17
 

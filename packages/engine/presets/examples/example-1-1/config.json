@@ -45,9 +45,9 @@
   },
   "simulationSpace": "WORLD",
   "simulationBackend": "GPU",
-  "maxParticles": 200000,
+  "maxParticles": 500000,
   "emission": {
-    "rateOverTime": 50000,
+    "rateOverTime": 100000,
     "bursts": []
   },
   "shape": {

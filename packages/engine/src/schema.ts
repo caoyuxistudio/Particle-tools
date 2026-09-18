@@ -282,7 +282,7 @@ export const schema: Group[] = [
       value('startOpacity', 'startOpacity', 0, 1, 0.001, 'live'),
       num('gravity', 'gravity', -1, 1, 0.01, 'live'),
       enumF('simulationSpace', 'simulationSpace', opts(['LOCAL', 'WORLD']), 'live'),
-      int('maxParticles', 'maxParticles', 1000, 500000, 'structural', {
+      int('maxParticles', 'maxParticles', 1000, 1000000, 'structural', {
         hint: 'Sizes every GPU buffer.',
       }),
     ],
@@ -291,7 +291,7 @@ export const schema: Group[] = [
     id: 'emission',
     label: 'Emission',
     fields: [
-      int('emission.rateOverTime', 'rateOverTime', 1000, 100000, 'live'),
+      int('emission.rateOverTime', 'rateOverTime', 1000, 200000, 'live'),
       int('emission.rateOverDistance', 'rateOverDistance', 0, 100000, 'live', {
         hint: 'V1 caps this at 500 unless Enable big numbers is on.',
       }),
