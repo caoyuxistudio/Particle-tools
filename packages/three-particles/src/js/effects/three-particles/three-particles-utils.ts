@@ -371,6 +371,24 @@ export const createDefaultMeshTexture = (): THREE.CanvasTexture | null => {
 };
 
 /**
+ * How many seconds of travel a particle is stretched by, whichever renderer
+ * does the stretching: the MESH renderer along its heading in space
+ * (`renderer.mesh.velocityStretch`), the sprite renderers along it on screen
+ * (`renderer.points.velocityStretch`). 0 = none. TRAIL has its own ribbon.
+ */
+export const travelStretchSeconds = (renderer: {
+  rendererType?: string;
+  mesh?: { velocityStretch?: number };
+  points?: { velocityStretch?: number };
+}): number => {
+  const type = renderer.rendererType ?? 'POINTS';
+  if (type === 'MESH') return Math.max(0, renderer.mesh?.velocityStretch ?? 0);
+  if (type === 'POINTS' || type === 'INSTANCED')
+    return Math.max(0, renderer.points?.velocityStretch ?? 0);
+  return 0;
+};
+
+/**
  * Creates a default white circle texture using CanvasTexture.
  * @returns {THREE.CanvasTexture | null} The generated texture or null if context fails.
  */

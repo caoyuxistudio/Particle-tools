@@ -584,6 +584,25 @@ export type TrailConfig = {
 };
 
 /**
+ * Options of the sprite renderers (POINTS and INSTANCED).
+ */
+export type PointsConfig = {
+  /**
+   * Stretches each sprite on screen along its direction of travel by the
+   * distance it covers in this many seconds — a streak whose length follows
+   * the particle's own speed, its head on the particle, the rest trailing
+   * behind. The speed is the frame's actual displacement (curl noise, forces,
+   * all of it), as for {@link MeshConfig.velocityStretch}. 0 disables.
+   *
+   * GPU (WebGPU compute) backend only. A point primitive cannot be stretched,
+   * so while on, POINTS draws as the instanced billboard (same pixel size),
+   * and the per-particle `startFrame` slot carries the speed — texture sheet
+   * animation on a stretched sprite is off.
+   */
+  velocityStretch?: number;
+};
+
+/**
  * Configuration for the mesh particle renderer.
  * Controls which 3D geometry is used when `rendererType` is `RendererType.MESH`.
  *
@@ -736,6 +755,14 @@ export type Renderer = {
    * @see MeshConfig
    */
   mesh?: MeshConfig;
+
+  /**
+   * Options of the sprite renderers (`RendererType.POINTS` and
+   * `RendererType.INSTANCED`).
+   *
+   * @see PointsConfig
+   */
+  points?: PointsConfig;
 
   /**
    * Soft particles configuration.

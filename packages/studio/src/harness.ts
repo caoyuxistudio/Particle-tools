@@ -124,6 +124,42 @@ export const report = async (): Promise<string> => {
   patch('maxParticles', max);
   await settle(250);
 
+  // POINTS with a velocity stretch: the sprites draw as instanced quads the
+  // vertex stage can lengthen, the kernel's heading is bound, and it travels
+  // with the piece. The number beside a vec3 slider follows a drag (it once
+  // did not: the derived handed back the same object).
+  {
+    const type0 = get('renderer.rendererType');
+    const points0 = get('renderer.points');
+    patch('renderer.rendererType', 'POINTS');
+    patch('renderer.points.velocityStretch', 0.3);
+    await settle(900);
+    const inst: any = getParticleSystem()?.instance;
+    check('stretched POINTS draw as instanced quads with the heading bound', !!inst?.isMesh && !!inst.geometry?.isInstancedBufferGeometry && inst.material?.userData?.velocityStretch === 0.3 && 'instanceVelocity' in (inst.geometry?.attributes ?? {}), `${inst?.type}, stretch ${inst?.material?.userData?.velocityStretch}`);
+    check('and the stretch travels with the piece', JSON.parse(serialize()).renderer?.points?.velocityStretch === 0.3);
+    const group = [...document.querySelectorAll('.column *')].some((e) => e.children.length === 0 && (e.textContent ?? '').trim().toLowerCase() === 'points');
+    check('the inspector shows a Points group for the sprite renderers', group);
+    patch('renderer.points', points0);
+    patch('renderer.rendererType', type0);
+    await settle(900);
+    check('back on the piece\'s own renderer', getParticleSystem()?.instance !== inst);
+
+    const sub = [...document.querySelectorAll<HTMLElement>('.column .sub')].find((e) => /^drift/.test(e.textContent ?? ''));
+    const row = sub?.nextElementSibling;
+    const range = row?.querySelector<HTMLInputElement>('input[type=range]');
+    const num = row?.querySelector<HTMLInputElement>('input[type=number]');
+    if (range && num) {
+      const x0 = num.value;
+      range.value = '0.5';
+      range.dispatchEvent(new Event('input', { bubbles: true }));
+      await settle(100);
+      check('the number beside a vec3 slider follows the drag', num.value === '0.5', `${x0} -> ${num.value}`);
+      range.value = x0;
+      range.dispatchEvent(new Event('input', { bubbles: true }));
+      await settle(150);
+    } else check('the number beside a vec3 slider follows the drag', false, 'no drift row');
+  }
+
   // A control, not a call: the number input patches the store.
   const input = document.querySelector<HTMLInputElement>('[data-path="noise.frequency"] input[type=number]');
   const freqBefore = get('noise.frequency');

@@ -5,6 +5,7 @@
 - `initAssets` takes an `onProgress(done, total)` (the studio's loading bar).
 - Fix: `fieldAt` answers a component of a compound field (`position.x` of a vec3, `.min` of a value, a bezier point) with the field itself; such paths used to name no field, so a front end applying changes by the field's level dropped them. jest +1 (24).
 - schema: `noise.direction.x / y / z` — per world axis the curl field pushes both ways (default) or only towards + / −. The library folds that component of the displacement onto the chosen side (|flow| × sign): a vec3 uniform in the GPU kernel (live, no rebuild), the same fold on the CPU port; legacy (non-curl) noise is untouched. Only a one-way axis is written into a saved piece.
+- schema: `renderer.points.velocityStretch` (seconds of travel; a `Points` group shown for POINTS and INSTANCED). The library stretches each sprite on screen along its heading by speed × seconds, head on the particle: the kernel's travel direction and speed (the same ones the MESH stretch reads), the instanced billboard's vertex stage, and POINTS promoted to that billboard while the stretch is on (a point primitive cannot be stretched; same pixel size). GPU compute only; sprite rotation and sheet animation are off on a stretched sprite.
 
 ## 0.1.0 — 2026-09-17
 

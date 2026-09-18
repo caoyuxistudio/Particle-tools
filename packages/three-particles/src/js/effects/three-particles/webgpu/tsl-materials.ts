@@ -7,7 +7,10 @@
  * @module
  */
 import { RendererType } from '../three-particles-enums.js';
-import { isLifeTimeCurve } from '../three-particles-utils.js';
+import {
+  isLifeTimeCurve,
+  travelStretchSeconds,
+} from '../three-particles-utils.js';
 import { TOUCH_WAKE_DATA_SIZE } from '../touch-wake.js';
 import { COLLISION_PLANE_DATA_SIZE } from './compute-collision-planes.js';
 import { FORCE_FIELD_DATA_SIZE } from './compute-force-fields.js';
@@ -77,7 +80,8 @@ export function createTSLParticleMaterial(
       return createInstancedBillboardTSLMaterial(
         sharedUniforms,
         rendererConfig,
-        gpuCompute
+        gpuCompute,
+        gpuCompute ? velocityStretch : 0
       );
     case RendererType.MESH:
       return createMeshParticleTSLMaterial(
@@ -192,12 +196,10 @@ export function createComputePipeline(
       !!normalizedConfig.particleColorInstance?.isActive &&
       !!normalizedConfig.particleColorInstance?.useLuminanceForNoise,
     trackTravelDirection:
-      normalizedConfig.renderer.rendererType === RendererType.MESH &&
-      (!!normalizedConfig.renderer.mesh?.alignToVelocity ||
-        (normalizedConfig.renderer.mesh?.velocityStretch ?? 0) > 0),
-    trackTravelSpeed:
-      normalizedConfig.renderer.rendererType === RendererType.MESH &&
-      (normalizedConfig.renderer.mesh?.velocityStretch ?? 0) > 0,
+      (normalizedConfig.renderer.rendererType === RendererType.MESH &&
+        !!normalizedConfig.renderer.mesh?.alignToVelocity) ||
+      travelStretchSeconds(normalizedConfig.renderer) > 0,
+    trackTravelSpeed: travelStretchSeconds(normalizedConfig.renderer) > 0,
     forceFields: forceFieldCount > 0,
     collisionPlanes: collisionPlaneCount > 0,
     touchWake,

@@ -94,8 +94,12 @@ export function createInstancedBillboardTSLMaterial(
     depthTest: boolean;
     depthWrite: boolean;
   },
-  gpuCompute = false
+  gpuCompute = false,
+  velocityStretch = 0
 ): MeshBasicNodeMaterial {
+  // Stretching reads the heading and the speed the compute kernel records,
+  // so it exists on the GPU path only.
+  const stretch = gpuCompute && velocityStretch > 0 ? velocityStretch : 0;
   const u = createParticleUniforms(sharedUniforms);
 
   // ── viewportHeight uniform ─────────────────────────────────────────────────
@@ -129,6 +133,8 @@ export function createInstancedBillboardTSLMaterial(
   // GPU compute uses packed vec4 buffers; CPU uses individual attributes
   const aParticleState = gpuCompute ? attribute('instanceParticleState') : null;
   const aStartValues = gpuCompute ? attribute('instanceStartValues') : null;
+  /** Bound only while stretching: .w carries the heading's azimuth. */
+  const aVelocity = stretch > 0 ? attribute('instanceVelocity') : null;
   // CPU fallback: individual attributes
   const aSize = gpuCompute ? null : attribute('instanceSize');
   const aLifetime = gpuCompute ? null : attribute('instanceLifetime');
@@ -189,8 +195,11 @@ export function createInstancedBillboardTSLMaterial(
         // particleState: x=lifetime, y=size, z=rotation, w=startFrame
         vLifetime.assign(aParticleState!.x);
         vStartLifetime.assign(aStartValues!.x);
-        vRotation.assign(aParticleState!.z);
-        vStartFrame.assign(aParticleState!.w);
+        // A streak lies along its heading; spinning the sprite inside the
+        // lengthened quad would shear it.
+        vRotation.assign(stretch > 0 ? float(0) : aParticleState!.z);
+        // While stretching, .w carries the speed, not a start frame.
+        vStartFrame.assign(stretch > 0 ? float(0) : aParticleState!.w);
       } else {
         vLifetime.assign(aLifetime!);
         vStartLifetime.assign(aStartLifetime!);
@@ -229,8 +238,45 @@ export function createInstancedBillboardTSLMaterial(
 
       // Billboard: expand the quad in view space (no rotation here; rotation is
       // applied to UVs in the fragment stage, identical to the POINTS approach)
-      mvPosition.x.addAssign(positionLocal.x.mul(perspectiveSize));
-      mvPosition.y.addAssign(positionLocal.y.mul(perspectiveSize));
+      if (stretch > 0) {
+        // A streak on screen: the quad's x axis turns to the heading as the
+        // camera sees it and grows by the distance travelled in `stretch`
+        // seconds (foreshortened with the heading, so a particle coming
+        // straight at the camera stays a dot). The head stays on the
+        // particle; the extra length trails behind.
+        // Heading: two spherical angles about +Y the kernel keeps in the w of
+        // the position and velocity buffers; speed (u/s) in particleState.w.
+        const theta = aInstanceOffset.w;
+        const phi = aVelocity!.w;
+        const sinT = sin(theta);
+        const heading = vec4(
+          sinT.mul(cos(phi)),
+          cos(theta),
+          sinT.mul(sin(phi)),
+          0.0
+        );
+        const headingView = modelViewMatrix.mul(heading).xy.toVar();
+        const onScreen = length(headingView).toVar();
+        const along = vec2(1.0, 0.0).toVar();
+        If(onScreen.greaterThan(1e-5), () => {
+          along.assign(headingView.div(onScreen));
+        });
+        const across = vec2(along.y.negate(), along.x);
+        const streak = aParticleState!.w.mul(float(stretch)).mul(onScreen);
+        const alongOffset = positionLocal.x
+          .mul(perspectiveSize.add(streak))
+          .sub(streak.mul(0.5));
+        const acrossOffset = positionLocal.y.mul(perspectiveSize);
+        mvPosition.x.addAssign(
+          along.x.mul(alongOffset).add(across.x.mul(acrossOffset))
+        );
+        mvPosition.y.addAssign(
+          along.y.mul(alongOffset).add(across.y.mul(acrossOffset))
+        );
+      } else {
+        mvPosition.x.addAssign(positionLocal.x.mul(perspectiveSize));
+        mvPosition.y.addAssign(positionLocal.y.mul(perspectiveSize));
+      }
 
       vViewZ.assign(mvPosition.z.negate());
 
@@ -325,6 +371,8 @@ export function createInstancedBillboardTSLMaterial(
   material.depthWrite = rendererConfig.depthWrite;
   material.toneMapped = false;
   material.fog = false;
+  // For whoever needs to know what this material was built with.
+  material.userData.velocityStretch = stretch;
 
   // vertexNode replaces the default clip-space position.  For instanced
   // billboards we compute the full MVP ourselves (view-space billboard offset +

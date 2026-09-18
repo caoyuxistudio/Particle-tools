@@ -775,6 +775,16 @@ export const schema: Group[] = [
     ],
   },
   {
+    id: 'points',
+    label: 'Points',
+    when: (d) => ['POINTS', 'INSTANCED'].includes(d.renderer?.rendererType ?? 'POINTS'),
+    fields: [
+      num('renderer.points.velocityStretch', 'velocity stretch (s of travel)', 0, 1, 0.005, 'rebuild', {
+        hint: 'Each sprite becomes a streak along its travel, as long as the distance it covers in this many seconds; the head stays on the particle. GPU only. While on, POINTS draws as instanced quads (same size) and sprite-sheet animation is off.',
+      }),
+    ],
+  },
+  {
     id: 'mesh',
     label: 'Mesh',
     when: isMesh,
@@ -918,6 +928,7 @@ export const editorAdditions = (): Doc => ({
     rendererType: 'POINTS',
     // V1 writes the name; the library's default is the numeric constant 1.
     blending: 'THREE.NormalBlending',
+    points: { velocityStretch: 0 },
     mesh: {
       geometryType: 'BOX',
       scale: { x: 1, y: 1, z: 1 },

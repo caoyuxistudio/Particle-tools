@@ -6,6 +6,8 @@
 - Fix: a piece saved in this browser could not be loaded back — the saved list was a deep `$state` proxy and `structuredClone` threw `DataCloneError`; the list is `$state.raw` now and a failed load says so. Harness +2 (55).
 - Fix: editing one axis of a vec3 (a collision plane's position or normal, a force field's position, noise drift, the colour source's offset, the transform) never reached the engine — the component path named no field, so `applyChange` answered `none`; a plane only moved once toggling it re-sent the list. Fixed in the engine's `fieldAt`. Harness +1 (56).
 - Noise: `direction x / y / z` (BOTH / POSITIVE / NEGATIVE) under the curl noise group, rendered from the schema; live. Harness +2 (58).
+- Fix: the number beside a vec3 / colour / min–max slider did not follow a drag (noise drift, influence, …) — the value is written one component at a time into the same object, and a `$derived` that returns the same object is unchanged; FieldView now derives a shallow copy per revision.
+- Points group (POINTS and INSTANCED): `velocity stretch (s of travel)` — sprites become streaks along their travel. Harness +5 (63).
 
 ## Unreleased
 

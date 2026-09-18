@@ -940,3 +940,24 @@ describe('calculateRandomPositionAndVelocityOnRectangle', () => {
     }
   });
 });
+
+describe('travelStretchSeconds', () => {
+  it('reads the stretch of the renderer that is drawing', async () => {
+    const { travelStretchSeconds } =
+      await import('../js/effects/three-particles/three-particles-utils.js');
+    const both = {
+      mesh: { velocityStretch: 0.4 },
+      points: { velocityStretch: 0.1 },
+    };
+    expect(travelStretchSeconds({ rendererType: 'MESH', ...both })).toBe(0.4);
+    expect(travelStretchSeconds({ rendererType: 'POINTS', ...both })).toBe(0.1);
+    expect(travelStretchSeconds({ rendererType: 'INSTANCED', ...both })).toBe(
+      0.1
+    );
+    expect(travelStretchSeconds({ rendererType: 'TRAIL', ...both })).toBe(0);
+    // No renderer type is POINTS; no block, or a negative value, is none.
+    expect(travelStretchSeconds(both)).toBe(0.1);
+    expect(travelStretchSeconds({ rendererType: 'POINTS' })).toBe(0);
+    expect(travelStretchSeconds({ points: { velocityStretch: -1 } })).toBe(0);
+  });
+});

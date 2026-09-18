@@ -286,4 +286,30 @@ describe('createInstancedBillboardTSLMaterial', () => {
       );
     });
   });
+
+  // ── Velocity stretch ───────────────────────────────────────────────────────
+
+  describe('velocity stretch', () => {
+    it('builds with a streak on the GPU path and says so', () => {
+      const mat = createInstancedBillboardTSLMaterial(
+        makeSharedUniforms(),
+        makeRendererConfig(),
+        true,
+        0.3
+      );
+      expect(mat).toBeInstanceOf(MeshBasicNodeMaterial);
+      expect(mat.vertexNode).toBeTruthy();
+      expect(mat.userData.velocityStretch).toBe(0.3);
+    });
+
+    it('ignores the streak without GPU compute: nothing there measures the travel', () => {
+      const mat = createInstancedBillboardTSLMaterial(
+        makeSharedUniforms(),
+        makeRendererConfig(),
+        false,
+        0.3
+      );
+      expect(mat.userData.velocityStretch).toBe(0);
+    });
+  });
 });

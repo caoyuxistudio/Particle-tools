@@ -196,6 +196,7 @@ import {
   calculateValue,
   getCurveFunctionFromConfig,
   isLifeTimeCurve,
+  travelStretchSeconds,
   createDefaultMeshTexture,
   createDefaultParticleTexture,
 } from './three-particles-utils.js';
@@ -1311,7 +1312,7 @@ export const createParticleSystem = (
 
   const useTrail = renderer.rendererType === RendererType.TRAIL;
   const useMesh = renderer.rendererType === RendererType.MESH;
-  const useInstancing =
+  const asksForInstancing =
     !useTrail && !useMesh && renderer.rendererType === RendererType.INSTANCED;
   // TSL materials whenever the factory is registered (a WebGPURenderer wants
   // NodeMaterials even for the CPU simulation); GPU compute when the factory
@@ -1332,6 +1333,13 @@ export const createParticleSystem = (
     gpuComputeAvailable &&
     !!_tslMaterialFactory?.createTSLGpuTrailMaterial;
   const useGPUCompute = gpuComputeAvailable && (!useTrail || useGPUTrail);
+  // A sprite stretched along its travel (renderer.points.velocityStretch):
+  // the kernel measures the travel, so GPU only; and a point primitive cannot
+  // be stretched, so POINTS draws as the instanced billboard — the same pixel
+  // size, a quad the vertex stage can lengthen.
+  const spriteStretch =
+    useGPUCompute && !useTrail && !useMesh ? travelStretchSeconds(renderer) : 0;
+  const useInstancing = asksForInstancing || spriteStretch > 0;
   const useInstancedAttributes = useInstancing || useMesh || useGPUTrail;
 
   // Trail config defaults
@@ -1562,7 +1570,9 @@ export const createParticleSystem = (
         )
       : useTSL
         ? _tslMaterialFactory!.createTSLParticleMaterial(
-            renderer.rendererType ?? RendererType.POINTS,
+            spriteStretch > 0
+              ? RendererType.INSTANCED
+              : (renderer.rendererType ?? RendererType.POINTS),
             sharedUniforms,
             rendererConfig,
             useGPUCompute,
@@ -1571,7 +1581,7 @@ export const createParticleSystem = (
             renderer.mesh?.emissive ?? 0,
             renderer.mesh?.roughness,
             renderer.mesh?.metalness,
-            renderer.mesh?.velocityStretch ?? 0,
+            useMesh ? (renderer.mesh?.velocityStretch ?? 0) : spriteStretch,
             meshExtentZ
           )
         : new THREE.ShaderMaterial({
@@ -1736,6 +1746,7 @@ export const createParticleSystem = (
     // binding it unconditionally would spend a vertex buffer slot for nothing.
     if (
       useGPUTrail ||
+      spriteStretch > 0 ||
       (useMesh &&
         (renderer.mesh?.alignToVelocity ||
           (renderer.mesh?.velocityStretch ?? 0) > 0))
