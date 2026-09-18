@@ -486,6 +486,19 @@ export const report = async (): Promise<string> => {
       check('and deleting it takes it off the list', ![...document.querySelectorAll('.column .row .name')].some((b) => b.textContent === name));
     } else check('a piece saved in this browser loads back', false, 'no save controls');
   }
+  // A thumbnail is the output camera's picture at the camera's own shape, and
+  // the cards take whatever shape their thumbnail has.
+  {
+    const w: any = (window as any).__world;
+    const blob: Blob | null = await w.captureOutput(256);
+    const bitmap = blob ? await createImageBitmap(blob) : null;
+    const aspect = w.getOutputCamera()?.userData?.presetAspect || w.getOutputCamera()?.aspect || 0;
+    check('a captured thumbnail has the camera\'s shape', !!bitmap && bitmap.width === 256 && Math.abs(bitmap.width / bitmap.height - aspect) < 0.02, bitmap ? `${bitmap.width}×${bitmap.height} for aspect ${aspect.toFixed(3)}` : 'no image');
+    const names = [...document.querySelectorAll('.column .card span')].map((e) => e.textContent?.trim());
+    check('example-1-2 is on the list', names.includes('example-1-2'), names.join(', '));
+    const square = await fetch('./examples/example-1-2/preview.webp').then((r) => r.blob()).then(createImageBitmap).catch(() => null);
+    check('and its thumbnail is square, like its camera', !!square && square.width === square.height, square ? `${square.width}×${square.height}` : 'missing');
+  }
   const sources = document.querySelectorAll('.column .item .thumb').length;
   check('the textures panel lists the colour sources', sources >= 2, `${sources} entries`);
   const axesBefore = get('_editorData.showWorldAxes');

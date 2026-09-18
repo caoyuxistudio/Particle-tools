@@ -150,23 +150,27 @@
   .note {
     padding: var(--sp-2) var(--sp-3);
   }
+  /* Thumbnails keep their camera's shape — a square camera, a square picture —
+     so the cards are laid out in two columns that each fill downwards
+     (masonry by CSS columns) rather than in rows of one fixed height. */
   .grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--sp-2);
+    column-count: 2;
+    column-gap: var(--sp-2);
   }
   .card {
     height: auto;
+    width: 100%;
     padding: var(--sp-1);
+    margin: 0 0 var(--sp-2);
     display: flex;
     flex-direction: column;
     gap: var(--sp-1);
     align-items: stretch;
+    break-inside: avoid;
   }
   .card img {
     width: 100%;
-    aspect-ratio: 9 / 16;
-    object-fit: cover;
+    height: auto;
     background: var(--panel-2);
     display: block;
   }

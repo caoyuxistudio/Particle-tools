@@ -15,4 +15,5 @@ assets4test/
 # Copies of packages/engine/presets made by sync-presets.mjs; the presets folder is the source
 packages/editor/public/assets/
 packages/editor/public/examples/example-1-1/
+packages/editor/public/examples/example-1-2/
 packages/editor/public/examples/wip-test-2/

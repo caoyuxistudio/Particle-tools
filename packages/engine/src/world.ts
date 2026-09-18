@@ -846,6 +846,7 @@ export const createWorld = async (targetQuery: string): Promise<THREE.Scene> => 
     getPostEffectSettings,
     setPreviewZoom,
     getPreviewZoom,
+    captureOutput,
     ensurePostPipeline,
     setRenderScale,
     getRenderScale,
@@ -1812,6 +1813,60 @@ export const getRendererDomElement = (): HTMLCanvasElement => renderer.domElemen
 export const getOrbitControls = (): OrbitControls => controls;
 export const getDepthTexture = (): THREE.DepthTexture | null =>
   depthRenderTarget?.depthTexture ?? null;
+
+/**
+ * The output camera's picture as an image file, at the camera's own shape — a
+ * square camera gives a square picture — and `width` pixels wide: what a
+ * piece's thumbnail is made of. Rendered on its own offscreen target through
+ * the same pipeline the preview uses (reflections, occlusion, trails, grade),
+ * read back as linear half floats and encoded to sRGB here; the canvas is not
+ * involved, so it works whatever is on screen. The width is kept a multiple
+ * of 64: a readback whose rows are not 256-byte aligned comes back sheared.
+ */
+let captureTarget: THREE.RenderTarget | null = null;
+export const captureOutput = async (width = 512, type = 'image/webp', quality = 0.9): Promise<Blob | null> => {
+  if (!outputCamera || presenting) return null;
+  const tw = Math.max(64, Math.round(width / 64) * 64);
+  const th = Math.max(1, Math.round(tw / Math.max(0.01, outputAspect())));
+  if (!captureTarget) {
+    captureTarget = new THREE.RenderTarget(tw, th, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(tw, th) });
+  } else if (captureTarget.width !== tw || captureTarget.height !== th) {
+    captureTarget.setSize(tw, th);
+  }
+  const ratio = renderer.getPixelRatio();
+  setBackdropFor('camera');
+  renderer.setScissorTest(false);
+  renderer.setRenderTarget(captureTarget);
+  if (postEnabled()) {
+    if (pipelineStale(outputCamera)) buildSsrPipeline(outputCamera);
+    withDisplaySize(tw / ratio, th / ratio, renderPost);
+  } else {
+    renderer.render(scene, outputCamera);
+  }
+  renderer.setRenderTarget(null);
+
+  const raw = (await renderer.readRenderTargetPixelsAsync(captureTarget, 0, 0, tw, th)) as unknown as Uint16Array | Float32Array;
+  const half = raw instanceof Uint16Array;
+  const canvas = document.createElement('canvas');
+  canvas.width = tw;
+  canvas.height = th;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  const image = context.createImageData(tw, th);
+  const encode = (linear: number): number => {
+    const v = Math.min(1, Math.max(0, linear));
+    return Math.round((v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055) * 255);
+  };
+  for (let i = 0; i < tw * th * 4; i += 4) {
+    for (let c = 0; c < 3; c += 1) {
+      const v = half ? THREE.DataUtils.fromHalfFloat(raw[i + c]) : raw[i + c];
+      image.data[i + c] = encode(v);
+    }
+    image.data[i + 3] = 255;
+  }
+  context.putImageData(image, 0, 0);
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), type, quality));
+};
 
 export const captureScreenshot = (): void => {
   // Render the current frame

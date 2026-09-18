@@ -31,6 +31,7 @@ import {
   setStatsContainer,
   setViewportInsets,
   setSteppedFrameDelta,
+  captureOutput,
   type ViewportInsetsProvider,
 } from '@particle-tools/engine/world';
 import { createTimeline, defaultTimelineSettings, sanitizeTimelineSettings, timecode, type TimelineSettings } from '@particle-tools/engine/timeline';
@@ -480,6 +481,16 @@ export { schema, getOutputCamera, syncFurniture, isPresenting, resetCamera };
 // TEMP DEBUG — the studio's seam for its harness, like V1's window.editor.
 (window as any).__studio = {
   doc,
+  // A piece's thumbnail, at its camera's shape: a data URL to save as preview.webp.
+  capturePreview: async (width = 512): Promise<string | null> => {
+    const blob = await captureOutput(width);
+    if (!blob) return null;
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsDataURL(blob);
+    });
+  },
   play,
   pause,
   stop,
