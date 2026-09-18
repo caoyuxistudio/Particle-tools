@@ -35,7 +35,7 @@ src/
 
 ## 现状与下一步（2026-09-18）
 
-M0–M4 都完成了（判据和每步的补记在 §6）。时间线：2026-09-17 M0 边界 → M1 schema → M2 壳与检视器 → M3 对等 → M4 引擎搬进 `packages/engine`、预设随包、文档按包拆；同日上线到 `/Studio/`、仓库改名 Particle-tools、产品名 Particle Tools Studio；2026-09-18 v2 合进 main，从此只有 main 一条线，**默认开发都在这个包和 `packages/engine`**。harness `__st.report()` 51 条、引擎 jest 23 条、边界 0 违规、V1 的真实窗口套件 371/372（差的那条是预览宽度，V1 main 上一样）。
+M0–M4 都完成了（判据和每步的补记在 §6）。时间线：2026-09-17 M0 边界 → M1 schema → M2 壳与检视器 → M3 对等 → M4 引擎搬进 `packages/engine`、预设随包、文档按包拆；同日上线到 `/Studio/`、仓库改名 Particle-tools、产品名 Particle Tools Studio；2026-09-18 v2 合进 main，从此只有 main 一条线，**默认开发都在这个包和 `packages/engine`**。harness `__st.report()` 55 条（含加载条和本地保存的读回，2026-09-18）、引擎 jest 23 条、边界 0 违规、V1 的真实窗口套件 371/372（差的那条是预览宽度，V1 main 上一样）。
 
 **没做、记着的**（从 §6 各处汇总）：
 - Player 显示窗口（V1 的 linked 模式，`player-window.ts`）没接；桌面上一边调一边看的路只有演示模式。
@@ -44,7 +44,6 @@ M0–M4 都完成了（判据和每步的补记在 §6）。时间线：2026-09-
 - 手机：760px 以下的单列布局只在浏览器的手机模拟里看过；iPhone 真机、主屏幕模式、theme-color 没验。
 - 预览窗的语义作者没定：现在拖边缘改大小、拖内部移动，没有把手。
 - 账号与云端作品库（§8 补记的 BaaS 方向）没开始；`saved-configs.ts` 是要换的那一层。
-- 启动加载条：2026-09-18 在做（`src/app/boot-progress.ts`、`index.html` 里内联的条，V1 也有一份），写这句时还没提交。
 - 弹墙的手感作者还不满意（V1 记录「还欠的账」第一条），是引擎的事，改了两边都受益。
 
 **V1 从此怎么对待**：不看、不改，除非作者点名。V1 的 player 还在用（iOS 壳、`/player/`），它 import 的就是引擎，改引擎时 `npm run check:boundary` 会顺带查它。
