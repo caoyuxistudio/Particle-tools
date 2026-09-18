@@ -18,6 +18,9 @@ import {
   mix,
   uniform,
   convertToTexture,
+  texture as textureNode,
+  uv,
+  floor,
 } from 'three/tsl';
 import {
   particleFeedback,
@@ -265,6 +268,35 @@ let postProcessing: PostProcessing | null = null;
  */
 let previewTarget: THREE.RenderTarget | null = null;
 let previewBlit: QuadMesh | null = null;
+/**
+ * The preview's magnifier (the mouse wheel over the preview window): 1 shows
+ * the whole picture, up to PREVIEW_ZOOM_MAX shows that fraction of it, pixel
+ * for pixel — nothing is rendered finer, the pixels just get bigger, which is
+ * the point: what this render size actually resolves. The centre is in the
+ * picture's uv (origin bottom-left).
+ */
+const PREVIEW_ZOOM_MAX = 5;
+let previewZoom = 1;
+const previewZoomUniform = uniform(1);
+const previewZoomCentre = uniform(new THREE.Vector2(0.5, 0.5));
+const previewTexelSize = uniform(new THREE.Vector2(1, 1));
+
+/** Sets the magnifier, keeping the window inside the picture. */
+export const setPreviewZoom = (zoom: number, centre?: { u: number; v: number }): void => {
+  previewZoom = THREE.MathUtils.clamp(zoom, 1, PREVIEW_ZOOM_MAX);
+  const half = 0.5 / previewZoom;
+  const c = centre ?? { u: previewZoomCentre.value.x, v: previewZoomCentre.value.y };
+  previewZoomCentre.value.set(
+    THREE.MathUtils.clamp(c.u, half, 1 - half),
+    THREE.MathUtils.clamp(c.v, half, 1 - half)
+  );
+  previewZoomUniform.value = previewZoom;
+};
+export const getPreviewZoom = (): { zoom: number; u: number; v: number } => ({
+  zoom: previewZoom,
+  u: previewZoomCentre.value.x,
+  v: previewZoomCentre.value.y,
+});
 let ssrPass: any = null;
 /** The camera the current pipeline was compiled for; rebuilt when it changes. */
 let pipelineCamera: THREE.PerspectiveCamera | null = null;
@@ -543,8 +575,16 @@ const ensurePreviewTarget = (w: number, h: number): THREE.RenderTarget => {
     previewTarget.setSize(tw, th);
   }
 
+  previewTexelSize.value.set(tw, th);
   if (!previewBlit) {
-    const material = new MeshBasicNodeMaterial({ map: previewTarget.texture });
+    // The target's texture through a magnifier: the window shows 1/zoom of the
+    // picture around a centre, each texel read at its own centre so a
+    // magnified pixel is a flat square — the pixels as rendered, not a
+    // resample of them. At zoom 1 that is the picture itself.
+    const material = new MeshBasicNodeMaterial();
+    const zoomed = uv().sub(0.5).div(previewZoomUniform).add(previewZoomCentre);
+    const snapped = floor(zoomed.mul(previewTexelSize)).add(0.5).div(previewTexelSize);
+    material.colorNode = textureNode(previewTarget.texture, snapped);
     material.depthTest = false;
     material.depthWrite = false;
     previewBlit = new QuadMesh(material);
@@ -801,6 +841,8 @@ export const createWorld = async (targetQuery: string): Promise<THREE.Scene> => 
     getFeedbackSettings,
     setPostEffectSettings,
     getPostEffectSettings,
+    setPreviewZoom,
+    getPreviewZoom,
     ensurePostPipeline,
     setRenderScale,
     getRenderScale,
@@ -1412,6 +1454,31 @@ const overPreviewHandle = (px: number, py: number): boolean => {
  */
 const installPreviewResize = (canvas: HTMLCanvasElement): void => {
   let drag: { hit: NonNullable<PreviewHit>; start: { x: number; y: number }; rect: { x: number; y: number; w: number; h: number }; offset: { dx: number; dy: number }; ratio: number } | null = null;
+  /** The middle button inside the preview: drag pans the magnified picture, a click without a drag resets it. */
+  let pan: { start: { x: number; y: number }; centre: { u: number; v: number }; moved: boolean } | null = null;
+
+  // The wheel over the preview magnifies it about the pointer; anywhere else
+  // it is the orbit controls'. Capture, so it is decided before they see it.
+  canvas.addEventListener(
+    'wheel',
+    (event) => {
+      const point = toCanvasSpace(event as unknown as PointerEvent);
+      const hit = hitPreview(point.x, point.y);
+      if (!hit) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const { x, y, w, h } = previewRect();
+      // Where the pointer is in the window, and the picture point under it.
+      const a = THREE.MathUtils.clamp((point.x - x) / w, 0, 1) - 0.5;
+      const b = 0.5 - THREE.MathUtils.clamp((point.y - y) / h, 0, 1);
+      const before = getPreviewZoom();
+      const under = { u: before.u + a / before.zoom, v: before.v + b / before.zoom };
+      const zoom = THREE.MathUtils.clamp(before.zoom * Math.exp(-event.deltaY * 0.002), 1, PREVIEW_ZOOM_MAX);
+      // The same picture point stays under the pointer.
+      setPreviewZoom(zoom, { u: under.u - a / zoom, v: under.v - b / zoom });
+    },
+    { capture: true, passive: false }
+  );
 
   canvas.addEventListener(
     'pointerdown',
@@ -1419,6 +1486,19 @@ const installPreviewResize = (canvas: HTMLCanvasElement): void => {
       const point = toCanvasSpace(event);
       const hit = hitPreview(point.x, point.y);
       if (!hit) return;
+      if (event.button === 1) {
+        const z = getPreviewZoom();
+        pan = { start: point, centre: { u: z.u, v: z.v }, moved: false };
+        controls.enabled = false;
+        try {
+          canvas.setPointerCapture(event.pointerId);
+        } catch {
+          /* a synthetic pointer has nothing to capture */
+        }
+        event.stopPropagation();
+        event.preventDefault();
+        return;
+      }
       drag = { hit, start: point, rect: previewRect(), offset: { ...previewOffset }, ratio: previewWidthRatio };
       controls.enabled = false;
       try {
@@ -1434,6 +1514,16 @@ const installPreviewResize = (canvas: HTMLCanvasElement): void => {
 
   canvas.addEventListener('pointermove', (event) => {
     const point = toCanvasSpace(event);
+    if (pan) {
+      const { w, h } = previewRect();
+      const dx = point.x - pan.start.x;
+      const dy = point.y - pan.start.y;
+      if (Math.abs(dx) + Math.abs(dy) > 2) pan.moved = true;
+      // The picture follows the hand: a drag to the right shows what is left of it.
+      setPreviewZoom(previewZoom, { u: pan.centre.u - dx / w / previewZoom, v: pan.centre.v + dy / h / previewZoom });
+      event.stopPropagation();
+      return;
+    }
     if (!drag) {
       const hit = hitPreview(point.x, point.y);
       previewHover = hit ? (hit.inside ? 'inside' : 'edge') : null;
@@ -1472,6 +1562,18 @@ const installPreviewResize = (canvas: HTMLCanvasElement): void => {
   });
 
   const end = (event: PointerEvent): void => {
+    if (pan) {
+      // A middle click that went nowhere: back to the whole picture.
+      if (!pan.moved) setPreviewZoom(1, { u: 0.5, v: 0.5 });
+      pan = null;
+      controls.enabled = true;
+      try {
+        canvas.releasePointerCapture?.(event.pointerId);
+      } catch {
+        /* see above */
+      }
+      return;
+    }
     if (!drag) return;
     drag = null;
     controls.enabled = true;
@@ -1507,13 +1609,21 @@ const renderPreview = (): void => {
   const previousClear = renderer.getClearColor(new THREE.Color());
   const previousAlpha = renderer.getClearAlpha();
 
-  // Reflections and occlusion are resolved offscreen first, with no scissor in force.
-  if (postEnabled()) {
-    if (pipelineStale(outputCamera)) buildSsrPipeline(outputCamera);
+  // Reflections and occlusion are resolved offscreen first, with no scissor in
+  // force. A magnified preview goes the same way even with no post stage on:
+  // magnifying is reading the rendered pixels back bigger, so they have to be
+  // in a texture first.
+  const offscreen = postEnabled() || previewZoom > 1;
+  if (offscreen) {
     const target = ensurePreviewTarget(w, h);
     renderer.setScissorTest(false);
     renderer.setRenderTarget(target);
-    withDisplaySize(w, h, renderPost);
+    if (postEnabled()) {
+      if (pipelineStale(outputCamera)) buildSsrPipeline(outputCamera);
+      withDisplaySize(w, h, renderPost);
+    } else {
+      renderer.render(scene, outputCamera);
+    }
     renderer.setRenderTarget(null);
   }
 
@@ -1529,7 +1639,7 @@ const renderPreview = (): void => {
   renderer.setScissor(x, y, w, h);
   renderer.setViewport(x, y, w, h);
   renderer.setClearColor(0x000000, 1);
-  if (postEnabled() && previewBlit) {
+  if (offscreen && previewBlit) {
     previewBlit.render(renderer);
   } else {
     renderer.render(scene, outputCamera);

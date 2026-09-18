@@ -338,6 +338,33 @@ export const report = async (): Promise<string> => {
     const r2 = w2.previewRect();
     check('dragging the left edge widens it and keeps the right edge', r2.w > r1.w && Math.abs(r2.x + r2.w - (r1.x + r1.w)) <= 1, `w ${r1.w} -> ${r2.w}, right ${r1.x + r1.w} -> ${r2.x + r2.w}`);
     check('the grip is gone', typeof w2.getPreviewOffset === 'function' && !('overPreviewHandle' in w2 && false));
+    // The magnifier: the wheel over the preview zooms about the pointer (to 5×,
+    // the orbit camera untouched), a middle drag pans, a middle click resets.
+    {
+      const rz = w2.previewRect();
+      const px = rz.x + rz.w * 0.25;
+      const py = rz.y + rz.h * 0.25;
+      const orbit0 = w2.camera.position.clone();
+      const wheel = (dy: number) => canvas.dispatchEvent(new WheelEvent('wheel', { clientX: bounds.left + px, clientY: bounds.top + py, deltaY: dy, bubbles: true, cancelable: true }));
+      for (let k = 0; k < 8; k++) wheel(-200);
+      await settle(120);
+      const z1 = w2.getPreviewZoom();
+      check('the wheel over the preview magnifies it, to 5× and no further', z1.zoom === 5 && z1.u < 0.5 && z1.v > 0.5, JSON.stringify(z1));
+      check('and the viewport camera did not move', w2.camera.position.distanceTo(orbit0) < 1e-6);
+      const mid = (type: string, cx: number, cy: number) => canvas.dispatchEvent(new PointerEvent(type, { clientX: bounds.left + cx, clientY: bounds.top + cy, pointerType: 'mouse', pointerId: 1, button: type === 'pointermove' ? -1 : 1, buttons: type === 'pointerup' ? 0 : 4, isPrimary: true, bubbles: true, cancelable: true }));
+      mid('pointerdown', px, py);
+      mid('pointermove', px - 50, py);
+      mid('pointerup', px - 50, py);
+      const z2 = w2.getPreviewZoom();
+      check('a middle drag pans the magnified picture', z2.zoom === 5 && z2.u > z1.u, `${z1.u.toFixed(3)} -> ${z2.u.toFixed(3)}`);
+      mid('pointerdown', px, py);
+      mid('pointerup', px, py);
+      const z3 = w2.getPreviewZoom();
+      check('a middle click brings the whole picture back', z3.zoom === 1 && z3.u === 0.5 && z3.v === 0.5, JSON.stringify(z3));
+      for (let k = 0; k < 3; k++) wheel(-200);
+      for (let k = 0; k < 12; k++) wheel(200);
+      check('and the wheel the other way stops at the whole picture', w2.getPreviewZoom().zoom === 1);
+    }
     w2.setPreviewOffset(offset0.dx, offset0.dy);
     w2.setPreviewScale(scale0);
   }
