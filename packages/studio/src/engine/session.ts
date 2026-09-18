@@ -156,6 +156,30 @@ export const serialize = (): string => JSON.stringify(serializeConfig(doc));
 export const getParticleSystem = (): any => particleSystem;
 export const getFrames = (): number => framesDrawn;
 export const isPaused = (): boolean => paused;
+
+/** What the footer reads twice a second: the running system, in numbers. */
+export type LiveStats = {
+  /** Particle slots in use right now, and how many there are. */
+  live: number;
+  max: number;
+  /** The emission rate the piece asks for, particles a second. */
+  rate: number;
+  /** Seconds on the simulation clock. */
+  elapsed: number;
+  paused: boolean;
+  /** Where the simulation runs. */
+  backend: 'GPU' | 'CPU';
+  renderer: string;
+};
+export const getLiveStats = (): LiveStats => ({
+  live: particleSystem?.getActiveParticleCount?.() ?? 0,
+  max: Number(doc.maxParticles) || 0,
+  rate: Number(doc.emission?.rateOverTime) || 0,
+  elapsed: clock ? clock.getElapsedTime() : 0,
+  paused,
+  backend: particleSystem?.computeNode ? 'GPU' : 'CPU',
+  renderer: String(doc.renderer?.rendererType ?? 'POINTS'),
+});
 export const setPaused = (next: boolean): void => {
   if (next === paused) return;
   paused = next;

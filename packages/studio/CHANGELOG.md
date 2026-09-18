@@ -12,6 +12,7 @@
 - `Emitter Source Image Tweak` (was Source Image Tweak): black point, gamma and brightness under level; saturation up to 5.
 - Scene → camera: a `post effect` group after feedback — saturation, brightness, contrast, hue, level (black / white / gamma), and a reset. Harness +8 (75); the preview drag checks start from a small preview instead of whatever size the last session left.
 - Fix: number fields clipped their last digit behind the spin buttons — maxParticles 500000 read as "50000", rateOverTime 100000 as "10000", −120.411 as "−120." — which looked like caps ten times lower. Spin buttons off, fields a little wider (inspector and scene panel). Harness +1 (76).
+- Footer, right half: the running system in numbers, read twice a second — `live <alive> / <maxParticles> · %`, `emit <rate>/s`, fps, the simulation clock, backend · renderer; every footer item explains itself on hover. Harness +2 (78).
 
 ## Unreleased
 

@@ -12,7 +12,7 @@ cd ../studio && npm run dev                    # 5173；先把预设同步进 V1
 
 - 引擎按 `@particle-tools/engine/<module>` 引用（Vite 别名指到 `../engine/src`），只能引 `packages/engine/engine-boundary.json` 里列的模块；`cd packages/engine && npm run check:boundary` 会扫 studio 的每一处引用。
 - 开发时 Vite 的 publicDir 是 V1 的 `public`（同源拿到 examples、assets、V1 打好的 player）；生产构建 `npm run build` 是可搬的（`base: './'`，`scripts/copy-shared.mjs` 只拷预设和 favicon）。
-- **harness**：只在 dev bundle 里，页面 console 里 `await __st.report()`（76 条：boot、加载条、保存再读回、round-trip、schema 覆盖、live / rebuild 代价、家具、三个编辑器、演示、HUD、预览窗、面板）。真实窗口里跑更可靠，方法见 `packages/editor/CLAUDE.md` 的「验证改动」。
+- **harness**：只在 dev bundle 里，页面 console 里 `await __st.report()`（78 条：boot、加载条、保存再读回、round-trip、schema 覆盖、live / rebuild 代价、家具、三个编辑器、演示、HUD、预览窗、面板）。真实窗口里跑更可靠，方法见 `packages/editor/CLAUDE.md` 的「验证改动」。
 - **加载条**（2026-09-18）：`index.html` 内联的 `#boot-loader`（全屏 `--bg` 底、2px 细条 + 一行当前阶段），第一帧 paint 就在，bundle 到之前靠 CSS 动画爬到 28%；之后 `session.ts` 的每个 boot mark 经 `BootOptions.onBootPhase` 交给 `app/boot-progress.ts`（界面侧，引擎不碰 DOM），内置贴图串行加载那一段按张数走（引擎 `initAssets` 的 `onProgress`）；`first-frame` 填满、350 ms 淡出、移除。用 `transform: scaleX`，主线程被占住时合成器照样推进。boot 抛错时标签改成失败提示。
 - 调试口：`window.__studio`（doc / serialize / load / rebuild / getFrames …）、`__world`、`__touch`、`__perfHud`、`__gyroHud`。
 - 线上：<https://caoyuxistudio.github.io/Particle-tools/Studio/>，推 main 就部署（`deploy.yml` 在同一次 checkout 里先构建 V1、再构建这个包，把 `dist` 放到 `packages/editor/public/Studio/`；小写 `/studio/` 转发）。推之前本地 `npm run build` 一遍。

@@ -198,6 +198,17 @@ export const report = async (): Promise<string> => {
     check('switched off, the stage is gone', !/fb/.test(w._ssr().pipelineKey) && !w._ssr().feedbackStage, w._ssr().pipelineKey);
   }
 
+  // The footer's right half: the running system in numbers, read twice a second.
+  {
+    await settle(700);
+    const text = document.querySelector('.bottombar')?.textContent ?? '';
+    const shown = Number((text.match(/live ([\d,]+) \//)?.[1] ?? '').replace(/,/g, ''));
+    const actual = getParticleSystem()?.getActiveParticleCount?.() ?? -1;
+    const max = Number(get('maxParticles'));
+    check('the footer shows the live particle count', shown > 0 && Math.abs(shown - actual) <= max * 0.2 && text.includes(`/ ${max.toLocaleString('en-US')}`), `${shown} shown, ${actual} alive`);
+    check('and the rate, the frame rate, the clock and the backend', /emit [\d,]+\/s/.test(text) && /\d+ fps/.test(text) && /t [\d.]+s/.test(text) && /(GPU|CPU) · [A-Z]+/.test(text), text.slice(text.indexOf('live')));
+  }
+
   // A number field shows its whole number: 500000 once read as "50000", its
   // last digit behind the spin buttons, and looked like a cap ten times lower.
   {
