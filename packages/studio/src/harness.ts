@@ -197,6 +197,28 @@ export const report = async (): Promise<string> => {
   check('the column has particles, scene, pieces and textures', JSON.stringify(tabs) === JSON.stringify(['particles', 'scene', 'pieces', 'textures']), tabs.join(','));
   const cards = document.querySelectorAll('.column .card').length;
   check('the pieces panel lists the examples', cards >= 2, `${cards} cards`);
+  // Save → change → load the saved one: through the panel's own controls (a
+  // deep $state proxy over the saved list once made this throw DataCloneError).
+  {
+    const name = `harness-${Date.now()}`;
+    const input = document.querySelector<HTMLInputElement>('.column .save input');
+    const button = document.querySelector<HTMLButtonElement>('.column .save button');
+    const strength0 = get('noise.strength') as number;
+    if (input && button) {
+      input.value = name;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      button.click();
+      await settle(50);
+      patch('noise.strength', strength0 + 0.37);
+      const row = [...document.querySelectorAll<HTMLButtonElement>('.column .row .name')].find((b) => b.textContent === name);
+      row?.click();
+      await settle(300);
+      check('a piece saved in this browser loads back', !!row && Math.abs((get('noise.strength') as number) - strength0) < 1e-9, `strength ${strength0} -> ${get('noise.strength')}`);
+      row?.parentElement?.querySelector<HTMLButtonElement>('.x')?.click();
+      await settle(50);
+      check('and deleting it takes it off the list', ![...document.querySelectorAll('.column .row .name')].some((b) => b.textContent === name));
+    } else check('a piece saved in this browser loads back', false, 'no save controls');
+  }
   const sources = document.querySelectorAll('.column .item .thumb').length;
   check('the textures panel lists the colour sources', sources >= 2, `${sources} entries`);
   const axesBefore = get('_editorData.showWorldAxes');

@@ -3,6 +3,7 @@
 ## Unreleased — 2026-09-18
 
 - The v2 branch is merged into `main`; the studio is now the only editor under development (V1 is history). `deploy.yml` builds V1 and the studio from the same checkout.
+- Fix: a piece saved in this browser could not be loaded back — the saved list was a deep `$state` proxy and `structuredClone` threw `DataCloneError`; the list is `$state.raw` now and a failed load says so. Harness +2 (55).
 
 ## Unreleased
 

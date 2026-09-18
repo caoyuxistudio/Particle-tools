@@ -5,7 +5,10 @@
   import { readSavedConfigs, writeSavedConfigs, createConfigId, type SavedConfig } from '@particle-tools/engine/saved-configs';
   import { load, serialize, get, revision } from '../store/document.svelte';
 
-  let saved = $state<SavedConfig[]>(readSavedConfigs());
+  // Raw: the list is only ever replaced whole, and a deep $state proxy over
+  // every saved config cannot be structuredClone'd — loading a saved piece
+  // threw DataCloneError and nothing happened.
+  let saved = $state.raw<SavedConfig[]>(readSavedConfigs());
   let saveName = $state('');
   let note = $state('');
   const flash = (text: string) => {
@@ -24,8 +27,13 @@
     }
   };
   const openSaved = (entry: SavedConfig) => {
-    load(structuredClone(entry.config));
-    flash(`loaded ${entry.name}`);
+    try {
+      load(structuredClone(entry.config));
+      flash(`loaded ${entry.name}`);
+    } catch (e) {
+      console.error(e);
+      flash(`could not load ${entry.name}`);
+    }
   };
   const saveCurrent = () => {
     const name = saveName.trim() || (get('_editorData.metadata.name') ?? 'untitled');
